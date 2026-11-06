@@ -2,15 +2,18 @@
 # `merge-queue-main` ruleset requires (`.github/rulesets/merge-queue-main.json`). `merge_group` is what lets the queue's temporary
 # branches run it: a required check that never runs on one blocks the queue for ever. Copied in shape from a11ign/announcement-emulator's.
 #
-# The repository holds no package yet, so the only job is `repository`. When the package lands, its build, lint, typecheck and test
-# jobs go into `gate`'s `needs` and into the loop below, and nowhere else.
+# `repository` checks what the repository must always hold. `package` builds the plugin, typechecks and lints it, and runs every test:
+# each rule's cases under ESLint 10 AND under the pinned Oxlint (`oxlint` in package.json, exact), the type-aware rules under ESLint with
+# types, and the whole-config tests (the setup in each linter and the regression cases). Both linters run inside the one test command, so
+# a rule cannot pass under one and be skipped under the other. `package` stays off a draft pull request; `gate` accepts its `skipped`
+# only there.
 #
 # No `push` trigger: `auto-arm.yml`'s own `push` trigger is what runs after a merge (a11ign/a11ign#4139).
 name: ci
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
 
 permissions:
@@ -29,16 +32,41 @@ jobs:
       - name: The Apache-2.0 LICENSE is present
         run: grep -q "Apache License" LICENSE && grep -q "Version 2.0" LICENSE
 
+  package:
+    if: github.event_name == 'merge_group' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.34.5
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+      - name: Install from the lockfile
+        run: pnpm install --frozen-lockfile
+      - name: Build (the setup tests load the built package by its name)
+        run: pnpm run build
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Lint
+        run: pnpm run lint
+      - name: Test under ESLint 10 and the pinned Oxlint
+        run: pnpm run test
+
   # THE REQUIRED CHECK. `if: always()` because a job whose need failed is SKIPPED, and a skipped required check counts as passed; the step
   # accepts `success` ONLY, so a job that was skipped or cancelled fails the gate.
   gate:
-    needs: [repository]
+    needs: [repository, package]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
       - name: Every job ran, and ran clean
         run: |
-          for result in "${{ needs.repository.result }}"; do
+          draft="${{ github.event.pull_request.draft }}"
+          for result in "${{ needs.repository.result }}" "${{ needs.package.result }}"; do
+            if [ "$result" = "skipped" ] && [ "$draft" = "true" ]; then continue; fi
             if [ "$result" != "success" ]; then
               echo "::error::a job reported '$result', not success"
               exit 1

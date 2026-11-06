@@ -1,0 +1,88 @@
+{
+  "name": "eslint-plugin-clean-code-book",
+  "version": "0.0.0",
+  "description": "Lint rules from Clean Code, 2nd Edition, for ESLint and Oxlint, with fixes that keep behaviour unchanged.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@10.34.5",
+  "keywords": [
+    "eslint",
+    "eslintplugin",
+    "eslint-plugin",
+    "oxlint",
+    "clean-code"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/a11ign/eslint-plugin-clean-code.git"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.mjs"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "default": "./dist/plugin.mjs"
+    },
+    "./oxlint": {
+      "types": "./dist/oxlint.d.ts",
+      "default": "./dist/oxlint.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "docs/rules",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "dependencies": {
+    "espree": "11.2.0"
+  },
+  "peerDependencies": {
+    "eslint": ">=10.0.0",
+    "oxlint": ">=1.92.0",
+    "typescript-eslint": "^8.72.1"
+  },
+  "peerDependenciesMeta": {
+    "eslint": {
+      "optional": true
+    },
+    "oxlint": {
+      "optional": true
+    },
+    "typescript-eslint": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@a11ign/toolchain": "0.15.0",
+    "@changesets/cli": "3.0.3",
+    "@eslint/js": "^10.0.1",
+    "@rslib/core": "1.0.6",
+    "@rstest/core": "0.12.6",
+    "@types/estree": "1.0.8",
+    "@types/node": "^24.10.1",
+    "@typescript-eslint/parser": "8.72.1",
+    "@typescript-eslint/types": "8.72.1",
+    "eslint": "10.14.0",
+    "globals": "^17.14.0",
+    "jiti": "2.7.0",
+    "oxlint": "1.92.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "8.72.1"
+  },
+  "scripts": {
+    "build": "rslib build",
+    "prepack": "pnpm run build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "rstest run",
+    "changeset": "changeset",
+    "pretest": "pnpm run build"
+  }
+}

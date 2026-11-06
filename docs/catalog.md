@@ -450,9 +450,10 @@ The README will not say which projects this replaces. The pull request body reco
 - **Class:** syntax.
 - **Rule:** `fields-first` reports a class field declared after a method, accessor or constructor. Fields go first, which is the JavaScript and TypeScript convention.
 - **Fix:** moves the fields above the first non-field member, keeping their order relative to each other. Field initializers run in the order the fields are declared, and methods live on the prototype, so the move changes nothing at runtime. There is no fix when the class has any of these, because each runs in source order and the move would change that order:
-  - a member with a computed key (`[k()]`),
+  - a moved field with a computed key (`[k()] = 1`), because its key is evaluated when the class is defined, in source order with the other computed keys. A computed key elsewhere, such as `[Symbol.iterator]() {}`, does not block the fix: a field with a plain key has nothing to evaluate when the class is defined, so moving it past a computed method changes no order.
   - a decorator on any member,
   - a `static {}` block,
+  - an auto-accessor (`accessor x`), whose storage is initialised in order with the fields,
   - a field initializer that refers to the class.
   
   The move follows [How fixes stay safe](#how-fixes-stay-safe). A moved field without a `;` gets one when the next member would otherwise continue it (`size = 0` followed by `[Symbol.iterator]() {}`).
@@ -588,11 +589,13 @@ The README will not say which projects this replaces. The pull request body reco
   - a method that returns `this` (a fluent setter).
   - a function written directly as a call argument or JSX attribute (`onToggle={(open: boolean) => …}`), and a method with the `override` modifier or in a class that `implements` an interface. Their signatures are set by someone else.
   - a parameter that is already a destructured options object, whose booleans are named at the call site.
-- **Fix:** turns the boolean parameter into a property of an options object, which is the keyword-parameter remedy (NAM-22). `(name, verbose = false)` becomes `(name, { verbose = false } = {})`. `(name, verbose: boolean)` becomes `(name, { verbose }: { verbose?: boolean } = {})`: a call that leaves the argument out still gets `undefined`. Each call `f(x, true)` becomes `f(x, { verbose: true })`, and the overload signatures of `f` are rewritten in the same fix. The fix applies only when all of these hold:
+- **Fix:** turns the boolean parameter into a property of an options object, which is the keyword-parameter remedy (NAM-22). `(name, verbose = false)` becomes `(name, { verbose = false } = {})`. `(name, verbose?: boolean)` becomes `(name, { verbose }: { verbose?: boolean } = {})`: a call that leaves the argument out still gets `undefined`. A required `(name, verbose: boolean)` becomes `(name, { verbose }: { verbose: boolean })`, so the body still sees a `boolean`; it is fixed only when every call passes the argument, since a call that leaves it out would then throw. Each call `f(x, true)` becomes `f(x, { verbose: true })`, and the overload signatures of `f` are rewritten in the same fix. The fix applies only when all of these hold:
   - `f` is a function declaration or a `const` function in an ES module file, not a method, and not exported.
   - The boolean is the last parameter.
   - `f` does not use `arguments`.
   - Every reference to `f` is a direct call in the same file, with no spread argument and no `new`.
+  - No other declaration in the scope has the name `f`, and the file has no direct `eval`.
+  - The file has an `import` or `export`, so it is an ES module by its syntax as well as its configuration.
   
   A method is reported without a fix, because an override in another file would still receive a boolean. An exported function, or one passed as a value, is reported without a fix too.
 - **Deviation from an acceptance line, for owner sign-off:** the ticket says that after `--fix` the code "no longer triggers the rule". That holds for every case the fix applies to. A method, an exported function and a function passed as a value are still reported after `--fix`, because no fix can see their callers in other files.
@@ -1182,7 +1185,7 @@ Partial fixes, for sign-off with the rest. In each case below the rule reports a
 - `no-encodings`: anything other than a local variable, a plain parameter or a `#private` member in an ES module, and any binding used in shorthand or destructuring (NAM-09, NAM-10).
 - `no-pure-delegator`: an `async` or generator delegator, one with non-plain parameters, or one called with a different number of arguments, `new` or a tagged template (ONE-02).
 - `stepdown-order`: class methods, functions in blocks or in sloppy-mode code, duplicate names, and decorated functions (FMT-04).
-- `fields-first`: classes with computed keys, decorators, `static` blocks, or initializers that refer to the class (FMT-03).
+- `fields-first`: a moved field with a computed key, and classes with decorators, `static` blocks, auto-accessors, or initializers that refer to the class (FMT-03).
 - `loop-variable-in-loop`: any reference outside the `for` statement or inside a nested function, a declaration with other declarators or an initializer, or a loop init that assigns more than the variable (FMT-05).
 - `no-attribution-comments`: a byline inside a comment with other text (CMT-08).
 - `no-html-in-comments`: double-escaped entities, and a tag whose removal would end the comment (CMT-09).
