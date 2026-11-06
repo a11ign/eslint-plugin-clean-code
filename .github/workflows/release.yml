@@ -1,0 +1,51 @@
+name: release
+
+# A MERGE TO `main` THAT CARRIES A CHANGESET RELEASES THE PACKAGE TO npm. This file is a caller of the per-merge release workflow the
+# repositories of this organisation share (`release-per-merge.yml` in a11ign/toolchain), which:
+#   1. waits for `gate` (ci.yml's required check) to have succeeded on the merged sha, and refuses any other ref than `main`;
+#   2. builds the release commit on no branch: the last tag's version and changelog, the released changesets removed, then `changeset version`;
+#   3. publishes it with `changeset publish`, by npm trusted publishing (OIDC, with provenance), from the `npm-publish` environment;
+#   4. pushes the tag `vX.Y.Z` (never forced) and creates the GitHub Release from the CHANGELOG entry.
+# `main` is never written: its `version` and CHANGELOG.md lag the last tag, and nothing reads them. `prepack` builds `dist/` before the
+# publish packs it.
+#
+# WHAT THE FIRST RELEASE NEEDS FROM A PERSON, once (none of it lives in this repository):
+#   - an `npm-publish` environment in this repository's settings, with deployment branches limited to `main`;
+#   - on npm, a trusted publisher for `eslint-plugin-clean-code-book`: this repository, the workflow file `release.yml` (THIS file's name;
+#     the OIDC token names the calling workflow, so renaming this file breaks the publish), and the environment `npm-publish`.
+#     npm may accept a trusted publisher only for a package that already exists; then the first version is published once by hand from
+#     the npm account, and every later release goes through this workflow.
+# Until both exist the `publish` job fails, and because the tag job runs only after a successful publish, no tag or Release is cut for a
+# version that is not on npm. Re-running the failed run from its push (same sha) recomputes the same release.
+#
+# THE PIN IS A FULL SHA, so a push to toolchain cannot change what this repository releases without a pull request here; Dependabot's
+# `github-actions` entry (`.github/dependabot.yml`) moves it.
+
+on:
+  # NO `workflow_dispatch`, ON PURPOSE: a workflow file on a branch is the branch author's, and the publish holds `id-token: write`, so a
+  # dispatch from an unreviewed branch could reach an irreversible publish without `main`'s review.
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    permissions:
+      # The tag and the Release.
+      contents: write
+      # Reading `gate` on the merged sha.
+      checks: read
+      # The OIDC token for npm trusted publishing; the called workflow grants it to its `publish` job only.
+      id-token: write
+    # ONE RELEASE AT A TIME, AND NEVER CANCELLED IN FLIGHT: a publish cancelled half way cannot be rolled back.
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    uses: a11ign/toolchain/.github/workflows/release-per-merge.yml@7c69486d4becc9794e98c3004a36fdf0f8148cf6
+    with:
+      kind: npm
+      gate-check: gate
+      # As ci.yml's `package` job. pnpm comes from `packageManager`, and `changeset` from the lockfile.
+      node-version: 24.21.0

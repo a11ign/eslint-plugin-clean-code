@@ -75,7 +75,7 @@ Approving this pull request approves the items below. Each one is a choice the b
 | `no-getter-chains` | OBJ-02 | recommended | 2 chained getters (owner sign-off) | no fix |
 | `no-hybrid-class` | OBJ-04 | recommended | none | no fix |
 | `no-trivial-accessors` | OBJ-03 | recommended | none | no fix |
-| `no-complex-condition` | ONE-04 | recommended | mixed `&&`/`||`, or > 3 operands (owner sign-off) | no fix |
+| `no-complex-condition` | ONE-04 | recommended | mixed `&&`/`\|\|`, or > 3 operands (owner sign-off) | no fix |
 | `no-mutable-static-state` | ONE-05 | recommended | none | no fix |
 | `no-overloaded-constructors` | NAM-13 | recommended | none | no fix |
 | `loop-variable-in-loop` | FMT-05 | recommended | none | **fix** (partial) |
@@ -1135,7 +1135,7 @@ These values are this catalog's choices. Approving the pull request approves the
 | NAM-02 | `name-length-matches-scope` | one-letter names only in scopes of 3 lines or fewer | The book's example is "two lines long" with no maximum. 3 covers a one-line callback or a three-line loop. |
 | CMT-07 | `no-position-markers` | a run of 5 or more of one punctuation character | No number in the book. 5 is longer than any punctuation in ordinary prose (`...`, `--`). |
 | OBJ-02 | `no-getter-chains` | 2 chained `get*()` calls | The book's example has 3 and no limit. A getter called on a getter's result is the smallest chain. |
-| ONE-04 | `no-complex-condition` | a mix of `&&` and `||`, or more than 3 operands | The book's example mixes them. 3 lets `a && b && c` pass. |
+| ONE-04 | `no-complex-condition` | a mix of `&&` and `\|\|`, or more than 3 operands | The book's example mixes them. 3 lets `a && b && c` pass. |
 | CMT-10 | `no-warning-comments` | terms `todo`, `fixme` | The book names TODO. FIXME is the same comment. |
 | NAM-06 | `id-denylist` | adds `I` to the book's `l` and `O` | It has the same problem as `l`. |
 

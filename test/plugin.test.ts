@@ -4,21 +4,25 @@
  * - type-aware rules are only in `recommended-type-checked`; every rule is `"error"`; the book's stated thresholds are used;
  * - every rule has its doc page, with "Why there is no autofix" exactly when it has no fix;
  * - every message names the problem, the book passage and the refactor;
- * - nothing published carries the organisation's branding, and the toolchain is a dev dependency only.
+ * - the README lists every rule under the config it is in, with its doc page and whether it fixes;
+ * - nothing published carries the organisation's branding, the toolchain is a dev dependency only, and the package ships
+ *   its build, its rule docs, the README and the LICENSE.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import type { Linter } from "eslint";
 import plugin from "../src/index.ts";
 import { recommended as oxlintRecommended } from "../src/oxlint.ts";
-import { BUILT_IN_RULES, SYNTAX_RULES, TEST_FILE_RULES, TYPE_CHECKED_RULES } from "../src/configs.ts";
+import { BUILT_IN_RULES, PLUGIN_PREFIX, SYNTAX_RULES, TEST_FILE_RULES, TYPE_CHECKED_RULES } from "../src/configs.ts";
 import { PACKAGE_NAME } from "../src/lib/define-rule.ts";
 import { ROOT } from "./support.ts";
 
 const catalog = readFileSync(join(ROOT, "docs", "catalog.md"), "utf8");
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+const readme = readFileSync(join(ROOT, "README.md"), "utf8");
 const rules = plugin.rules as unknown as Record<string, { meta: { fixable?: string; messages: Record<string, string>; docs: { url: string; requiresTypeChecking: boolean } } }>;
 
 interface TableRow {
@@ -27,11 +31,16 @@ interface TableRow {
   fix: string;
 }
 
+/** The cells of a markdown table row. A `|` inside a cell is written `\\|`, as GitHub tables need, so only an unescaped `|` ends one. */
+function tableCells(line: string): string[] {
+  return line.split(/(?<!\\)\|/).slice(1, -1).map((cell) => cell.trim());
+}
+
 /** The rows of the catalog's "The rule set at a glance" table. */
 function ruleTable(): TableRow[] {
   const section = catalog.slice(catalog.indexOf("## The rule set at a glance"), catalog.indexOf("## Entries"));
   return section.split("\n").filter((line) => /^\| `/.test(line)).map((line) => {
-    const [names, , config, , fix] = line.split("|").slice(1).map((cell) => cell.trim());
+    const [names, , config, , fix] = tableCells(line);
     return { names: [...names.matchAll(/`([^`]+)`/g)].map((match) => match[1]), config, fix };
   });
 }
@@ -79,6 +88,7 @@ describe("the catalog's rule table", () => {
 
   it("a rule the table marks as fixed has a fix, and a rule marked 'no fix' has none", () => {
     for (const row of customRows) {
+      assert.match(row.fix, /^(no fix|\*\*fix\*\*.*)$/, `${row.names.join(", ")}: the Fix cell reads "${row.fix}"`);
       for (const name of row.names) {
         if (row.fix === "no fix") assert.equal(rules[name].meta.fixable, undefined, `${name} should have no fix`);
         else if (row.fix.includes("fix")) assert.equal(rules[name].meta.fixable, "code", `${name} should have a fix`);
@@ -155,8 +165,56 @@ describe("the published package", () => {
     assert.equal(pkg.peerDependencies?.["@a11ign/toolchain"], undefined);
   });
 
-  it("its rule docs and rule URLs carry no organisation branding", () => {
+  it("its README, rule docs and rule URLs carry no organisation branding", () => {
     const docs = readdirSync(join(ROOT, "docs", "rules")).map((file) => readFileSync(join(ROOT, "docs", "rules", file), "utf8"));
-    for (const text of [...docs, ...Object.values(rules).map((rule) => rule.meta.docs.url)]) assert.doesNotMatch(text, /a11ign/i);
+    for (const text of [readme, ...docs, ...Object.values(rules).map((rule) => rule.meta.docs.url)]) assert.doesNotMatch(text, /a11ign/i);
+  });
+
+  it("ships the build, every rule's doc page, the README and the LICENSE, and no source or tests", () => {
+    const packed = spawnSync("npm", ["pack", "--dry-run", "--ignore-scripts", "--json"], { cwd: ROOT, encoding: "utf8" });
+    assert.equal(packed.status, 0, packed.stderr);
+    const files = new Set((JSON.parse(packed.stdout) as Array<{ files: Array<{ path: string }> }>)[0].files.map((file) => file.path));
+    const expected = ["README.md", "LICENSE", "package.json", "dist/index.mjs", "dist/plugin.mjs", "dist/oxlint.mjs", "dist/index.d.ts"];
+    for (const path of [...expected, ...Object.keys(rules).map((name) => `docs/rules/${name}.md`)]) assert.ok(files.has(path), `${path} is not in the package`);
+    for (const path of files) assert.match(path, /^(dist\/|docs\/rules\/|README\.md$|LICENSE$|package\.json$)/);
+  });
+});
+
+describe("the README", () => {
+  /** The rule names in the README's table under `### <heading>`, each with its link and its Fix cell. */
+  function readmeTable(heading: string): Array<{ name: string; link: string; fix: string }> {
+    const start = readme.indexOf(`\n### ${heading}\n`);
+    assert.notEqual(start, -1, `the README has no "### ${heading}" section`);
+    const section = readme.slice(start + 1).split(/\n#{2,3} /)[0];
+    return section.split("\n").filter((line) => /^\| \[?`/.test(line)).map((line) => {
+      const cells = tableCells(line);
+      const [, name, link = ""] = /^\[?`([^`]+)`\]?(?:\(([^)]+)\))?/.exec(cells[0]) ?? [];
+      return { name, link, fix: cells[2] };
+    });
+  }
+
+  const SECTIONS = [
+    ["In `recommended`", SYNTAX_RULES],
+    ["In `recommended`, for test files only", TEST_FILE_RULES],
+    ["In `recommended-type-checked` only", TYPE_CHECKED_RULES],
+  ] as const;
+
+  for (const [heading, configured] of SECTIONS) {
+    it(`lists exactly the rules of "${heading}", each linked to its doc page, with its fix`, () => {
+      const rows = readmeTable(heading);
+      assert.deepEqual(rows.map((row) => row.name).sort(), [...configured].sort());
+      for (const row of rows) {
+        assert.equal(row.link, `docs/rules/${row.name}.md`);
+        assert.ok(existsSync(join(ROOT, row.link)), row.link);
+        assert.equal(row.fix === "no", !rules[row.name].meta.fixable, `${row.name}: the README says fix "${row.fix}"`);
+      }
+    });
+  }
+
+  it("lists exactly the built-in rules recommended turns on", () => {
+    const listed = readmeTable("Built-in rules").map((row) => row.name).sort();
+    const builtIns = Object.keys(rulesOf(plugin.configs.recommended)).filter((name) => !name.startsWith(`${PLUGIN_PREFIX}/`));
+    const expected = builtIns.filter((name) => name !== "@typescript-eslint/no-unused-vars").sort();
+    assert.deepEqual(listed, expected);
   });
 });
