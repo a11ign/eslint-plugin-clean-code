@@ -1,6 +1,6 @@
 /**
- * What `recommended`, `recommended-type-checked`, `ai`, `node` and `node-extended` turn on, written once as data so the ESLint config and the Oxlint config
- * are built from the same list. Every rule is `"error"` (the catalog's decision). Thresholds the book states are its values;
+ * What `recommended`, `recommended-type-checked`, `ai`, `node`, `node-extended`, `react` and `react-extended` turn on, written once
+ * as data so the ESLint config and the Oxlint config are built from the same list. Every rule is `"error"` (the catalog's decision). Thresholds the book states are its values;
  * the others are the values the catalog's owner sign-off approved. A custom rule's threshold is its own default.
  */
 
@@ -124,6 +124,35 @@ export const CALLBACK_ERROR_PATTERN = "^(err|error)$";
  */
 export const NODE_EXTENDED_RULES = { "n/handle-callback-err": ["error", CALLBACK_ERROR_PATTERN] } as const;
 
+/**
+ * The opt-in `react` config (ADR 0004 of A11-415): rules for React components and hooks, from `docs/catalog-react.md`. It stacks
+ * on `recommended`: `[...recommended, ...react]`, applies to `REACT_FILES` only, and adds no peer dependency. It overrides no
+ * rule of `recommended`: components and custom hooks keep FN-01's 12 lines (the catalog's "Conflicts", item 1).
+ */
+export const REACT_RULES = ["react-no-state-mutation", "react-no-untyped-empty-state"] as const;
+
+/**
+ * The opt-in `react-extended` config: the `third-party` entries of `docs/catalog-react.md`, listed one by one, each `"error"`,
+ * by their names in `eslint-plugin-react-hooks` (RCT-01, RCT-02, RCT-03) and `eslint-plugin-react` (RCT-04). It stacks on
+ * `react` and uses neither plugin's preset, whose `exhaustive-deps` is a warning. Oxlint's native `react` plugin has every one of
+ * them under the same rule name, as `react/<name>`.
+ */
+export const REACT_HOOKS_RULES = ["rules-of-hooks", "exhaustive-deps"] as const;
+export const REACT_JSX_RULES = ["jsx-key", "no-array-index-key"] as const;
+
+/** `rules` under `plugin`'s name, each `"error"`: `pluginRules("react", ["jsx-key"])` gives `{ "react/jsx-key": "error" }`. */
+export function pluginRules(plugin: string, rules: readonly string[]): Record<string, "error"> {
+  return Object.fromEntries(rules.map((name) => [`${plugin}/${name}`, "error"]));
+}
+
+/** The files `react` and the `react/` rules of `react-extended` apply to. */
+export const REACT_FILES = ["**/*.{jsx,tsx}"];
+/** The files the hooks rules apply to: `REACT_FILES`, and a custom hook in a `.js` or `.ts` file such as `useChecked.ts`. */
+export const REACT_HOOK_FILES = [...REACT_FILES, "**/use*.{js,ts}"];
+/** The TypeScript files among them, which ESLint parses with typescript-eslint's parser. */
+export const REACT_TS_FILES = ["**/*.tsx"];
+export const REACT_HOOK_TS_FILES = [...REACT_TS_FILES, "**/use*.ts"];
+
 const SOURCE_EXTENSIONS = "{js,mjs,cjs,jsx,ts,mts,cts,tsx}";
 export const ALL_FILES = [`**/*.${SOURCE_EXTENSIONS}`];
 export const TS_FILES = ["**/*.{ts,mts,cts,tsx}"];
@@ -136,7 +165,7 @@ export const TEST_FILE_OFF = { "max-lines-per-function": "off" } as const;
 export const PLUGIN_PREFIX = "clean-code-book";
 
 export function prefixed(names: readonly string[]): Record<string, "error"> {
-  return Object.fromEntries(names.map((name) => [`${PLUGIN_PREFIX}/${name}`, "error"]));
+  return pluginRules(PLUGIN_PREFIX, names);
 }
 
 export function prefixedOptions(rules: Record<string, readonly unknown[]>): Record<string, unknown> {

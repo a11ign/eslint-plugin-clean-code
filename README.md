@@ -9,6 +9,7 @@ Every rule of `recommended` comes from a passage of the book, and its doc page q
 - TypeScript, JavaScript, JSX and TSX.
 - An opt-in `ai` config, with five more rules for the habits of AI-generated code. It is separate from the book's rules, and `recommended` does not turn it on.
 - An opt-in `node` config, with four rules for Node's event loop and error model from the Node books, and a `node-extended` companion that adds `eslint-plugin-n`'s callback-error check.
+- An opt-in `react` config, with two rules for React state from the React books, on `.jsx` and `.tsx` files, and a `react-extended` companion that adds the rules of hooks and the list-key rules.
 
 ## Requirements
 
@@ -17,6 +18,7 @@ Every rule of `recommended` comes from a passage of the book, and its doc page q
 - With ESLint: typescript-eslint 8.72.1 or later in 8.x, for `recommended` too, since it parses the TypeScript files. `recommended-type-checked` also needs a `tsconfig.json`.
 - With Oxlint: nothing else. Oxlint doesn't need ESLint or typescript-eslint.
 - For `node-extended` with ESLint only: `eslint-plugin-n` 17 or later. Nothing else needs it, and Oxlint runs the same rule natively.
+- For `react-extended` with ESLint only: `eslint-plugin-react-hooks` 6 or later and `eslint-plugin-react` 7.37 or later. Nothing else needs them, and Oxlint runs the same rules natively.
 
 ## Setup with ESLint
 
@@ -151,6 +153,60 @@ import { node, nodeExtended, recommended } from "eslint-plugin-clean-code-book/o
 export default { extends: [recommended, node, nodeExtended] };
 ```
 
+## The `react` config
+
+`react` is an opt-in config of two rules for React components and hooks: a `useState` or `useReducer` value changed in place, and an empty `useState([])` with no type. These rules are not from *Clean Code*. Each one quotes a passage of *Learn React with TypeScript*, in [`docs/catalog-react.md`](docs/catalog-react.md). `react` applies to `.jsx` and `.tsx` files only, so a project that turns it on gets no React rule on its other files. Every `react` rule is an `error`, and none has a fix. `react` needs nothing that `recommended` does not.
+
+`react` changes no rule of `recommended`. A component or a custom hook is a function, and `max-lines-per-function` still limits it to 12 lines, markup included: the React books' remedy for a large component is to split it, as the book's is for a large function. A project that finds 12 lines too few for markup can change that rule for `**/*.{jsx,tsx}`, as [Changing a rule](#changing-a-rule) shows.
+
+Add it after `recommended`. In ESLint:
+
+<!-- setup: eslint-react -->
+```js
+import cleanCode from "eslint-plugin-clean-code-book";
+
+export default [...cleanCode.configs.recommended, ...cleanCode.configs.react];
+```
+
+In Oxlint:
+
+<!-- setup: oxlint-react -->
+```ts
+import { react, recommended } from "eslint-plugin-clean-code-book/oxlint";
+
+export default { extends: [recommended, react] };
+```
+
+### `react-extended`
+
+`react-extended` adds four rules of other plugins, each an `error`: `react-hooks/rules-of-hooks` and `react-hooks/exhaustive-deps` from `eslint-plugin-react-hooks`, and `react/jsx-key` and `react/no-array-index-key` from `eslint-plugin-react`. It lists them one by one rather than using the plugins' presets, so `exhaustive-deps` is an error, not the preset's warning. The two hooks rules also run on `.js` and `.ts` files whose name starts with `use`, so a custom hook such as `useChecked.ts` is checked; the two `react/` rules run on `.jsx` and `.tsx` files only.
+
+With ESLint, install the two plugins, optional peer dependencies that only `react-extended` needs:
+
+```sh
+npm install --save-dev eslint-plugin-react-hooks eslint-plugin-react
+```
+
+and add `react-extended` after `react`:
+
+<!-- setup: eslint-react-extended -->
+```js
+import cleanCode from "eslint-plugin-clean-code-book";
+
+export default [...cleanCode.configs.recommended, ...cleanCode.configs.react, ...cleanCode.configs["react-extended"]];
+```
+
+Oxlint runs the same four rules natively, in its `react` plugin, so nothing more is installed. There the hooks rules are named `react/rules-of-hooks` and `react/exhaustive-deps`:
+
+<!-- setup: oxlint-react-extended -->
+```ts
+import { react, reactExtended, recommended } from "eslint-plugin-clean-code-book/oxlint";
+
+export default { extends: [recommended, react, reactExtended] };
+```
+
+Turning on Oxlint's `react` plugin also turns on that plugin's rules in Oxlint's `correctness` category, as warnings, unless your config sets `categories`. `react-extended` itself turns on only the four rules above.
+
 ## Changing a rule
 
 Every rule is an `error`, and every threshold is the book's value, or a value the [catalog](docs/catalog.md#thresholds-the-book-does-not-state) gives a reason for. To change one, add your own settings after `recommended`. A setting added this way applies to every file. In ESLint that includes test files, where `recommended` turns `max-lines-per-function` off, so to change that rule, give the entry a `files` or `ignores` of its own.
@@ -197,7 +253,7 @@ The built-in rules keep their own behaviour, including the fixes some of them ha
 
 ## Rules
 
-Each book rule's page quotes the passage it comes from, each `ai` rule's page names the AI pattern and its harm, and each `node` rule's page quotes its Node book. Every page says what the rule reports, what it leaves alone, and how its fix works or why it has none.
+Each book rule's page quotes the passage it comes from, each `ai` rule's page names the AI pattern and its harm, each `node` rule's page quotes its Node book, and each `react` rule's page quotes its React book. Every page says what the rule reports, what it leaves alone, and how its fix works or why it has none.
 
 ### In `recommended`
 
@@ -277,6 +333,22 @@ Each book rule's page quotes the passage it comes from, each `ai` rule's page na
 | --- | --- | --- |
 | `n/handle-callback-err` | `^(err\|error)$`; `node/handle-callback-err` in Oxlint | NODE-08 |
 
+### In `react`
+
+| Rule | What it checks | Fix |
+| --- | --- | --- |
+| [`react-no-state-mutation`](docs/rules/react/react-no-state-mutation.md) | Don't mutate a value from `useState` or `useReducer`; pass a new value to its setter. | no |
+| [`react-no-untyped-empty-state`](docs/rules/react/react-no-untyped-empty-state.md) | Give `useState([])` a type argument in a `.tsx` file, so the state is not an array of `any`. | no |
+
+### In `react-extended`
+
+| Rule | Files | Oxlint | Catalog entry |
+| --- | --- | --- | --- |
+| `react-hooks/rules-of-hooks` | `.jsx`, `.tsx`, and `use*.js`, `use*.ts` | `react/rules-of-hooks` | RCT-01 |
+| `react-hooks/exhaustive-deps` | `.jsx`, `.tsx`, and `use*.js`, `use*.ts` | `react/exhaustive-deps` | RCT-02, RCT-03 |
+| `react/jsx-key` | `.jsx`, `.tsx` | `react/jsx-key` | RCT-04 |
+| `react/no-array-index-key` | `.jsx`, `.tsx` | `react/no-array-index-key` | RCT-04 |
+
 ### Built-in rules
 
 `recommended` also turns on these built-in rules, under ESLint and under Oxlint. A threshold is the book's value, or one the catalog gives a reason for (`complexity` is one):
@@ -303,7 +375,7 @@ Each book rule's page quotes the passage it comes from, each `ai` rule's page na
 
 ## The catalog
 
-[`docs/catalog.md`](docs/catalog.md) is the record of how the book became these rules. It lists every rule, heuristic and smell in the book with the passage it comes from, and says whether it is checked from syntax, needs type information, is covered by a built-in rule, or cannot be linted, and why. Rules that cannot be linted, such as "one level of abstraction per function", are not in this plugin. The `ai` config's rules have a catalog of their own, [`docs/catalog-ai.md`](docs/catalog-ai.md), and so do the `node` config's, [`docs/catalog-node.md`](docs/catalog-node.md).
+[`docs/catalog.md`](docs/catalog.md) is the record of how the book became these rules. It lists every rule, heuristic and smell in the book with the passage it comes from, and says whether it is checked from syntax, needs type information, is covered by a built-in rule, or cannot be linted, and why. Rules that cannot be linted, such as "one level of abstraction per function", are not in this plugin. The `ai` config's rules have a catalog of their own, [`docs/catalog-ai.md`](docs/catalog-ai.md), and so do the `node` config's, [`docs/catalog-node.md`](docs/catalog-node.md), and the `react` config's, [`docs/catalog-react.md`](docs/catalog-react.md).
 
 ## Contributing
 

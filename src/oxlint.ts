@@ -4,8 +4,14 @@
  * Oxlint's JS plugins have no type information (ADR 0002). `ai` is the opt-in config of the same name in ESLint, used with
  * `extends: [ai]` or `extends: [recommended, ai]`. `node` and `nodeExtended` are the opt-in configs `node` and `node-extended`,
  * used with `extends: [recommended, node, nodeExtended]`. `nodeExtended` uses Oxlint's native `node` plugin and loads no JS plugin.
+ * `react` and `reactExtended` are the opt-in configs `react` and `react-extended`, used with
+ * `extends: [recommended, react, reactExtended]`, on the same files as in ESLint. `reactExtended` uses Oxlint's native `react`
+ * plugin, which has the rules of both `eslint-plugin-react-hooks` and `eslint-plugin-react`, and loads no JS plugin.
  */
-import { AI_RULES, AI_TEST_FILE_OFF, BUILT_IN_RULES, CALLBACK_ERROR_PATTERN, NODE_RULES, PLUGIN_PREFIX, SYNTAX_RULES, TEST_FILES, TEST_FILE_OFF, TEST_FILE_RULES, prefixed } from "./configs.ts";
+import {
+  AI_RULES, AI_TEST_FILE_OFF, BUILT_IN_RULES, CALLBACK_ERROR_PATTERN, NODE_RULES, PLUGIN_PREFIX, REACT_FILES, REACT_HOOKS_RULES, REACT_HOOK_FILES, REACT_JSX_RULES,
+  REACT_RULES, SYNTAX_RULES, TEST_FILES, TEST_FILE_OFF, TEST_FILE_RULES, pluginRules, prefixed,
+} from "./configs.ts";
 import { PACKAGE_NAME } from "./lib/define-rule.ts";
 
 /**
@@ -43,4 +49,17 @@ export const nodeExtended = {
   rules: { "node/handle-callback-err": ["error", CALLBACK_ERROR_PATTERN] },
 };
 
-export default { recommended, ai, node, "node-extended": nodeExtended };
+export const react = {
+  jsPlugins: [{ name: PLUGIN_PREFIX, specifier: `${PACKAGE_NAME}/plugin` }],
+  overrides: [{ files: REACT_FILES, rules: prefixed(REACT_RULES) }],
+};
+
+/** RCT-01 to RCT-04 under Oxlint's native `react` plugin, where the hooks rules are `react/rules-of-hooks` and `react/exhaustive-deps`. */
+export const reactExtended = {
+  overrides: [
+    { files: REACT_HOOK_FILES, plugins: ["react"], rules: pluginRules("react", REACT_HOOKS_RULES) },
+    { files: REACT_FILES, plugins: ["react"], rules: pluginRules("react", REACT_JSX_RULES) },
+  ],
+};
+
+export default { recommended, ai, node, "node-extended": nodeExtended, react, "react-extended": reactExtended };

@@ -20,6 +20,14 @@ A `node` rule is named `node-<name>`, lives in `src/rules/node/`, is built with 
 
 A `third-party` entry of the catalog is configuration, not a rule: it goes in `NODE_EXTENDED_RULES` in `src/configs.ts`, which builds the ESLint `node-extended` config, and its native Oxlint name goes in `nodeExtended` in `src/oxlint.ts`. List each rule one by one; never turn on a plugin's preset. The plugin it comes from is an optional peer dependency, loaded only when `node-extended` is read, so the plain `node` config never needs it.
 
+## A rule for `react`
+
+A rule earns a place in the opt-in `react` config with a passage of a React book instead of *Clean Code*: its entry in [`docs/catalog-react.md`](docs/catalog-react.md) quotes one of the React books in the bookCTX library, such as *Learn React with TypeScript* (ADR 0004 of A11-415). Its class is `syntax`: a custom rule that needs only the syntax tree and scope analysis, and runs under both linters.
+
+A `react` rule is named `react-<name>`, lives in `src/rules/react/`, is built with `defineReactRule`, and its page is `docs/rules/react/<rule>.md`. `defineReactRule` takes the same `source` as `defineNodeRule` (the entry, the book's title, the section and a short verbatim passage), and a `react` rule reports only, with no `fixable`. Its page has the same sections as a `node` rule's. `hookCalled` in `src/rules/react/react-hooks.ts` reads which hook a call makes, written `useState(…)` or `React.useState(…)`. Add the rule to `REACT_RULES` in `src/configs.ts`, which builds the `react` config for both linters on `REACT_FILES` (`.jsx` and `.tsx`), and to the README's "In `react`" table. A `react` rule never overrides a rule of `recommended`: components and hooks keep FN-01's 12 lines.
+
+A `third-party` entry of the catalog is configuration: its rule goes in `REACT_HOOKS_RULES` (from `eslint-plugin-react-hooks`) or `REACT_JSX_RULES` (from `eslint-plugin-react`) in `src/configs.ts`, by its name without the plugin's prefix. Those lists build both ESLint's `react-extended` and Oxlint's `reactExtended`, whose native `react` plugin has every one of them as `react/<name>`. The hooks rules apply to `REACT_HOOK_FILES`, which adds the `use*.js` and `use*.ts` files of custom hooks; the `react/` rules to `REACT_FILES` only. Both plugins are optional peer dependencies, loaded only when `react-extended` is read.
+
 ## Setup
 
 ```sh
