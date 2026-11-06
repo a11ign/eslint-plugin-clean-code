@@ -4,7 +4,7 @@ Every rule in this plugin comes from an entry of [`docs/catalog.md`](docs/catalo
 
 ## A rule for `ai` or for `recommended`
 
-A rule earns a place in `recommended` with a passage of the book: its entry in `docs/catalog.md` quotes it. A rule earns a place in the opt-in `ai` config with an AI pattern and its harm instead: a habit that AI-generated code shows, and what that habit costs the people who maintain the code. Its entry goes in [`docs/catalog-ai.md`](docs/catalog-ai.md) (ADR 0001), and has:
+A rule earns a place in `recommended` with a passage of the book: its entry in `docs/catalog.md` quotes it. A rule earns a place in the opt-in `ai` config with an AI pattern and its harm instead: a habit that AI-generated code shows, and what that habit costs the people who maintain the code. Its entry goes in [`docs/catalog-ai.md`](docs/catalog-ai.md) ([ADR 0003](docs/adr/0003-ai-config-separate-from-book-rules.md)), and has:
 
 - an **AI pattern** line and a **Harm** line;
 - a **Language basis** line: *universal*, or *JS/TS-specific*, with the reason;
@@ -12,9 +12,17 @@ A rule earns a place in `recommended` with a passage of the book: its entry in `
 
 An `ai` rule is named `ai-<name>`, lives in `src/rules/ai/`, is built with `defineAiRule` instead of `defineRule`, and its page is `docs/rules/ai/<rule>.md`. Its messages name the pattern and its harm where a book rule's name the passage. Its page has `## The AI pattern` (with the **Language basis** line) in place of `## What the book says`, and a rule that contradicts a book example has a `## Where this departs from the book` section that explains why. Add it to `AI_RULES` in `src/configs.ts`, which builds the `ai` config for both linters, and to the README's "In `ai`" table.
 
+## A rule for `typescript`
+
+A rule earns a place in the opt-in `typescript` config with a passage of a TypeScript or JavaScript book instead of *Clean Code*: its entry in [`docs/catalog-typescript.md`](docs/catalog-typescript.md) quotes *Programming TypeScript*, *Clean Code with TypeScript* or *JavaScript: The Definitive Guide* ([ADR 0004](docs/adr/0004-language-configs-with-extended-companions.md)). Its class is `syntax`: a custom rule that needs only the syntax tree and scope analysis, and runs under both linters.
+
+A `typescript` rule is named `ts-<name>`, lives in `src/rules/typescript/`, is built with `defineTypescriptRule`, and its page is `docs/rules/typescript/<rule>.md`. `defineTypescriptRule` takes the same `source` as `defineNodeRule` (the entry, the book's title, the section and a short verbatim passage), and a `typescript` rule reports only, with no `fixable`. Its page has the same sections as a `node` rule's. Add the rule to `TYPESCRIPT_RULES` in `src/configs.ts`, which builds the `typescript` config for both linters on `ALL_FILES`, and to the README's "In `typescript`" table. A `built-in` entry, a rule ESLint core has and Oxlint runs natively under the same name, goes in `TYPESCRIPT_BUILT_IN_RULES`.
+
+A `third-party` entry of the catalog is configuration: a typescript-eslint rule goes in `TYPESCRIPT_EXTENDED_RULES` (by its name without `@typescript-eslint/`, with its setting), or in `TYPESCRIPT_TYPE_CHECKED_RULES` when it needs type information, and an `eslint-plugin-promise` rule in `PROMISE_RULES`. Those lists build ESLint's `typescript-extended` and `typescript-extended-type-checked`, and Oxlint's `typescriptExtended`, whose native `typescript` and `promise` plugins have them as `typescript/<name>` and `promise/<name>`. A rule that needs type information has no Oxlint export (ADR 0002). `eslint-plugin-promise` is an optional peer dependency, loaded only when an extended config is read, so the plain `typescript` config never needs it.
+
 ## A rule for `node`
 
-A rule earns a place in the opt-in `node` config with a passage of a Node book instead of *Clean Code*: its entry in [`docs/catalog-node.md`](docs/catalog-node.md) quotes *Distributed Systems with Node.js* or *JavaScript: The Definitive Guide* (ADR 0004 of A11-415). Its class is `syntax`: a custom rule that needs only the syntax tree and scope analysis, and runs under both linters.
+A rule earns a place in the opt-in `node` config with a passage of a Node book instead of *Clean Code*: its entry in [`docs/catalog-node.md`](docs/catalog-node.md) quotes *Distributed Systems with Node.js* or *JavaScript: The Definitive Guide* ([ADR 0004](docs/adr/0004-language-configs-with-extended-companions.md)). Its class is `syntax`: a custom rule that needs only the syntax tree and scope analysis, and runs under both linters.
 
 A `node` rule is named `node-<name>`, lives in `src/rules/node/`, is built with `defineNodeRule` instead of `defineRule`, and its page is `docs/rules/node/<rule>.md`. `defineNodeRule` takes a `source` (the entry, the book's title, the section and a short verbatim passage) where `defineRule` takes `book`, and writes each message as *problem, then the Node book's passage, then the refactor*. A `node` rule reports only: like an `ai` rule, it has no `fixable`. Its page has the same sections as a book rule's, with `## What the book says` quoting the Node book, and `## Why there is no autofix`. The helpers in `src/rules/node/node-calls.ts` read a call's method and receiver and resolve a function passed by name. Add the rule to `NODE_RULES` in `src/configs.ts`, which builds the `node` config for both linters, and to the README's "In `node`" table.
 
@@ -22,7 +30,7 @@ A `third-party` entry of the catalog is configuration, not a rule: it goes in `N
 
 ## A rule for `react`
 
-A rule earns a place in the opt-in `react` config with a passage of a React book instead of *Clean Code*: its entry in [`docs/catalog-react.md`](docs/catalog-react.md) quotes one of the React books in the bookCTX library, such as *Learn React with TypeScript* (ADR 0004 of A11-415). Its class is `syntax`: a custom rule that needs only the syntax tree and scope analysis, and runs under both linters.
+A rule earns a place in the opt-in `react` config with a passage of a React book instead of *Clean Code*: its entry in [`docs/catalog-react.md`](docs/catalog-react.md) quotes one of the React books in the bookCTX library, such as *Learn React with TypeScript* ([ADR 0004](docs/adr/0004-language-configs-with-extended-companions.md)). Its class is `syntax`: a custom rule that needs only the syntax tree and scope analysis, and runs under both linters.
 
 A `react` rule is named `react-<name>`, lives in `src/rules/react/`, is built with `defineReactRule`, and its page is `docs/rules/react/<rule>.md`. `defineReactRule` takes the same `source` as `defineNodeRule` (the entry, the book's title, the section and a short verbatim passage), and a `react` rule reports only, with no `fixable`. Its page has the same sections as a `node` rule's. `hookCalled` in `src/rules/react/react-hooks.ts` reads which hook a call makes, written `useState(…)` or `React.useState(…)`. Add the rule to `REACT_RULES` in `src/configs.ts`, which builds the `react` config for both linters on `REACT_FILES` (`.jsx` and `.tsx`), and to the README's "In `react`" table. A `react` rule never overrides a rule of `recommended`: components and hooks keep FN-01's 12 lines.
 

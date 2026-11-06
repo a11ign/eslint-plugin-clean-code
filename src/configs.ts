@@ -1,7 +1,8 @@
 /**
- * What `recommended`, `recommended-type-checked`, `ai`, `node`, `node-extended`, `react` and `react-extended` turn on, written once
- * as data so the ESLint config and the Oxlint config are built from the same list. Every rule is `"error"` (the catalog's decision). Thresholds the book states are its values;
- * the others are the values the catalog's owner sign-off approved. A custom rule's threshold is its own default.
+ * What `recommended`, `recommended-type-checked`, `ai`, `typescript`, `typescript-extended`, `typescript-extended-type-checked`,
+ * `node`, `node-extended`, `react` and `react-extended` turn on, written once as data so the ESLint config and the Oxlint config
+ * are built from the same list. Every rule is `"error"` (the catalog's decision). Thresholds the book states are its values; the
+ * others are the values the catalog's owner sign-off approved. A custom rule's threshold is its own default.
  */
 
 /** The catalog entry each built-in rule comes from is in the comment beside it. */
@@ -83,7 +84,7 @@ export const TYPE_CHECKED_RULES = [
 export const TYPE_CHECKED_OPTIONS = { "no-command-query-mix": ["error", { checkMethodCalls: true }] } as const;
 
 /**
- * The opt-in `ai` config (ADR 0001): rules for the habits of AI-generated code, from `docs/catalog-ai.md`, not from the book.
+ * The opt-in `ai` config (ADR 0003): rules for the habits of AI-generated code, from `docs/catalog-ai.md`, not from the book.
  * It stands alone, so it can be used with `recommended` or without it.
  */
 export const AI_RULES = [
@@ -101,7 +102,35 @@ export const AI_TEST_FILE_OFF = {
 } as const;
 
 /**
- * The opt-in `node` config (ADR 0004 of A11-415): rules for Node's event loop and error model, from `docs/catalog-node.md`.
+ * The opt-in `typescript` config (ADR 0004): rules for the TypeScript type system and for JavaScript, from
+ * `docs/catalog-typescript.md`. It stacks on `recommended`: `[...recommended, ...typescript]`, on `ALL_FILES`, and adds no peer
+ * dependency: its third-party rules are in the `-extended` configs only.
+ */
+export const TYPESCRIPT_RULES = ["ts-no-amd-dependency", "ts-no-definite-assignment-assertion", "ts-no-module-augmentation"] as const;
+
+/** TS-06: ESLint core's `eqeqeq`, which Oxlint also runs natively. `"always"` reports `x == null` too (owner sign-off). */
+export const TYPESCRIPT_BUILT_IN_RULES = { eqeqeq: ["error", "always"] } as const;
+
+/**
+ * The opt-in `typescript-extended` config: the `third-party` entries of `docs/catalog-typescript.md` that need no type
+ * information, listed one by one by their names in typescript-eslint, without its `@typescript-eslint/` prefix. They apply to
+ * `TS_FILES`. Oxlint runs every one of them natively, as `typescript/<name>`, with the same options.
+ */
+export const TYPESCRIPT_EXTENDED_RULES = {
+  "no-explicit-any": "error", // TS-01
+  "consistent-type-assertions": ["error", { assertionStyle: "never" }], // TS-02: owner sign-off
+  "no-non-null-assertion": "error", // TS-03
+  "triple-slash-reference": ["error", { path: "never", types: "prefer-import", lib: "never" }], // TS-13: owner sign-off on `lib`
+} as const;
+
+/** TS-11: `eslint-plugin-promise`'s rule, on `ALL_FILES`. Oxlint runs it natively under the same name. */
+export const PROMISE_RULES = ["prefer-catch"] as const;
+
+/** TS-10 and TS-16: typescript-eslint's rules that need type information, in `typescript-extended-type-checked` only. */
+export const TYPESCRIPT_TYPE_CHECKED_RULES = ["no-floating-promises", "switch-exhaustiveness-check"] as const;
+
+/**
+ * The opt-in `node` config (ADR 0004): rules for Node's event loop and error model, from `docs/catalog-node.md`.
  * It stacks on `recommended`: `[...recommended, ...node]`. It adds no peer dependency.
  */
 export const NODE_RULES = [
@@ -125,7 +154,7 @@ export const CALLBACK_ERROR_PATTERN = "^(err|error)$";
 export const NODE_EXTENDED_RULES = { "n/handle-callback-err": ["error", CALLBACK_ERROR_PATTERN] } as const;
 
 /**
- * The opt-in `react` config (ADR 0004 of A11-415): rules for React components and hooks, from `docs/catalog-react.md`. It stacks
+ * The opt-in `react` config (ADR 0004): rules for React components and hooks, from `docs/catalog-react.md`. It stacks
  * on `recommended`: `[...recommended, ...react]`, applies to `REACT_FILES` only, and adds no peer dependency. It overrides no
  * rule of `recommended`: components and custom hooks keep FN-01's 12 lines (the catalog's "Conflicts", item 1).
  */
@@ -143,6 +172,11 @@ export const REACT_JSX_RULES = ["jsx-key", "no-array-index-key"] as const;
 /** `rules` under `plugin`'s name, each `"error"`: `pluginRules("react", ["jsx-key"])` gives `{ "react/jsx-key": "error" }`. */
 export function pluginRules(plugin: string, rules: readonly string[]): Record<string, "error"> {
   return Object.fromEntries(rules.map((name) => [`${plugin}/${name}`, "error"]));
+}
+
+/** `rules`' settings under `plugin`'s name: `pluginSettings("typescript", { "no-explicit-any": "error" })` gives `{ "typescript/no-explicit-any": "error" }`. */
+export function pluginSettings(plugin: string, rules: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(rules).map(([name, setting]) => [`${plugin}/${name}`, setting]));
 }
 
 /** The files `react` and the `react/` rules of `react-extended` apply to. */
@@ -169,5 +203,5 @@ export function prefixed(names: readonly string[]): Record<string, "error"> {
 }
 
 export function prefixedOptions(rules: Record<string, readonly unknown[]>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(rules).map(([name, setting]) => [`${PLUGIN_PREFIX}/${name}`, setting]));
+  return pluginSettings(PLUGIN_PREFIX, rules);
 }

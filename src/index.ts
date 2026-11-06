@@ -5,14 +5,21 @@
  *   JavaScript, TypeScript, JSX and TSX. TypeScript files are parsed with typescript-eslint's parser, JavaScript with ESLint's own.
  * - `recommended-type-checked`: `recommended`, plus the rules that need type information, with typescript-eslint's
  *   `projectService` turned on.
- * - `ai`: opt-in and standalone, the five `ai-` rules for the habits of AI-generated code (ADR 0001), with the same parsers as
+ * - `ai`: opt-in and standalone, the five `ai-` rules for the habits of AI-generated code (ADR 0003), with the same parsers as
  *   `recommended`. Stack it after `recommended`, or use it alone.
- * - `node`: opt-in, the four `node-` rules for Node's event loop and error model (ADR 0004 of A11-415). Stack it after
+ * - `typescript`: opt-in, the three `ts-` rules for the TypeScript type system and `eqeqeq` (ADR 0004), on JavaScript and
+ *   TypeScript files. Stack it after `recommended`. It needs nothing that `recommended` does not.
+ * - `typescript-extended`: opt-in, typescript-eslint's and `eslint-plugin-promise`'s rules that `docs/catalog-typescript.md`
+ *   grounds and that need no type information, listed one by one. Stack it after `typescript`. `eslint-plugin-promise` is an
+ *   optional peer dependency, loaded only when this config is read.
+ * - `typescript-extended-type-checked`: `typescript-extended`, plus the two typescript-eslint rules that need type information,
+ *   with `projectService` turned on as in `recommended-type-checked`. Stack it after `typescript`, instead of `typescript-extended`.
+ * - `node`: opt-in, the four `node-` rules for Node's event loop and error model (ADR 0004). Stack it after
  *   `recommended`. It needs nothing that `recommended` does not.
  * - `node-extended`: opt-in, `eslint-plugin-n`'s rules that `docs/catalog-node.md` grounds, listed one by one. Stack it after
  *   `node`. `eslint-plugin-n` is an optional peer dependency, loaded only when this config is read, so a project that does not
  *   use `node-extended` does not need it installed; without it, linting with `node-extended` fails with a message to install it.
- * - `react`: opt-in, the two `react-` rules for React components and hooks (ADR 0004 of A11-415), on `.jsx` and `.tsx` files only.
+ * - `react`: opt-in, the two `react-` rules for React components and hooks (ADR 0004), on `.jsx` and `.tsx` files only.
  *   Stack it after `recommended`. It needs nothing that `recommended` does not, and it keeps `recommended`'s 12-line functions.
  * - `react-extended`: opt-in, `eslint-plugin-react-hooks`' and `eslint-plugin-react`'s rules that `docs/catalog-react.md` grounds,
  *   listed one by one. Stack it after `react`. Both plugins are optional peer dependencies, loaded only when this config is read.
@@ -22,9 +29,10 @@ import type { ESLint, Linter, Rule } from "eslint";
 import tseslint from "typescript-eslint";
 import plugin from "./plugin.ts";
 import {
-  AI_RULES, AI_TEST_FILE_OFF, ALL_FILES, BUILT_IN_RULES, JS_UNUSED_VARS, NODE_EXTENDED_RULES, NODE_RULES, PLUGIN_PREFIX, REACT_FILES, REACT_HOOKS_RULES,
+  AI_RULES, AI_TEST_FILE_OFF, ALL_FILES, BUILT_IN_RULES, JS_UNUSED_VARS, NODE_EXTENDED_RULES, NODE_RULES, PLUGIN_PREFIX, PROMISE_RULES, REACT_FILES, REACT_HOOKS_RULES,
   REACT_HOOK_FILES, REACT_HOOK_TS_FILES, REACT_TS_FILES, REACT_JSX_RULES, REACT_RULES, SYNTAX_RULES, TEST_FILES, TEST_FILE_OFF, TEST_FILE_RULES, TS_FILES, TS_UNUSED_VARS, TYPE_CHECKED_OPTIONS,
-  TYPE_CHECKED_RULES, TYPESCRIPT_ESLINT_RULES, pluginRules, prefixed, prefixedOptions,
+  TYPE_CHECKED_RULES, TYPESCRIPT_BUILT_IN_RULES, TYPESCRIPT_ESLINT_RULES, TYPESCRIPT_EXTENDED_RULES, TYPESCRIPT_RULES, TYPESCRIPT_TYPE_CHECKED_RULES, pluginRules,
+  pluginSettings, prefixed, prefixedOptions,
 } from "./configs.ts";
 
 const recommended: Linter.Config[] = [
@@ -65,6 +73,17 @@ const ai: Linter.Config[] = [
   },
   { name: `${PLUGIN_PREFIX}/ai/typescript`, files: TS_FILES, languageOptions: { parser: tseslint.parser as Linter.Parser } },
   { name: `${PLUGIN_PREFIX}/ai/tests`, files: TEST_FILES, rules: AI_TEST_FILE_OFF },
+];
+
+const typescript: Linter.Config[] = [
+  {
+    name: `${PLUGIN_PREFIX}/typescript`,
+    files: ALL_FILES,
+    plugins: { [PLUGIN_PREFIX]: plugin as unknown as ESLint.Plugin },
+    languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
+    rules: { ...TYPESCRIPT_BUILT_IN_RULES, ...prefixed(TYPESCRIPT_RULES) } as unknown as Linter.RulesRecord,
+  },
+  { name: `${PLUGIN_PREFIX}/typescript/typescript`, files: TS_FILES, languageOptions: { parser: tseslint.parser as Linter.Parser } },
 ];
 
 const node: Linter.Config[] = [
@@ -120,6 +139,34 @@ const nodeExtended = builtOnce((): Linter.Config[] => [
   },
 ]);
 
+/** TS-01, TS-02, TS-03 and TS-13 on TypeScript files, and TS-11 on every file. */
+const typescriptExtended = builtOnce((): Linter.Config[] => [
+  {
+    name: `${PLUGIN_PREFIX}/typescript-extended`,
+    files: TS_FILES,
+    plugins: { "@typescript-eslint": tseslint.plugin as unknown as ESLint.Plugin },
+    languageOptions: { parser: tseslint.parser as Linter.Parser },
+    rules: pluginSettings("@typescript-eslint", TYPESCRIPT_EXTENDED_RULES) as Linter.RulesRecord,
+  },
+  {
+    name: `${PLUGIN_PREFIX}/typescript-extended/promise`,
+    files: ALL_FILES,
+    plugins: { promise: loadPeerPlugin("eslint-plugin-promise", "typescript-extended", PROMISE_RULES) },
+    rules: pluginRules("promise", PROMISE_RULES),
+  },
+]);
+
+/** `typescript-extended`, and TS-10 and TS-16, which need the project service's type information. */
+const typescriptExtendedTypeChecked = builtOnce((): Linter.Config[] => [
+  ...typescriptExtended(),
+  {
+    name: `${PLUGIN_PREFIX}/typescript-extended-type-checked`,
+    files: TS_FILES,
+    languageOptions: { parserOptions: { projectService: true } },
+    rules: pluginRules("@typescript-eslint", TYPESCRIPT_TYPE_CHECKED_RULES),
+  },
+]);
+
 const react: Linter.Config[] = [
   {
     name: `${PLUGIN_PREFIX}/react`,
@@ -149,12 +196,31 @@ const reactExtended = builtOnce((): Linter.Config[] => [
   { name: `${PLUGIN_PREFIX}/react-extended/typescript`, files: REACT_HOOK_TS_FILES, languageOptions: { parser: tseslint.parser as Linter.Parser } },
 ]);
 
-type ConfigName = "recommended" | "recommended-type-checked" | "ai" | "node" | "node-extended" | "react" | "react-extended";
+type ConfigName =
+  | "recommended"
+  | "recommended-type-checked"
+  | "ai"
+  | "typescript"
+  | "typescript-extended"
+  | "typescript-extended-type-checked"
+  | "node"
+  | "node-extended"
+  | "react"
+  | "react-extended";
 
 const configs: Record<ConfigName, Linter.Config[]> = {
   recommended,
   "recommended-type-checked": recommendedTypeChecked,
   ai,
+  typescript,
+  /** A getter, so `eslint-plugin-promise` is loaded only by a project that reads `typescript-extended`. */
+  get "typescript-extended"() {
+    return typescriptExtended();
+  },
+  /** A getter, for the same reason as `typescript-extended`'s. */
+  get "typescript-extended-type-checked"() {
+    return typescriptExtendedTypeChecked();
+  },
   node,
   /** A getter, so `eslint-plugin-n` is loaded only by a project that reads `node-extended`. */
   get "node-extended"() {

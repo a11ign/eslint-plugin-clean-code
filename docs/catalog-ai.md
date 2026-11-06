@@ -1,6 +1,6 @@
 # Catalog: the `ai` config, rules for the habits of AI-generated code
 
-This catalog is the specification for the rules of the opt-in `ai` config. It is separate from [`docs/catalog.md`](catalog.md), which requires a passage of *Clean Code, 2nd Edition* for every rule. These rules are justified by a habit that AI-generated JavaScript and TypeScript shows, and by the harm that habit does. A book passage is cited where one supports the rule, but it is not required. ADR 0001 records why the rules are a separate config in the same package rather than part of `recommended` or a second package.
+This catalog is the specification for the rules of the opt-in `ai` config. It is separate from [`docs/catalog.md`](catalog.md), which requires a passage of *Clean Code, 2nd Edition* for every rule. These rules are justified by a habit that AI-generated JavaScript and TypeScript shows, and by the harm that habit does. A book passage is cited where one supports the rule, but it is not required. [ADR 0003](adr/0003-ai-config-separate-from-book-rules.md) records why the rules are a separate config in the same package rather than part of `recommended` or a second package.
 
 Each entry gives:
 
