@@ -4,7 +4,7 @@
  * ESLint and Oxlint.
  */
 import type { Rule, Scope, SourceCode } from "eslint";
-import { asTs, isFunction, type FunctionNode, type Node, type TSESTree } from "./ast.ts";
+import { asTs, hasUseStrictDirective, isFunction, type FunctionNode, type Node, type TSESTree } from "./ast.ts";
 
 /** What a function's own body does with `arguments` and `this`. Arrow functions share their enclosing function's. */
 export interface FunctionUsage {
@@ -159,8 +159,7 @@ export function resolveAt(sourceCode: SourceCode, node: Node, name: string): Sco
 
 /** Whether a function's body starts with a `"use strict"` directive, which a non-simple parameter list makes a syntax error. */
 export function hasUseStrict(fn: FunctionNode): boolean {
-  if (fn.body.type !== "BlockStatement") return false;
-  return fn.body.body.some((statement) => statement.type === "ExpressionStatement" && statement.directive === "use strict");
+  return fn.body.type === "BlockStatement" && hasUseStrictDirective(fn.body.body);
 }
 
 export { isFunction, type FunctionNode };

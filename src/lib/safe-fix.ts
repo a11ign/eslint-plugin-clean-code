@@ -73,14 +73,24 @@ export function removeComment(fixer: Rule.RuleFixer, sourceCode: SourceCode, com
   const lines = wholeLinesRange(text, start, end);
   if (lines) return fixer.removeRange(lines);
   if (hasLineBreak(text.slice(start, end))) return fixer.replaceTextRange([start, end], "\n");
-  const lineStart = text.lastIndexOf("\n", start - 1) + 1;
-  const lineEndIndex = text.indexOf("\n", end);
-  const lineEnd = lineEndIndex === -1 ? text.length : lineEndIndex;
-  const codeBefore = text.slice(lineStart, start).trim() !== "";
-  const codeAfter = text.slice(end, lineEnd).trim() !== "";
+  const before = text.slice(text.lastIndexOf("\n", start - 1) + 1, start);
+  const lineEnd = text.indexOf("\n", end);
+  const after = text.slice(end, lineEnd === -1 ? text.length : lineEnd);
+  const codeBefore = before.trim() !== "";
+  const codeAfter = after.trim() !== "";
   if (codeBefore && codeAfter) return fixer.replaceTextRange([start, end], " ");
-  if (codeBefore) return fixer.removeRange([start - (text.slice(lineStart, start).length - text.slice(lineStart, start).trimEnd().length), end]);
-  return fixer.removeRange([start, end + (text.slice(end, lineEnd).length - text.slice(end, lineEnd).trimStart().length)]);
+  if (codeBefore) return fixer.removeRange([start - trailingSpace(before), end]);
+  return fixer.removeRange([start, end + leadingSpace(after)]);
+}
+
+/** How many blank characters `text` ends with. */
+function trailingSpace(text: string): number {
+  return text.length - text.trimEnd().length;
+}
+
+/** How many blank characters `text` starts with. */
+function leadingSpace(text: string): number {
+  return text.length - text.trimStart().length;
 }
 
 const DIRECTIVE = [

@@ -39,3 +39,8 @@ export function functionName(node: FunctionNode): string | null {
 export function isModule(sourceCode: SourceCode): boolean {
   return (sourceCode.ast as { sourceType?: string }).sourceType === "module";
 }
+
+/** Whether a body's directive prologue holds `"use strict"`, which makes the code it opens strict-mode code. */
+export function hasUseStrictDirective(body: readonly Node[]): boolean {
+  return body.some((statement) => statement.type === "ExpressionStatement" && statement.directive === "use strict");
+}

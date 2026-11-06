@@ -1,6 +1,6 @@
 import type { Rule, Scope, SourceCode } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
-import { asTs, isFunction, isModule, type Node, type TSESTree } from "../lib/ast.ts";
+import { asTs, hasUseStrictDirective, isFunction, isModule, type Node, type TSESTree } from "../lib/ast.ts";
 import { blankLineAfter, blockOf, childOf, endOfLineAfter, insertedAfter, removeBlock } from "../lib/moves.ts";
 
 type Statement = TSESTree.ProgramStatement;
@@ -50,20 +50,11 @@ function addEdge(edges: Map<number, Set<number>>, caller: number, callee: number
   edges.get(caller)!.add(callee);
 }
 
-/** Whether the strict-mode `"use strict"` directive opens this list of statements. */
-function hasUseStrict(body: readonly Node[]): boolean {
-  for (const statement of body) {
-    if (statement.type !== "ExpressionStatement" || statement.expression.type !== "Literal" || typeof statement.expression.value !== "string") return false;
-    if (statement.expression.value === "use strict") return true;
-  }
-  return false;
-}
-
 function isStrict(sourceCode: SourceCode, node: Node): boolean {
   if (isModule(sourceCode)) return true;
   for (let current: Node | undefined = node; current; current = current.parent) {
-    if (current.type === "ClassBody" || (current.type === "Program" && hasUseStrict(current.body))) return true;
-    if (isFunction(current) && current.body.type === "BlockStatement" && hasUseStrict(current.body.body)) return true;
+    if (current.type === "ClassBody" || (current.type === "Program" && hasUseStrictDirective(current.body))) return true;
+    if (isFunction(current) && current.body.type === "BlockStatement" && hasUseStrictDirective(current.body.body)) return true;
   }
   return false;
 }
