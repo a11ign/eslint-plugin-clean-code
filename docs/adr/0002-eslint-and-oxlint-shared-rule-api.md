@@ -1,0 +1,3 @@
+# Rules are written once, against the rule API ESLint and Oxlint share
+
+The plugin has to work in every frontend project under ESLint, and under the newer linters too. Oxlint's JS plugin API loads ESLint-style rules, including fixes, but covers only part of ESLint's API and has no type information. Biome's plugins are written in GritQL and can't load ESLint rules. We write every rule against the API both ESLint and Oxlint support, CI runs every rule's tests under both, and rules that need types go in an ESLint-only `recommended-type-checked` config. Biome is a later follow-up rather than a second copy of every rule now. The cost is that a rule can't use any ESLint feature that Oxlint lacks, even one that would make the rule easier to write.

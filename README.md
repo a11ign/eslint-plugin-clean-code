@@ -8,6 +8,7 @@ Every rule of `recommended` comes from a passage of the book, and its doc page q
 - One codebase for ESLint and Oxlint: every rule's tests run under both.
 - TypeScript, JavaScript, JSX and TSX.
 - An opt-in `ai` config, with five more rules for the habits of AI-generated code. It is separate from the book's rules, and `recommended` does not turn it on.
+- An opt-in `typescript` config, with three rules for the TypeScript type system and strict equality from the TypeScript books, and `typescript-extended` and `typescript-extended-type-checked` companions that add typescript-eslint's and `eslint-plugin-promise`'s rules for type assertions, `any`, directives and promises.
 - An opt-in `node` config, with four rules for Node's event loop and error model from the Node books, and a `node-extended` companion that adds `eslint-plugin-n`'s callback-error check.
 - An opt-in `react` config, with two rules for React state from the React books, on `.jsx` and `.tsx` files, and a `react-extended` companion that adds the rules of hooks and the list-key rules.
 
@@ -17,6 +18,7 @@ Every rule of `recommended` comes from a passage of the book, and its doc page q
 - ESLint 10 or later, with flat config, **or** Oxlint 1.92 or later.
 - With ESLint: typescript-eslint 8.72.1 or later in 8.x, for `recommended` too, since it parses the TypeScript files. `recommended-type-checked` also needs a `tsconfig.json`.
 - With Oxlint: nothing else. Oxlint doesn't need ESLint or typescript-eslint.
+- For `typescript-extended` and `typescript-extended-type-checked` with ESLint only: `eslint-plugin-promise` 7.2 or later. Nothing else needs it, and Oxlint runs the same rule natively. `typescript-extended-type-checked` also needs a `tsconfig.json`.
 - For `node-extended` with ESLint only: `eslint-plugin-n` 17 or later. Nothing else needs it, and Oxlint runs the same rule natively.
 - For `react-extended` with ESLint only: `eslint-plugin-react-hooks` 6 or later and `eslint-plugin-react` 7.37 or later. Nothing else needs them, and Oxlint runs the same rules natively.
 
@@ -102,6 +104,81 @@ export default { extends: [recommended, ai] };
 ```
 
 `ai-no-placeholder-implementation` and `ai-no-placeholder-values` are off in test files, where stubs and sample values belong. `ai-no-ceremonial-catch` can report the book's own pattern, a boundary `catch` that only logs; its [doc page](docs/rules/ai/ai-no-ceremonial-catch.md#where-this-departs-from-the-book) says why, and its `allowSwallow` option keeps that pattern.
+
+## The `typescript` config
+
+`typescript` is an opt-in config for the TypeScript type system and for JavaScript's conversions. Its three rules report a definite assignment assertion (`name!: string`), a `/// <amd-dependency />` directive, and a `declare module "…"` that augments another module, and it turns on ESLint's `eqeqeq` with `"always"`, so `value == null` is reported too. These rules are not from *Clean Code*. Each one quotes a passage of *Programming TypeScript* or *JavaScript: The Definitive Guide*, in [`docs/catalog-typescript.md`](docs/catalog-typescript.md). Every rule is an `error`, and none of the three has a fix. `typescript` applies to the same JavaScript and TypeScript files as `recommended`, and needs nothing that `recommended` does not.
+
+Add it after `recommended`. In ESLint:
+
+<!-- setup: eslint-typescript -->
+```js
+import cleanCode from "eslint-plugin-clean-code-book";
+
+export default [...cleanCode.configs.recommended, ...cleanCode.configs.typescript];
+```
+
+In Oxlint:
+
+<!-- setup: oxlint-typescript -->
+```ts
+import { recommended, typescript } from "eslint-plugin-clean-code-book/oxlint";
+
+export default { extends: [recommended, typescript] };
+```
+
+`typescript` does not change `recommended`'s `no-unused-vars`, so a parameter named with a leading `_`, such as `_event`, is still reported.
+
+### `typescript-extended`
+
+`typescript-extended` adds five rules of other plugins, each an `error`: typescript-eslint's `no-explicit-any`, `consistent-type-assertions` (no type assertions at all), `no-non-null-assertion` and `triple-slash-reference` (no `path` or `lib` directive, and `types` only where there is no `import`), on TypeScript files, and `eslint-plugin-promise`'s `promise/prefer-catch`, which reports a `.then()` given a rejection callback, on every file. It lists them one by one rather than using the plugins' presets.
+
+With ESLint, install `eslint-plugin-promise`, an optional peer dependency that only the two extended configs need:
+
+```sh
+npm install --save-dev eslint-plugin-promise
+```
+
+and add `typescript-extended` after `typescript`:
+
+<!-- setup: eslint-typescript-extended -->
+```js
+import cleanCode from "eslint-plugin-clean-code-book";
+
+export default [...cleanCode.configs.recommended, ...cleanCode.configs.typescript, ...cleanCode.configs["typescript-extended"]];
+```
+
+Oxlint runs the same five rules natively, in its `typescript` and `promise` plugins, so nothing more is installed:
+
+<!-- setup: oxlint-typescript-extended -->
+```ts
+import { recommended, typescript, typescriptExtended } from "eslint-plugin-clean-code-book/oxlint";
+
+export default { extends: [recommended, typescript, typescriptExtended] };
+```
+
+Turning on Oxlint's `promise` plugin also turns on that plugin's rules in Oxlint's `correctness` category, as warnings, unless your config sets `categories`. `typescript-extended` itself turns on only the five rules above.
+
+### `typescript-extended-type-checked`
+
+`typescript-extended-type-checked` is `typescript-extended` plus two typescript-eslint rules that need type information: `no-floating-promises`, which reports a promise that is neither awaited, returned nor handled, and `switch-exhaustiveness-check`, which reports a `switch` over a union that misses a member. Like `recommended-type-checked`, it turns on typescript-eslint's project service for TypeScript files. Use it in place of `typescript-extended`:
+
+<!-- setup: eslint-typescript-extended-type-checked -->
+```js
+import cleanCode from "eslint-plugin-clean-code-book";
+
+export default [
+  ...cleanCode.configs.recommended,
+  ...cleanCode.configs.typescript,
+  ...cleanCode.configs["typescript-extended-type-checked"],
+  {
+    files: ["**/*.{ts,mts,cts,tsx}"],
+    languageOptions: { parserOptions: { tsconfigRootDir: import.meta.dirname } },
+  },
+];
+```
+
+It has no Oxlint export: Oxlint runs these two rules only with `--type-aware`, and this plugin's Oxlint configs carry no type-aware rules.
 
 ## The `node` config
 
@@ -253,7 +330,7 @@ The built-in rules keep their own behaviour, including the fixes some of them ha
 
 ## Rules
 
-Each book rule's page quotes the passage it comes from, each `ai` rule's page names the AI pattern and its harm, each `node` rule's page quotes its Node book, and each `react` rule's page quotes its React book. Every page says what the rule reports, what it leaves alone, and how its fix works or why it has none.
+Each book rule's page quotes the passage it comes from, each `ai` rule's page names the AI pattern and its harm, each `typescript` rule's page quotes its TypeScript book, each `node` rule's page quotes its Node book, and each `react` rule's page quotes its React book. Every page says what the rule reports, what it leaves alone, and how its fix works or why it has none.
 
 ### In `recommended`
 
@@ -318,6 +395,35 @@ Each book rule's page quotes the passage it comes from, each `ai` rule's page na
 | [`ai-no-placeholder-implementation`](docs/rules/ai/ai-no-placeholder-implementation.md) | Don't ship a function whose body is only a placeholder: `throw new Error("Not implemented")` or a stub return. | no |
 | [`ai-no-placeholder-values`](docs/rules/ai/ai-no-placeholder-values.md) | Don't leave placeholder strings such as `"YOUR_API_KEY"` or `"<insert token>"` in the code. | no |
 
+### In `typescript`
+
+| Rule | What it checks | Fix |
+| --- | --- | --- |
+| [`ts-no-amd-dependency`](docs/rules/typescript/ts-no-amd-dependency.md) | Load a module with `import`, not with a `/// <amd-dependency />` directive. | no |
+| [`ts-no-definite-assignment-assertion`](docs/rules/typescript/ts-no-definite-assignment-assertion.md) | Assign a variable or a class field where it is declared, instead of asserting with `!` that it will be. | no |
+| [`ts-no-module-augmentation`](docs/rules/typescript/ts-no-module-augmentation.md) | Wrap a module and export the wrapper, instead of augmenting the module with `declare module "…"`. | no |
+
+`typescript` also turns on ESLint's `eqeqeq`, as `["error", "always"]`, from TS-06; Oxlint runs it natively under the same name.
+
+### In `typescript-extended`
+
+| Rule | Setting | Files | Oxlint | Catalog entry |
+| --- | --- | --- | --- | --- |
+| `@typescript-eslint/no-explicit-any` | on | TypeScript | `typescript/no-explicit-any` | TS-01 |
+| `@typescript-eslint/consistent-type-assertions` | `assertionStyle: "never"` | TypeScript | `typescript/consistent-type-assertions` | TS-02 |
+| `@typescript-eslint/no-non-null-assertion` | on | TypeScript | `typescript/no-non-null-assertion` | TS-03 |
+| `@typescript-eslint/triple-slash-reference` | `path: "never"`, `types: "prefer-import"`, `lib: "never"` | TypeScript | `typescript/triple-slash-reference` | TS-13 |
+| `promise/prefer-catch` | on | every file | `promise/prefer-catch` | TS-11 |
+
+### In `typescript-extended-type-checked`
+
+Everything in `typescript-extended`, and, under ESLint only:
+
+| Rule | Setting | Files | Catalog entry |
+| --- | --- | --- | --- |
+| `@typescript-eslint/no-floating-promises` | on | TypeScript | TS-10 |
+| `@typescript-eslint/switch-exhaustiveness-check` | on | TypeScript | TS-16 |
+
 ### In `node`
 
 | Rule | What it checks | Fix |
@@ -375,7 +481,9 @@ Each book rule's page quotes the passage it comes from, each `ai` rule's page na
 
 ## The catalog
 
-[`docs/catalog.md`](docs/catalog.md) is the record of how the book became these rules. It lists every rule, heuristic and smell in the book with the passage it comes from, and says whether it is checked from syntax, needs type information, is covered by a built-in rule, or cannot be linted, and why. Rules that cannot be linted, such as "one level of abstraction per function", are not in this plugin. The `ai` config's rules have a catalog of their own, [`docs/catalog-ai.md`](docs/catalog-ai.md), and so do the `node` config's, [`docs/catalog-node.md`](docs/catalog-node.md), and the `react` config's, [`docs/catalog-react.md`](docs/catalog-react.md).
+[`docs/catalog.md`](docs/catalog.md) is the record of how the book became these rules. It lists every rule, heuristic and smell in the book with the passage it comes from, and says whether it is checked from syntax, needs type information, is covered by a built-in rule, or cannot be linted, and why. Rules that cannot be linted, such as "one level of abstraction per function", are not in this plugin. The `ai` config's rules have a catalog of their own, [`docs/catalog-ai.md`](docs/catalog-ai.md), and so do the `typescript` config's, [`docs/catalog-typescript.md`](docs/catalog-typescript.md), the `node` config's, [`docs/catalog-node.md`](docs/catalog-node.md), and the `react` config's, [`docs/catalog-react.md`](docs/catalog-react.md).
+
+The decisions behind the plugin's shape, such as why `ai` and the language configs are separate from `recommended`, are recorded in [`docs/adr/`](docs/adr/).
 
 ## Contributing
 

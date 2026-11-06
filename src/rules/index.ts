@@ -47,6 +47,9 @@ import reactNoUntypedEmptyState from "./react/react-no-untyped-empty-state.ts";
 import returnBooleanDirectly from "./return-boolean-directly.ts";
 import stepdownOrder from "./stepdown-order.ts";
 import testAsserts from "./test-asserts.ts";
+import tsNoAmdDependency from "./typescript/ts-no-amd-dependency.ts";
+import tsNoDefiniteAssignmentAssertion from "./typescript/ts-no-definite-assignment-assertion.ts";
+import tsNoModuleAugmentation from "./typescript/ts-no-module-augmentation.ts";
 
 export const rules: Record<string, CleanCodeRule> = {
   "ai-no-ceremonial-catch": aiNoCeremonialCatch,
@@ -96,4 +99,7 @@ export const rules: Record<string, CleanCodeRule> = {
   "return-boolean-directly": returnBooleanDirectly,
   "stepdown-order": stepdownOrder,
   "test-asserts": testAsserts,
+  "ts-no-amd-dependency": tsNoAmdDependency,
+  "ts-no-definite-assignment-assertion": tsNoDefiniteAssignmentAssertion,
+  "ts-no-module-augmentation": tsNoModuleAugmentation,
 };

@@ -1,7 +1,7 @@
 /**
  * One shape for every rule in this plugin, so each report reads the same way to an agent: the problem, the passage of
  * *Clean Code, 2nd Edition* it breaks (or, for a rule of the opt-in `ai` config, the AI pattern and its harm; for one of the opt-in
- * `node` or `react` config, the passage of its Node or React book), and the refactor. Rules are written against the rule API ESLint
+ * `typescript`, `node` or `react` config, the passage of its TypeScript, Node or React book), and the refactor. Rules are written against the rule API ESLint
  * and Oxlint share (ADR 0002), so `create` sees only `context.sourceCode`, `context.options`, `context.report` and the
  * visitor object.
  */
@@ -20,6 +20,14 @@ export const AI_RULE_PREFIX = "ai-";
 /** Where an `ai` rule's doc page is served from. */
 export function aiDocsUrl(ruleName: string): string {
   return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/ai/${ruleName}.md`;
+}
+
+/** The rules of the opt-in `typescript` config are named `ts-<name>`, and their doc pages are under `docs/rules/typescript/`. */
+export const TYPESCRIPT_RULE_PREFIX = "ts-";
+
+/** Where a `typescript` rule's doc page is served from. */
+export function typescriptDocsUrl(ruleName: string): string {
+  return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/typescript/${ruleName}.md`;
 }
 
 /** The rules of the opt-in `node` config are named `node-<name>`, and their doc pages are under `docs/rules/node/`. */
@@ -50,7 +58,7 @@ export interface BookSource {
 
 /**
  * The habit of AI-generated code an `ai` rule checks, from its `docs/catalog-ai.md` entry. It takes the place of a book
- * passage: an `ai` rule is justified by the pattern and the harm it does, not by the book (ADR 0001).
+ * passage: an `ai` rule is justified by the pattern and the harm it does, not by the book (ADR 0003).
  */
 export interface AiPattern {
   /** The catalog entry id, such as `AI-01`. */
@@ -62,12 +70,12 @@ export interface AiPattern {
 }
 
 /**
- * The passage of a language book a `node` or `react` rule enforces, from its entry in `docs/catalog-node.md` or
- * `docs/catalog-react.md`. It takes the place of a passage of *Clean Code*: these configs' rules come from the Node and React
- * books in the bookCTX library (ADR 0004 of A11-415).
+ * The passage of a language book a `typescript`, `node` or `react` rule enforces, from its entry in `docs/catalog-typescript.md`,
+ * `docs/catalog-node.md` or `docs/catalog-react.md`. It takes the place of a passage of *Clean Code*: these configs' rules come
+ * from the TypeScript, Node and React books in the bookCTX library (ADR 0004).
  */
 export interface LanguageSource {
-  /** The catalog entry id, such as `NODE-01` or `RCT-06`. */
+  /** The catalog entry id, such as `TS-04`, `NODE-01` or `RCT-06`. */
   entry: string;
   /** The book's title, such as `Distributed Systems with Node.js`. */
   book: string;
@@ -117,13 +125,14 @@ export function aiMessage(message: MessageSpec, pattern: AiPattern): string {
 }
 
 /**
- * A `node` or `react` rule: report-only, like an `ai` rule, and it names its language book where a book rule names *Clean Code*.
+ * A `typescript`, `node` or `react` rule: report-only, like an `ai` rule, and it names its language book where a book rule names
+ * *Clean Code*.
  */
 export interface LanguageRuleSpec<Options extends unknown[] = unknown[]> extends Omit<SpecBase<Options>, "fixable" | "requiresTypeChecking"> {
   source: LanguageSource;
 }
 
-/** The text of one `node` or `react` message: the problem, then the language book's passage, then the refactor. */
+/** The text of one `typescript`, `node` or `react` message: the problem, then the language book's passage, then the refactor. */
 export function languageMessage(message: MessageSpec, source: LanguageSource): string {
   return `${message.problem} ${source.book}, ${source.section}: "${source.passage}" Refactor: ${message.refactor}`;
 }
@@ -134,7 +143,7 @@ interface DocsBase {
   requiresTypeChecking: boolean;
 }
 
-/** A book rule's docs carry its passage, an `ai` rule's its pattern, and a `node` or `react` rule's its language book's passage. */
+/** A book rule's docs carry its passage, an `ai` rule's its pattern, and a language rule's its language book's passage. */
 export type CleanCodeDocs =
   | (DocsBase & { book: BookSource; pattern?: never; source?: never })
   | (DocsBase & { pattern: AiPattern; book?: never; source?: never })
@@ -155,6 +164,10 @@ export function defineRule<Options extends unknown[]>(spec: RuleSpec<Options>): 
 export function defineAiRule<Options extends unknown[]>(spec: AiRuleSpec<Options>): CleanCodeRule {
   const docs: CleanCodeDocs = { description: spec.description, url: aiDocsUrl(spec.name), requiresTypeChecking: false, pattern: spec.pattern };
   return buildRule(spec, docs, (message) => aiMessage(message, spec.pattern));
+}
+
+export function defineTypescriptRule<Options extends unknown[]>(spec: LanguageRuleSpec<Options>): CleanCodeRule {
+  return defineLanguageRule(spec, typescriptDocsUrl(spec.name));
 }
 
 export function defineNodeRule<Options extends unknown[]>(spec: LanguageRuleSpec<Options>): CleanCodeRule {

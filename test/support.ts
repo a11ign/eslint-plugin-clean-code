@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import assert from "node:assert/strict";
 import { ESLint, type Linter } from "eslint";
 
 export const ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -112,4 +113,34 @@ export function readmeBlock(name: string): string {
   const match = new RegExp(`<!-- setup: ${name} -->\\n\`\`\`\\w+\\n([\\s\\S]*?)\`\`\`\\n`).exec(readme);
   if (!match) throw new Error(`README.md has no setup block named ${name}`);
   return match[1];
+}
+
+/**
+ * Runs `lint` on a fresh copy of `fixtureDir`, with `eslint.config.js` set to `eslintConfig` when one is given, after `prepare`
+ * has changed the copy, and removes the copy afterwards.
+ */
+export async function onFixtures<T>(
+  fixtureDir: string,
+  lint: (dir: string) => Promise<T> | T,
+  eslintConfig?: string,
+  prepare?: (dir: string) => void,
+): Promise<T> {
+  const work = copyFixtures(fixtureDir);
+  try {
+    if (eslintConfig) writeFileSync(join(work.dir, "eslint.config.js"), eslintConfig);
+    prepare?.(work.dir);
+    return await lint(work.dir);
+  } finally {
+    work.dispose();
+  }
+}
+
+/** The rules matching `related` that each file got, sorted, leaving out the files that got none. */
+export function relatedReports(reports: Report[], related: RegExp): Record<string, string[]> {
+  const byFile = reports.map((report) => [report.file, report.rules.filter((rule) => related.test(rule)).sort()] as const);
+  return Object.fromEntries(byFile.filter(([, rules]) => rules.length > 0).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+export function assertNoParseErrors(reports: Report[]): void {
+  for (const report of reports) assert.ok(!report.rules.some((rule) => rule.startsWith("fatal")), `${report.file}: ${report.rules.join(", ")}`);
 }
