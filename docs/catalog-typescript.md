@@ -12,7 +12,7 @@ Each entry gives:
   - **built-in**: a rule ESLint core already has, that Oxlint also runs natively. It goes in `typescript` as configuration only, and adds no dependency.
   - **third-party**: a rule another plugin already has. The entry names the plugin and the rule, and says whether Oxlint runs it natively. It goes in the [`typescript-extended`](#extended-configs) companion only. The plain `typescript` config never turns it on, so it adds no peer dependency. typescript-eslint is in this class too, as the ticket's acceptance asks, although [`catalog.md`](catalog.md) counts its rules as built-in; see the [owner's approval list](#what-the-owner-is-asked-to-approve), item 2.
   - **covered**: a rule in `recommended` or `ai` already checks it. The entry names that rule and its entry.
-  - **conflicts**: the practice clashes with a rule of `recommended` or `ai`. The entry names the clash, and [Conflicts with `recommended` and `ai`](#conflicts-with-recommended-and-ai) gives one resolution.
+  - **conflicts**: the practice clashes with a rule of `recommended` or `ai`, or with what an entry of `catalog.md` or `catalog-ai.md` names as a harm, even where that entry's rule does not see the case. The entry names the clash, and [Conflicts with `recommended` and `ai`](#conflicts-with-recommended-and-ai) gives one resolution.
   - **not lintable**: the reason is given.
 - **Rule**, **Reports**, **Does not report** and **Fix**: for each `syntax` entry. **Rule** and **Setting** for each `built-in` and `third-party` entry.
 
@@ -48,7 +48,7 @@ Approving this pull request approves the items below.
 | `@typescript-eslint/no-non-null-assertion` | TS-03 | typescript-extended | third-party | none |
 | `ts-no-definite-assignment-assertion` | TS-04 | typescript | syntax | no fix |
 | — (`strict` in `tsconfig.json`) | TS-05 | — | not lintable | — |
-| `eqeqeq` | TS-06 | typescript | built-in | built-in fix |
+| `eqeqeq` | TS-06 | typescript | built-in | built-in fix (ESLint; Oxlint's is dangerous-only) |
 | `no-fallthrough` | TS-07 | recommended | covered (CLS-05) | — |
 | `no-unused-vars`, `@typescript-eslint/no-unused-vars` | TS-08 | recommended | covered (HRM-01) | — |
 | `argsIgnorePattern` on HRM-01's rules | TS-09 | recommended (proposed) | conflicts | — |
@@ -112,7 +112,7 @@ Approving this pull request approves the items below.
 - **Quote (`javascript-the-definitive-guide` chunk 8):** "The equality operator `==` is like the strict equality operator, but it is less strict. If the values of the two operands are not the same type, it attempts some type conversions and tries the comparison again" — the book's own example is `"1" == true // => true`.
 - **Class:** built-in. ESLint core `eqeqeq`. Oxlint runs it natively as `eqeqeq` (checked on 2026-11-06).
 - **Setting:** `["error", "always"]`. **Owner sign-off:** `"always"` reports `x == null` too. The guide lists "If one value is `null` and the other is `undefined` , they are equal" among `==`'s conversions, and *Programming TypeScript* asks for explicit conversion without exception, so the idiom is not exempted. `{ null: "ignore" }` is the alternative.
-- **Fix:** ESLint's own: it fixes only where both operands have the same type by syntax (`typeof x == "string"`), which keeps behaviour unchanged.
+- **Fix:** ESLint's own: it fixes only where both operands have the same type by syntax (`typeof x == "string"`), which keeps behaviour unchanged. Oxlint 1.92.0 lists its `eqeqeq` fix as `conditional_dangerous_fix`, applied only with `--fix-dangerously`, so under Oxlint the rule is in effect report-only with plain `--fix`.
 
 #### TS-07 · No fallthrough between `switch` cases
 
@@ -153,7 +153,7 @@ Approving this pull request approves the items below.
 
 - **Source:** `clean-code-with-typescript-…` chunk 12, § Handling errors with promises.
 - **Quote:** the book's example ends its promise chain with "`. catch ( error = > { console . error ( "An error occurred:" , error.message);`", a handler that logs the error and carries on.
-- **Class:** conflicts, with AI-02 (`ai-no-ceremonial-catch`) in `ai`. AI-02 names exactly this, log and swallow, as a habit to remove: "Log and swallow turns a failure into a log line: the caller carries on with a result that was never produced." The book's example is not adopted as a practice.
+- **Class:** conflicts, with AI-02's entry in `catalog-ai.md`. AI-02's rule checks `catch` clauses only, so no rule reports this `.catch()` callback; the clash is with the harm the entry names. AI-02 names exactly this, log and swallow, as a habit to remove: "Log and swallow turns a failure into a log line: the caller carries on with a result that was never produced." The book's example is not adopted as a practice.
 - **Resolution:** see [Conflicts](#conflicts-with-recommended-and-ai), item 2.
 
 ### Modules and directives
@@ -182,7 +182,7 @@ Approving this pull request approves the items below.
 - **Class:** syntax.
 - **Rule:** `ts-no-module-augmentation`.
 - **Reports:** a `declare module "<specifier>" { … }` with a string-literal name, in a file that has an `import` or `export` (module mode). That is the augmentation form the book shows (`import 'react'` then `declare module 'react'`).
-- **Does not report:** the same declaration in a script-mode `.d.ts` file with no `import` or `export`, which declares types for an untyped module rather than changing a typed one; `declare global { … }`, which the book uses to extend a built-in prototype safely (chunk 11, § Safely Extending the Prototype); `declare module` with an identifier name (a namespace).
+- **Does not report:** the same declaration in a script-mode `.d.ts` file with no `import` or `export`, which declares types for an untyped module rather than changing a typed one. **Where this departs from the book:** the book says of augmentation that "it doesn't matter whether our extension file is in module mode or script mode", so a script-mode file can augment too; the rule cannot tell that from an ambient declaration by syntax, and leaves both alone; `declare global { … }`, which the book uses to extend a built-in prototype safely (chunk 11, § Safely Extending the Prototype); `declare module` with an identifier name (a namespace).
 - **Fix:** no fix. The replacement is a wrapper module, and its name and its callers are a design change.
 
 #### TS-16 · Check that a `switch` over a union handles every member
@@ -201,7 +201,7 @@ Each clash this catalog found, with one proposed resolution. The cases the plan 
 
 Checked, no clash:
 
-- **TS-16 against OBJ-05 (`one-switch-per-type`) and FN-01, FN-02.** TS-16 asks that the switch be complete, not that there be more of them, so it applies to the one switch OBJ-05 allows. A switch over a large union is still reported by FN-01 and FN-02 for its length; `catalog.md` already records that under FN-02, "Firing on a discriminated union, for owner sign-off".
+- **TS-16 against OBJ-05 (`one-switch-per-type`) and FN-01, FN-02.** TS-16 asks that the switch be complete, not that there be more of them, so it applies to the one switch OBJ-05 allows. A switch over a large union is still reported by FN-01 for its length (from about five cases) and by FN-02 for its decision points (15 or more members); `catalog.md` already records that under FN-02, "Firing on a discriminated union, for owner sign-off".
 - **TS-02's brand constructors against AI-01 (`ai-no-inline-comments`).** The `eslint-disable-next-line` directive a branded type needs is a tool directive, which AI-01 does not report.
 - **TS-04 and TS-06 against `recommended` and `ai`.** No rule in either reports `===`, or a declaration that is assigned where it is declared, which is what these two entries ask for.
 

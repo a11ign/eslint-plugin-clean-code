@@ -12,7 +12,7 @@ Each entry gives:
   - **built-in**: a rule ESLint core already has, that Oxlint also runs natively. It goes in `node` as configuration only.
   - **third-party**: a rule another plugin already has (`eslint-plugin-n`). The entry names the plugin and the rule, and says whether Oxlint runs it natively. It goes in the [`node-extended`](#extended-configs) companion only. The plain `node` config never turns it on, so it adds no peer dependency.
   - **covered**: a rule in `recommended` or `ai` already checks it. The entry names that rule and its entry.
-  - **conflicts**: the practice clashes with a rule of `recommended` or `ai`. [Conflicts with `recommended` and `ai`](#conflicts-with-recommended-and-ai) gives one resolution.
+  - **conflicts**: the practice clashes with a rule of `recommended` or `ai`, or with what an entry of `catalog.md` or `catalog-ai.md` names as a harm, even where that entry's rule does not see the case. [Conflicts with `recommended` and `ai`](#conflicts-with-recommended-and-ai) gives one resolution.
   - **not lintable**: the reason is given.
 - **Rule**, **Reports**, **Does not report** and **Fix**: for each `syntax` entry. **Rule** and **Setting** for each `third-party` entry.
 
@@ -89,19 +89,19 @@ Approving this pull request approves the items below.
 
 #### NODE-04 · Do not keep running after an uncaught exception or rejection
 
-- **Source:** `distributed-systems-with-node-js` chunk 21, § Warning; `javascript-the-definitive-guide` chunk 53, § 16.1.3 Program Life Cycle.
+- **Source:** `distributed-systems-with-node-js` chunk 21, § Exceptions, Rejections, and Emitted Errors; `javascript-the-definitive-guide` chunk 53, § 16.1.3 Program Life Cycle.
 - **Quote (`distributed-systems-with-node-js` chunk 21):** "Much like with the `uncaughtException` event, it's important to not allow the process to continue running since it is likely in an invalid state."
 - **Quote (`javascript-the-definitive-guide` chunk 53):** "In some future version of Node, unhandled Promise rejections are expected to become fatal errors."
 - **Class:** syntax.
 - **Rule:** `node-exit-after-fatal-error`.
 - **Reports:** a handler passed to `process.on(…)` or `process.once(…)` for `"uncaughtException"` or `"unhandledRejection"`, and a callback passed to `process.setUncaughtExceptionCaptureCallback(…)`, whose body has no path that ends the process: no call of `process.exit(…)` or `process.abort()`, no assignment to `process.exitCode`, and no `throw`.
 - **Does not report:** a handler that does any of those, including one that logs first and then exits; a handler for any other event.
-- **Where the books disagree:** *JavaScript: The Definitive Guide* registers a handler "If you don't want these exceptions to cause your program to completely crash", and its example only logs (chunk 53). This entry follows *Distributed Systems with Node.js* because the guide itself expects rejections to become fatal, and because a log-only handler is the process-wide form of the log-and-swallow habit that AI-02 (`ai-no-ceremonial-catch`) reports in a `catch` clause. **Owner approval**, item 2.
+- **Where the books disagree:** *JavaScript: The Definitive Guide* registers a handler "If you don't want these exceptions to cause your program to completely crash", and its example only logs (chunk 53). This entry follows *Distributed Systems with Node.js* because the guide itself expects rejections to become fatal, and because a log-only handler is the process-wide form of the log-and-swallow habit that AI-02 (`ai-no-ceremonial-catch`) reports in a `catch` clause. **Owner sign-off**: see the approval list, item 2.
 - **Fix:** no fix. How the process should end (exit at once, or close servers first) is the program's decision.
 
 #### NODE-05 · An `EventEmitter`'s `error` event needs a listener
 
-- **Source:** `distributed-systems-with-node-js` chunk 21, § Warning.
+- **Source:** `distributed-systems-with-node-js` chunk 21, § Exceptions, Rejections, and Emitted Errors.
 - **Quote:** "Instances of `EventEmitter` that emit an `error` event without having a listener will cause the process to terminate."
 - **Class:** not lintable. Whether a value is an emitter, and whether a listener is attached to it, depends on code in other files: emitters are created in one module and listened to in another, and a stream gets its `error` listener from `pipeline()`. A rule of one file would report every emitter it cannot follow.
 
@@ -118,13 +118,13 @@ Approving this pull request approves the items below.
 
 #### NODE-07 · Give the errors a package throws a class or a `code`
 
-- **Source:** `distributed-systems-with-node-js` chunk 21, § Exceptions, Rejections, and Emitted Errors.
+- **Source:** `distributed-systems-with-node-js` chunk 21, § Exceptions, Rejections, and Emitted Errors (the Warning box).
 - **Quote:** "As a package author, always be intentional with the errors you provide and try to export error subclasses or provide a `.code` property."
 - **Class:** not lintable. Which `throw` reaches a package's callers depends on its public API across files, and a plain `new Error(…)` thrown and caught inside the package is fine.
 
 #### NODE-08 · Check the error argument of a Node-style callback
 
-- **Source:** `distributed-systems-with-node-js` chunk 21, § Warning.
+- **Source:** `distributed-systems-with-node-js` chunk 21, § Exceptions, Rejections, and Emitted Errors.
 - **Quote:** "Node.js was built with the callback pattern in mind for asynchronous activities, having the first argument of the callback be an error."
 - **Class:** third-party. `eslint-plugin-n` `n/handle-callback-err`. Oxlint runs it natively as `node/handle-callback-err` (checked with Oxlint 1.92.0 on 2026-11-06: it reports `fs.readFile("x", (err, data) => { console.log(data); })`).
 - **Setting:** `["error", "^(err|error)$"]`. **Owner sign-off:** the plugin's default matches only `err`; the pattern adds `error`.

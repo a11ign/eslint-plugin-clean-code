@@ -9,34 +9,63 @@ node --input-type=module - <<'JS'
 import { readFileSync } from "node:fs";
 const CLASSES = ["syntax", "types", "built-in", "third-party", "covered", "conflicts", "not lintable"];
 const SECTIONS = ["## What the owner is asked to approve", "## The rule set at a glance", "## Entries", "## Conflicts with `recommended` and `ai`", "## Gaps", "## Extended configs"];
-const SLUGS = /`(programming-typescript|clean-code-with-typescript-…|javascript-the-definitive-guide|learn-react-with-typescript-third-edition|react-design-patterns-…|react-application-architecture-…|test-driven-react-second-edition|distributed-systems-with-node-js)` chunk \d+/;
+const SOURCE = /`(programming-typescript|clean-code-with-typescript-…|javascript-the-definitive-guide|learn-react-with-typescript-third-edition|react-design-patterns-…|react-application-architecture-…|test-driven-react-second-edition|distributed-systems-with-node-js)` chunk \d+/;
+const APPROVAL_ITEMS = ["entries", "conflict resolutions", "final name", "optional peer dependenc", "quotations in a public repository"];
+const CATALOGS = [
+  { name: "typescript", prefix: "TS", entryCount: 16, missingBook: "*Effective TypeScript*" },
+  { name: "react", prefix: "RCT", entryCount: 11 },
+  { name: "node", prefix: "NODE", entryCount: 10, missingBook: "*Node.js Design Patterns*" },
+];
 const failures = [];
-for (const [name, prefix, count] of [["typescript", "TS", 16], ["react", "RCT", 11], ["node", "NODE", 10]]) {
-  const file = `docs/catalog-${name}.md`;
-  const text = readFileSync(file, "utf8");
+
+const between = (text, from, to) => text.slice(text.indexOf(from), to ? text.indexOf(to) : undefined);
+
+function checkSections(file, text) {
   for (const section of SECTIONS) if (!text.includes(`\n${section}\n`)) failures.push(`${file}: no section ${section}`);
-  const entries = text.split(/\n(?=#### )/).filter((part) => part.startsWith(`#### ${prefix}-`));
-  if (entries.length !== count) failures.push(`${file}: ${entries.length} entries, expected ${count}`);
-  for (const entry of entries) {
-    const id = entry.slice(5, entry.indexOf(" ·"));
-    if (!SLUGS.test(entry.match(/^- \*\*Source:\*\* .*$/m)?.[0] ?? "")) failures.push(`${file} ${id}: no Source with a slug and chunk`);
-    if (!/^- \*\*Quote[^*]*:\*\* \S/m.test(entry)) failures.push(`${file} ${id}: no Quote`);
-    const cls = entry.match(/^- \*\*Class:\*\* ([a-z -]+?)[.,]/m)?.[1];
-    if (!CLASSES.includes(cls)) failures.push(`${file} ${id}: class "${cls}" is not one of the seven`);
-    if (cls === "third-party" && !/Oxlint/.test(entry)) failures.push(`${file} ${id}: third-party entry does not say whether Oxlint runs it`);
-    if (cls === "covered" && !/[A-Z]{2,4}-\d\d/.test(entry.split("**Class:**")[1])) failures.push(`${file} ${id}: covered entry names no entry`);
-  }
-  const approve = text.slice(text.indexOf("## What the owner is asked to approve"), text.indexOf("## The rule set at a glance"));
-  for (const item of ["entries", "conflict resolutions", "final name", "optional peer dependenc", "Quotations in a public repository"]) {
-    if (!approve.toLowerCase().includes(item.toLowerCase())) failures.push(`${file}: approval list does not cover "${item}"`);
-  }
-  if (!approve.includes("`-extended` is a working name")) failures.push(`${file}: the -extended suffix is not an approval item`);
-  const extended = text.slice(text.indexOf("## Extended configs"));
-  for (const part of [`### \`${name}-extended\``, "### Optional peer dependencies", "### Oxlint mapping"]) if (!extended.includes(part)) failures.push(`${file}: Extended configs has no ${part}`);
 }
-const gaps = (name) => { const t = readFileSync(`docs/catalog-${name}.md`, "utf8"); return t.slice(t.indexOf("## Gaps"), t.indexOf("## Extended configs")); };
-if (!gaps("typescript").includes("*Effective TypeScript*")) failures.push("catalog-typescript.md: Gaps does not name Effective TypeScript");
-if (!gaps("node").includes("*Node.js Design Patterns*")) failures.push("catalog-node.md: Gaps does not name Node.js Design Patterns");
+
+function checkEntry(file, entry) {
+  const id = entry.slice(5, entry.indexOf(" ·"));
+  if (!SOURCE.test(entry.match(/^- \*\*Source:\*\* .*$/m)?.[0] ?? "")) failures.push(`${file} ${id}: no Source with a slug and chunk`);
+  if (!/^- \*\*Quote[^*]*:\*\* \S/m.test(entry)) failures.push(`${file} ${id}: no Quote`);
+  const cls = entry.match(/^- \*\*Class:\*\* ([a-z -]+?)[.,]/m)?.[1];
+  if (!CLASSES.includes(cls)) failures.push(`${file} ${id}: class "${cls}" is not one of the seven`);
+  if (cls === "third-party" && !entry.includes("Oxlint")) failures.push(`${file} ${id}: third-party entry does not say whether Oxlint runs it`);
+  if (cls === "covered" && !/[A-Z]{2,4}-\d\d/.test(entry.split("**Class:**")[1])) failures.push(`${file} ${id}: covered entry names no entry`);
+}
+
+function checkEntries(file, text, { prefix, entryCount }) {
+  const entries = text.split(/\n(?=#### )/).filter((part) => part.startsWith(`#### ${prefix}-`));
+  if (entries.length !== entryCount) failures.push(`${file}: ${entries.length} entries, expected ${entryCount}`);
+  for (const entry of entries) checkEntry(file, entry);
+}
+
+function checkApprovalList(file, text) {
+  const approval = between(text, "## What the owner is asked to approve", "## The rule set at a glance");
+  for (const item of APPROVAL_ITEMS) if (!approval.toLowerCase().includes(item)) failures.push(`${file}: approval list does not cover "${item}"`);
+  if (!approval.includes("`-extended` is a working name")) failures.push(`${file}: the -extended suffix is not an approval item`);
+}
+
+function checkExtendedConfigs(file, text, { name }) {
+  const extended = between(text, "## Extended configs");
+  for (const part of [`### \`${name}-extended\``, "### Optional peer dependencies", "### Oxlint mapping"]) {
+    if (!extended.includes(part)) failures.push(`${file}: Extended configs has no ${part}`);
+  }
+}
+
+function checkGaps(file, text, { missingBook }) {
+  if (missingBook && !between(text, "## Gaps", "## Extended configs").includes(missingBook)) failures.push(`${file}: Gaps does not name ${missingBook}`);
+}
+
+for (const catalog of CATALOGS) {
+  const file = `docs/catalog-${catalog.name}.md`;
+  const text = readFileSync(file, "utf8");
+  checkSections(file, text);
+  checkEntries(file, text, catalog);
+  checkApprovalList(file, text);
+  checkExtendedConfigs(file, text, catalog);
+  checkGaps(file, text, catalog);
+}
 if (failures.length) { console.error(failures.join("\n")); process.exit(1); }
 console.log("catalogs: structure holds for 37 entries");
 JS

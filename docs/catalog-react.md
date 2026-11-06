@@ -12,7 +12,7 @@ Each entry gives:
   - **built-in**: a rule ESLint core already has, that Oxlint also runs natively. It goes in `react` as configuration only.
   - **third-party**: a rule another plugin already has (`eslint-plugin-react-hooks`, `eslint-plugin-react`). The entry names the plugin and the rule, and says whether Oxlint runs it natively. It goes in the [`react-extended`](#extended-configs) companion only. The plain `react` config never turns it on, so it adds no peer dependency.
   - **covered**: a rule in `recommended` or `ai` already checks it. The entry names that rule and its entry.
-  - **conflicts**: the practice clashes with a rule of `recommended` or `ai`. [Conflicts with `recommended` and `ai`](#conflicts-with-recommended-and-ai) gives one resolution.
+  - **conflicts**: the practice clashes with a rule of `recommended` or `ai`, or with what an entry of `catalog.md` or `catalog-ai.md` names as a harm, even where that entry's rule does not see the case. [Conflicts with `recommended` and `ai`](#conflicts-with-recommended-and-ai) gives one resolution.
   - **not lintable**: the reason is given.
 - **Rule**, **Reports**, **Does not report** and **Fix**: for each `syntax` entry. **Rule** and **Setting** for each `third-party` entry.
 
@@ -35,9 +35,9 @@ Approving this pull request approves the items below.
 2. **The conflict resolutions** in [Conflicts with `recommended` and `ai`](#conflicts-with-recommended-and-ai): components and custom hooks keep FN-01's 12 lines, with no React override.
 3. **The extended config and its final name.** `react-extended`, listed in [Extended configs](#extended-configs). `-extended` is a working name, not an established ecosystem suffix; the owner chooses the final suffix, the same for all three languages.
 4. **New optional peer dependencies.** `eslint-plugin-react-hooks` and `eslint-plugin-react`, both `optional: true`, needed by `react-extended` only.
-5. **Individual rules rather than the plugins' presets.** *Test-Driven React* uses the presets (`plugin:react/recommended`, `plugin:react-hooks/recommended`; RCT-01's second quote). `react-extended` lists rules one by one instead, so that every rule it turns on traces to an entry here and is an `error`. `eslint-plugin-react-hooks`'s own preset sets `exhaustive-deps` to a warning.
+5. **Individual rules rather than the plugins' presets.** *Test-Driven React* uses the presets (`plugin:react/recommended`, `plugin:react-hooks/recommended`, in the `.eslintrc` that follows RCT-01's second quote in `test-driven-react-second-edition` chunk 9). `react-extended` lists rules one by one instead, so that every rule it turns on traces to an entry here and is an `error`. `eslint-plugin-react-hooks`'s own preset sets `exhaustive-deps` to a warning.
 6. **Custom rules without an autofix.** RCT-06 and RCT-07 have none; each entry says why.
-7. **Quotations in a public repository.** The quoted passages are the publishers' text. About 15 short passages appear here, each with a citation and used for commentary. As with `catalog.md` (its item 7), the owner decides before merging whether they stay, or whether the catalog keeps only the citations.
+7. **Quotations in a public repository.** The quoted passages are the publishers' text. About 20 short passages appear here, each with a citation and used for commentary. As with `catalog.md` (its item 7), the owner decides before merging whether they stay, or whether the catalog keeps only the citations.
 
 ## The rule set at a glance
 
