@@ -11,26 +11,44 @@ const DATED_LINE = /^(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}-\p{L}{3,9}-\d{2,4}|\d{1,2}
 
 const indentation = (text: string) => /^[ \t]*/.exec(text)![0].length;
 
+/** Words that say an entry records a change, not a fact about a date (a holiday, a date format). */
+const CHANGE_WORD = /\b(?:add(?:ed|s)?|fix(?:ed|es)?|chang(?:ed|es)|remov(?:ed|es)|mov(?:ed|es)|renam(?:ed|es)|updat(?:ed|es)|refactor(?:ed|s)?|re-?organi[sz](?:ed|es)|initial|creat(?:ed|es)|delet(?:ed|es)|implement(?:ed|s)|improv(?:ed|es)|merg(?:ed|es)|releas(?:ed|es)|replac(?:ed|es)|rewr(?:ote|itten)|deprecat(?:ed|es)|clean(?:ed|s)? up|split|extract(?:ed|s)|eliminat(?:ed|es)|requires)\b/i;
+/** An author's initials (`(DG)`) or name (`by Ada Lovelace`) at an entry. */
+const AUTHOR = /\((?:[A-Z]{2,4})\)|\bby[ \t]+\p{Lu}\p{L}+/u;
+/** A header that names a change log. A list under any other header (`Holidays observed:`) is not a journal. */
+const JOURNAL_HEADER = /\b(?:change|history|log\b|revision|journal|modification)/i;
+
+interface Line {
+  indent: number;
+  content: string;
+}
+
 /**
- * The indexes of the dated lines, each with the lines that continue its entry: the lines right after it that are
- * indented further than its date and are not dated themselves.
+ * The entries of a change log in the comment: each dated line whose entry reads as a change, with the lines that
+ * continue the entry (the lines right after it that are indented further than its date and are not dated). None when
+ * the text line above the first dated line is a header that names something other than a change log.
  */
-function journalLines(lines: { indent: number; content: string }[]): { dated: number; entries: Set<number> } {
-  const entries = new Set<number>();
-  let dated = 0;
+function journalEntries(lines: Line[]): number[][] {
+  const entries: number[][] = [];
   let entryIndent: number | null = null;
   lines.forEach((line, index) => {
-    if (DATED_LINE.test(line.content.trim())) {
-      dated += 1;
-      entries.add(index);
+    const text = line.content.trim();
+    if (DATED_LINE.test(text)) {
+      entries.push([index]);
       entryIndent = line.indent;
-    } else if (entryIndent !== null && line.content.trim() !== "" && line.indent > entryIndent) {
-      entries.add(index);
+    } else if (entryIndent !== null && text !== "" && line.indent > entryIndent) {
+      entries.at(-1)!.push(index);
     } else {
       entryIndent = null;
     }
   });
-  return { dated, entries };
+  if (entries.length === 0) return [];
+  const header = lines.slice(0, entries[0][0]).map((line) => line.content.trim()).filter(Boolean).at(-1);
+  if (header !== undefined && !JOURNAL_HEADER.test(header)) return [];
+  return entries.filter((entry) => {
+    const text = entry.map((index) => lines[index].content).join(" ");
+    return CHANGE_WORD.test(text) || AUTHOR.test(text);
+  });
 }
 
 /** A block comment's lines, each with the column its text starts at, so that entries and their continuations compare. */
@@ -79,8 +97,10 @@ export default defineRule<[number]>({
           if (isDirectiveComment(group[0])) continue;
           const block = group[0].type === "Block";
           const lines = block ? blockLines(group[0]) : runLines(group);
-          const { dated, entries } = journalLines(lines);
-          if (dated < threshold) continue;
+          const journal = journalEntries(lines);
+          if (journal.length < threshold) continue;
+          const dated = journal.length;
+          const entries = new Set(journal.flat());
           context.report({
             loc: groupLocation(group),
             messageId: "journal",

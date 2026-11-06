@@ -35,9 +35,16 @@ export function functionName(node: FunctionNode): string | null {
   return null;
 }
 
-/** Whether the file is parsed as an ES module (`sourceType: "module"`), where code is strict and top-level bindings are not globals. */
+/**
+ * Whether the file is an ES module by its configuration AND by its syntax: parsed with `sourceType: "module"` and holding an
+ * `import` or `export`. A file with neither may be a classic script, and TypeScript treats it as one whose top-level names are
+ * global, so a fix that removes, renames or re-signs a top-level function there could break another file. ESLint parses every
+ * `.js` file as a module by default and Oxlint does not, so reading the syntax also makes both linters decide the same way.
+ */
 export function isModule(sourceCode: SourceCode): boolean {
-  return (sourceCode.ast as { sourceType?: string }).sourceType === "module";
+  const program = sourceCode.ast as unknown as TSESTree.Program;
+  if (program.sourceType !== "module") return false;
+  return program.body.some((statement) => /^(Import|Export|TSImportEquals|TSExportAssignment)/.test(statement.type));
 }
 
 /** Whether a body's directive prologue holds `"use strict"`, which makes the code it opens strict-mode code. */

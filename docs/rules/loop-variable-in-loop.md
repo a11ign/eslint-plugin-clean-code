@@ -47,7 +47,7 @@ function sum(values: number[]): number {
 
 ## Fix
 
-The fix removes the declaration and declares the variable in the loop's init, with its type annotation if it has one: `let i: number; for (i = 0; …)` becomes `for (let i: number = 0; …)`. The removal follows the catalog's "How fixes stay safe", so in code without semicolons a `;` that starts the line after the loop stays where it is.
+The fix removes the declaration and declares the variable in the loop's init, with its type annotation if it has one: `let i: number; for (i = 0; …)` becomes `for (let i: number = 0; …)`. A definite-assignment `!` (`let i!: number`) is dropped, because TypeScript does not allow it on a declaration with an initializer, and the initializer makes it unnecessary. The removal follows the catalog's "How fixes stay safe", so in code without semicolons a `;` that starts the line after the loop stays where it is.
 
 There is no fix, and the rule only reports, when:
 

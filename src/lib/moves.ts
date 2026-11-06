@@ -146,6 +146,46 @@ export function guardedBefore(sourceCode: SourceCode, block: Block, next: Token 
   return `${text.slice(0, cut)};${text.slice(cut)}`;
 }
 
+/** Runs of blocks with nothing but blank space between them, so each run is removed in one piece. `blocks` is in source order. */
+export function mergeAdjacent(sourceCode: SourceCode, blocks: Block[]): Block[] {
+  const merged: Block[] = [];
+  for (const block of blocks) {
+    const last = merged[merged.length - 1];
+    if (last && sourceCode.text.slice(last.lines[1], block.lines[0]).trim() === "") {
+      merged[merged.length - 1] = { range: [last.range[0], block.range[1]], lines: [last.lines[0], block.lines[1]], firstToken: last.firstToken, lastToken: block.lastToken };
+    } else {
+      merged.push(block);
+    }
+  }
+  return merged;
+}
+
+/** Directives that cover the code from them to their closing comment, or to the end of the file. */
+const REGION_DIRECTIVE = /^\s*(eslint|oxlint)-(disable|enable)(?![-\w])|^\s*(istanbul|c8|v8|node:coverage)\s+(ignore\s+)?(start|stop|disable|enable)\b|^\s*#(region|endregion)\b/;
+
+function inside(comment: Comment, blocks: Block[]): boolean {
+  const [start, end] = comment.range as Range;
+  return blocks.some((block) => start >= block.range[0] && end <= block.range[1]);
+}
+
+/**
+ * Whether moving `blocks` to `to` would carry code across a directive comment, or carry a region directive to cover other
+ * code: a directive between a block's old place and `to` that is not itself moving, or a region directive inside a block.
+ */
+export function crossesDirective(sourceCode: SourceCode, blocks: Block[], to: number): boolean {
+  const comments = sourceCode.getAllComments() as Comment[];
+  return blocks.some((block) => {
+    const from = Math.min(block.range[0], to);
+    const until = Math.max(block.range[1], to);
+    return comments.some((comment) => {
+      if (!isDirectiveComment(comment)) return false;
+      const [start, end] = comment.range as Range;
+      if (start < from || end > until) return false;
+      return inside(comment, blocks) ? inside(comment, [block]) && REGION_DIRECTIVE.test(comment.value) : true;
+    });
+  });
+}
+
 /** The node's own sibling: the ancestor of `node` (or `node` itself) whose parent is `container`. */
 export function childOf(node: Node, container: Node): Node | null {
   let current: Node | undefined = node;

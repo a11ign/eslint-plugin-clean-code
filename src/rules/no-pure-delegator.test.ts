@@ -1,5 +1,14 @@
-import { runRuleTests } from "../testing/run-rule-tests.ts";
+import { runRuleTests, type InvalidCase } from "../testing/run-rule-tests.ts";
 import rule from "./no-pure-delegator.ts";
+
+/**
+ * Every invalid case is an ES module with an `export`, which the fix requires (`isModule`), so that each no-fix case
+ * tests its own condition. The cases that test the module condition itself are left as they are.
+ */
+function inModule(testCase: InvalidCase): InvalidCase {
+  if (testCase.sourceType === "script" || testCase.name?.includes("no `import` or `export`")) return testCase;
+  return { ...testCase, code: `${testCase.code}\nexport {};`, output: testCase.output === null ? null : `${testCase.output}\nexport {};` };
+}
 
 const g = "function g(a, b) { return [a, b, arguments.length]; }\n";
 
@@ -24,7 +33,8 @@ runRuleTests("no-pure-delegator", rule, {
     { name: "an optional call", code: `${g}function f(a) { return g?.(a); }` },
     { name: "recursion is not delegation", code: "function f(a) { return f(a); }" },
   ],
-  invalid: [
+  invalid: (
+    [
     {
       name: "a delegator that returns the call",
       code: `${g}function f(a, b) { return g(a, b); }\nconst run = (x) => [f(x, x + 1), f(-x, 'b')];`,
@@ -74,6 +84,23 @@ runRuleTests("no-pure-delegator", rule, {
       errors: 1,
       behaviour: "v",
     },
+    { name: "no fix: no `import` or `export`, so the file may be a classic script", code: `${g}function f(a, b) { return g(a, b); }\nf(1, 2);`, errors: 1, output: null },
+    {
+      name: "no fix: an arrow argument typed by the delegator's annotation would lose its type",
+      code: "const results: string[] = [];\nfunction runAll(callback: Function) { results.push(String(callback(2))); }\nfunction runEach(callback: (value: number) => string) { return runAll(callback); }\nrunEach((value) => value.toFixed(1));",
+      errors: 1,
+      output: null,
+    },
+    { name: "no fix: an object literal argument typed by the delegator's annotation", code: "function g(o: object) { return o; }\nfunction f(o: { kind: 'a' | 'b' }) { return g(o); }\nf({ kind: 'a' });", errors: 1, output: null },
+    { name: "no fix: an array literal argument typed by the delegator's annotation", code: "function g(o: unknown) { return o; }\nfunction f(o: [number, string]) { return g(o); }\nf([1, 'a']);", errors: 1, output: null },
+    {
+      name: "no fix: another declaration of the delegator in the scope",
+      code: "function outer() {\n  function g(a) { return a; }\n  function f(a) { return g(a); }\n  function f(a) { return -a; }\n  return f(1);\n}",
+      filename: "file.js",
+      errors: 1,
+      output: null,
+    },
+    { name: "no fix: a direct `eval` in the file can call the delegator", code: `${g}function f(a, b) { return g(a, b); }\nf(1, 2);\neval('f(1, 2)');`, errors: 1, output: null },
     { name: "no fix: `async`, since the result would no longer be a promise", code: `${g}async function f(a) { return g(a); }\nf(1);`, errors: 1, output: null },
     { name: "no fix: a generator", code: `${g}function* f(a) { return g(a); }\nf(1);`, errors: 1, output: null },
     { name: "no fix: a default value", code: `${g}function f(a = 1) { return g(a); }\nf();`, errors: 1, output: null },
@@ -120,5 +147,6 @@ runRuleTests("no-pure-delegator", rule, {
       errors: 1,
       output: null,
     },
-  ],
+    ] satisfies InvalidCase[]
+  ).map(inModule),
 });

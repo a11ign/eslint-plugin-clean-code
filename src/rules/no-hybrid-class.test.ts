@@ -23,6 +23,23 @@ runRuleTests("no-hybrid-class", rule, {
       ].join("\n"),
     },
     {
+      name: "a fluent setter that returns `this` through a type assertion, `satisfies`, `!` or parentheses",
+      code: [
+        "class Builder {",
+        "  limit = 10;",
+        "  setA(n: number) { this.limit = n; return this as this; }",
+        "  setB(n: number) { this.limit = n; return (this); }",
+        "  setC(n: number) { this.limit = n; return this satisfies Builder; }",
+        "  setD(n: number) { this.limit = n; return this!; }",
+        "  setE(n: number) { this.limit = n; return <this>this; }",
+        "}",
+      ].join("\n"),
+    },
+    {
+      name: "a `declare` field emits nothing at run time, so it is not a public mutable field",
+      code: "class A { declare z: number; #n = 0; area() { return this.#n * 2; } }",
+    },
+    {
       name: "readonly and protected fields are not public mutable fields",
       code: "class A { readonly id = 1; protected count = 0; area() { return this.id * 2; } }",
     },
@@ -77,6 +94,12 @@ runRuleTests("no-hybrid-class", rule, {
       name: "a method that returns `this` on one path only has behaviour",
       code: "class A { n = 0; inc() { if (this.n > 9) return 0; this.n++; return this; } }",
       errors: 1,
+      output: null,
+    },
+    {
+      name: "a field the constructor creates through `(this as T).x`",
+      code: "class A { constructor() { (this as any).size = 1; } grow() { return 2; } }",
+      errors: [{ messageId: "hybrid", data: { name: "A", field: "size", method: "grow" } }],
       output: null,
     },
     {

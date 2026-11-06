@@ -5,7 +5,8 @@ import { isDirectiveComment, removeComment } from "../lib/safe-fix.ts";
 import { commentLines, sourceComments } from "../lib/comment-text.ts";
 
 const WORD = String.raw`\p{Lu}[\p{L}'’-]*\.?`;
-const PERSON = String.raw`(?:${WORD}(?:[ \t]+${WORD})*|[\w.+-]+@[\w-]+(?:\.[\w-]+)+|@[\w-]+)`;
+/** Two or more capitalised words, an email or an `@handle`. One word is a tool or a class (`Created by ConnectionPool`), not a person. */
+const PERSON = String.raw`(?:${WORD}(?:[ \t]+${WORD})+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+|@[\w-]+)`;
 const DATE = String.raw`(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}-\p{L}{3,9}-\d{2,4}|\d{1,2}\/\d{1,2}\/\d{2,4})`;
 
 /** `Added by`, `Created by` or `Modified by`, a person, then the end of the line or a date. */

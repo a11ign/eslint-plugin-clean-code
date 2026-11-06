@@ -589,11 +589,13 @@ The README will not say which projects this replaces. The pull request body reco
   - a method that returns `this` (a fluent setter).
   - a function written directly as a call argument or JSX attribute (`onToggle={(open: boolean) => …}`), and a method with the `override` modifier or in a class that `implements` an interface. Their signatures are set by someone else.
   - a parameter that is already a destructured options object, whose booleans are named at the call site.
-- **Fix:** turns the boolean parameter into a property of an options object, which is the keyword-parameter remedy (NAM-22). `(name, verbose = false)` becomes `(name, { verbose = false } = {})`. `(name, verbose: boolean)` becomes `(name, { verbose }: { verbose?: boolean } = {})`: a call that leaves the argument out still gets `undefined`. Each call `f(x, true)` becomes `f(x, { verbose: true })`, and the overload signatures of `f` are rewritten in the same fix. The fix applies only when all of these hold:
+- **Fix:** turns the boolean parameter into a property of an options object, which is the keyword-parameter remedy (NAM-22). `(name, verbose = false)` becomes `(name, { verbose = false } = {})`. `(name, verbose?: boolean)` becomes `(name, { verbose }: { verbose?: boolean } = {})`: a call that leaves the argument out still gets `undefined`. A required `(name, verbose: boolean)` becomes `(name, { verbose }: { verbose: boolean })`, so the body still sees a `boolean`; it is fixed only when every call passes the argument, since a call that leaves it out would then throw. Each call `f(x, true)` becomes `f(x, { verbose: true })`, and the overload signatures of `f` are rewritten in the same fix. The fix applies only when all of these hold:
   - `f` is a function declaration or a `const` function in an ES module file, not a method, and not exported.
   - The boolean is the last parameter.
   - `f` does not use `arguments`.
   - Every reference to `f` is a direct call in the same file, with no spread argument and no `new`.
+  - No other declaration in the scope has the name `f`, and the file has no direct `eval`.
+  - The file has an `import` or `export`, so it is an ES module by its syntax as well as its configuration.
   
   A method is reported without a fix, because an override in another file would still receive a boolean. An exported function, or one passed as a value, is reported without a fix too.
 - **Deviation from an acceptance line, for owner sign-off:** the ticket says that after `--fix` the code "no longer triggers the rule". That holds for every case the fix applies to. A method, an exported function and a function passed as a value are still reported after `--fix`, because no fix can see their callers in other files.

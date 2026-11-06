@@ -17,7 +17,7 @@ A function that handles errors does nothing else: its `try` comes first and noth
 In the body of a function, method or arrow function that has a `try` statement at its top level:
 
 - each statement before the first `try` that is not a variable declaration;
-- each statement after it, including a second `try`.
+- each statement after it, including a second `try`. A function declaration and a TypeScript `type` or `interface` declaration after the `try` are not reported: they do not run there (a function declaration is hoisted), as in `try { return values.reduce(add, 0); } catch { return 0; }` followed by `function add(…) {…}`.
 
 It also reports a `try` nested in a `catch` clause of the same function, however deep. The book's "Noise Comments" example is a `try` inside a `catch`, and its fix is "improving the structure of his code" (chapter 5 Comments, bookCTX chunk 10).
 

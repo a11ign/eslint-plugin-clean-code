@@ -50,7 +50,7 @@ class Counter {
 
 The fix moves every misplaced field, with the comments attached to it, to just above the first constructor, method or accessor, keeping the fields in the same order relative to each other. Field initializers run in the order the fields are declared, and that order does not change. Methods are defined on the class before any field is initialised, wherever they are written, so moving a field past them changes nothing at runtime.
 
-The move follows the catalog's "How fixes stay safe": a moved field without a `;` gets one when the member after its new place would otherwise continue it (`size = 0` followed by `[Symbol.iterator]() {}` or by a generator method `*values() {}`), and in code without semicolons, a removed field leaves a `;` when the member after it starts with one of those characters.
+The move follows the catalog's "How fixes stay safe": a moved field without a `;` gets one when the member after its new place would otherwise continue it (`size = 0` followed by `[Symbol.iterator]() {}`, by a generator method `*values() {}`, or by a method named `in` or `instanceof`); a moved field that would continue the field without `;` above its new place gets a `;` in front (`;instanceof = 2`); and in code without semicolons, a removed field leaves a `;` when the member after it would otherwise continue the code before it.
 
 There is no fix, and the rule only reports, when the class has any of these, because each runs in source order and the move would change that order:
 
@@ -60,4 +60,4 @@ There is no fix, and the rule only reports, when the class has any of these, bec
 - an auto-accessor (`accessor x = 1`), whose storage is initialised in order with the fields and whose getter and setter are defined in order with the methods.
 - a field initializer that refers to the class, by its name or, in a static field, through `this`.
 
-There is also no fix when a field, or the member it would move above, shares its line with other code.
+There is also no fix when a field, or the member it would move above, shares its line with other code, and when a directive comment lies between a field's old place and its new one (`/* eslint-disable */`, `// c8 ignore start`, `/* istanbul ignore next */`), since the move would take the field into or out of what the directive covers.

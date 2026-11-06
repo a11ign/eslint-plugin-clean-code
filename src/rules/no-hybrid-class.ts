@@ -16,11 +16,14 @@ import {
 
 type Body = TSESTree.ClassBody;
 
-/** Instance field declarations that anyone can write: not `private`, `#`, `protected`, `readonly` or a function. */
+/**
+ * Instance field declarations that anyone can write: not `private`, `#`, `protected`, `readonly` or a function, and not
+ * `declare`, which only types a field and creates nothing at run time.
+ */
 function declaredPublicFields(body: Body): string[] {
   const names: string[] = [];
   for (const member of body.body) {
-    if (member.type !== "PropertyDefinition" || member.static || member.readonly || isHidden(member) || isFunction(member.value)) continue;
+    if (member.type !== "PropertyDefinition" || member.static || member.readonly || member.declare || isHidden(member) || isFunction(member.value)) continue;
     const name = memberName(member);
     if (name) names.push(name);
   }

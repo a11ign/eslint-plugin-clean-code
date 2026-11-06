@@ -8,6 +8,11 @@ function isDeclarationOnly(statement: Statement): boolean {
   return statement.type === "VariableDeclaration" || statement.type === "TSTypeAliasDeclaration" || statement.type === "TSInterfaceDeclaration";
 }
 
+/** Statements after the `try` that do not run there: a hoisted function declaration and TypeScript type declarations. */
+function runsNothing(statement: Statement): boolean {
+  return statement.type === "FunctionDeclaration" || statement.type === "TSDeclareFunction" || statement.type === "TSTypeAliasDeclaration" || statement.type === "TSInterfaceDeclaration";
+}
+
 /** A directive prologue entry (`"use strict"`) or an empty statement, which are not code the function runs. */
 function isNotCode(statement: Statement): boolean {
   return statement.type === "EmptyStatement" || (statement.type === "ExpressionStatement" && typeof statement.directive === "string");
@@ -51,7 +56,7 @@ export default defineRule({
       if (first === -1) return;
       statements.forEach((statement, index) => {
         if (index < first && !isDeclarationOnly(statement)) context.report({ node: statement as never, messageId: "beforeTry" });
-        else if (index > first) context.report({ node: statement as never, messageId: "afterTry" });
+        else if (index > first && !runsNothing(statement)) context.report({ node: statement as never, messageId: "afterTry" });
       });
     }
     function checkFunction(node: unknown): void {

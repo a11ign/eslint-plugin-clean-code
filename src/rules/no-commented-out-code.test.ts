@@ -3,6 +3,11 @@ import rule from "./no-commented-out-code.ts";
 
 runRuleTests("no-commented-out-code", rule, {
   valid: [
+    { name: "review: an `e.g.` example is prose", code: "export const b = 2; // e.g. parse(\"a=b;c=d\")" },
+    { name: "review: an `i.e.`, `eg:`, `ex:`, `example:` and `usage:` comment is prose", code: "// i.e. run();\nrun();\n/* eg: run(); */\nrun();\n// Ex: run();\nrun();\n/* example: run(); */\nrun();\n// USAGE: run();\nrun();" },
+    { name: "review: a JetBrains language injection is a directive", code: "// language=SQL\nexport const d = 'select 1';" },
+    { name: "review: a JetBrains noinspection is a directive", code: "// noinspection JSUnusedGlobalSymbols\nexport const m = 12;" },
+    { name: "review: a comparison states a fact, it is not code", code: "// sum(1, 2) === 3\nexport const n = 13;" },
     { name: "a legal header (CMT-02)", code: "/*\n * Copyright (c) 2024 Acme Corp. All rights reserved.\n * Licensed under the Apache License, Version 2.0.\n */\nexport const a = 1;" },
     { name: "a regular-expression explanation (CMT-02)", code: "// Matches a date such as 2024-01-31: four digits, a dash, two digits, a dash, two digits.\nconst date = /^\\d{4}-\\d{2}-\\d{2}$/;" },
     { name: "a \"why\" comment (CMT-02)", code: "// We retry once because the first request after a deploy is dropped by the proxy.\nretry(send);" },

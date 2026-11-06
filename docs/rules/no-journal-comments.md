@@ -14,9 +14,14 @@ Delete change-log comments; version control keeps the history.
 
 ## What it reports
 
-A comment in which at least 3 lines start with a date followed by `:` or `-`, which makes it a change log. The dates it knows are `2024-01-31`, `31-Jan-2024` and `1/31/2024`. A run of line comments on consecutive lines counts as one comment.
+A change log: a comment with at least 3 entries that each start with a date followed by `:` or `-` and read as a change. The dates it knows are `2024-01-31`, `31-Jan-2024` and `1/31/2024`. A run of line comments on consecutive lines counts as one comment.
+
+An entry reads as a change when its text (the dated line and the lines that continue it) has a change word, such as added, fixed, changed, removed, moved, renamed, updated, refactored, re-organised, created, deleted, initial, released, replaced, deprecated, eliminated or requires, or names its author: initials in parentheses (`(DG)`) or `by` and a capitalised name. A list of dates is often informative (CMT-02), so when in doubt the rule does not report.
 
 It does not report:
+
+- a list under a header that names something else: when the line of text just above the first dated line does not say change, history, log, revision, journal or modification (`Holidays observed:`, `Accepted input formats:`, `Release dates:`), the dates are what the list is about,
+- dated lines that do not read as changes (`2025-12-25 - Christmas Day`, `2024-01-31: ISO 8601`),
 
 - one or two dated lines, which are usually an "as of" note, not a journal,
 - a date that is not at the start of its line (`Released on 2024-01-01: …`), or a date not followed by `:` or `-`,
@@ -51,4 +56,4 @@ The number of dated lines that makes a journal, `3` by default:
 
 ## Fix
 
-The fix deletes each dated line together with the lines that continue its entry: the lines directly after it that are indented further than its date and are not dated themselves. Other lines, such as a heading, stay. When nothing with text is left, the fix deletes the whole comment, following the catalog's "How fixes stay safe": a comment alone on its lines goes with them, so a `;[1, 2]` line after it keeps its `;`, and a block comment between `return` and its value becomes a line break.
+The fix deletes each change entry: its dated line together with the lines that continue its entry: the lines directly after it that are indented further than its date and are not dated themselves. Other lines, such as a heading, stay. When nothing with text is left, the fix deletes the whole comment, following the catalog's "How fixes stay safe": a comment alone on its lines goes with them, so a `;[1, 2]` line after it keeps its `;`, and a block comment between `return` and its value becomes a line break.

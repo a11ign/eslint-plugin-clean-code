@@ -46,10 +46,16 @@ export function keyName(key: TSESTree.Node, computed: boolean): string | null {
   return null;
 }
 
-/** The member a `this.x`, `this["x"]` or `this.#x` expression reads, or null for anything else. */
+/** Whether an expression is `this`, also behind `as`, `satisfies`, `!` or an angle-bracket assertion (`return this as this`). */
+export function isThis(expression: TSESTree.Node | null | undefined): boolean {
+  return expression ? unwrapTs(expression).type === "ThisExpression" : false;
+}
+
+/** The member a `this.x`, `this["x"]`, `this.#x` or `(this as T).x` expression reads, or null for anything else. */
 export function thisMemberName(expression: TSESTree.Node | null | undefined): string | null {
-  if (expression?.type !== "MemberExpression" || expression.object.type !== "ThisExpression") return null;
-  return keyName(expression.property, expression.computed);
+  const member = expression ? unwrapTs(expression) : null;
+  if (member?.type !== "MemberExpression" || !isThis(member.object)) return null;
+  return keyName(member.property, member.computed);
 }
 
 /** The name a class is known by: its own id, or the variable it is assigned to. */
@@ -125,10 +131,10 @@ export function returnedValues(fn: FunctionNode): Array<TSESTree.Expression | nu
   return returnStatements(fn).map((statement) => statement.argument);
 }
 
-/** Whether a method is a fluent setter: it returns, and every `return` returns `this`. */
+/** Whether a method is a fluent setter: it returns, and every `return` returns `this` (also `this as this`, `this!`). */
 export function returnsOnlyThis(fn: FunctionNode): boolean {
   const values = returnedValues(fn);
-  return values.length > 0 && values.every((value) => value?.type === "ThisExpression");
+  return values.length > 0 && values.every(isThis);
 }
 
 /** The class member whose code a node runs in, and that member's class body, as `this` sees it. */

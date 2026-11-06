@@ -34,6 +34,22 @@ runRuleTests("fields-first", rule, {
       behaviour: ["[...new Bag().values()]", "new Bag().items"],
     },
     {
+      name: "a moved field without `;` followed by a method named `in` gets a `;`",
+      code: "class A {\n  in() { return 1 }\n  x = 2\n}\n",
+      output: "class A {\n  x = 2;\n  in() { return 1 }\n}\n",
+      filename: "file.js",
+      errors: [{ messageId: "fieldAfterMember", data: { name: "x", member: "in" } }],
+      behaviour: ["new A().x", "new A().in()", "Object.keys(new A())"],
+    },
+    {
+      name: "a moved field named `instanceof` placed after a field without `;` gets a `;` in front",
+      code: "class A {\n  y = 1\n  m() { return this.instanceof + this.y }\n  instanceof = 2\n}\n",
+      output: "class A {\n  y = 1\n  ;instanceof = 2\n  m() { return this.instanceof + this.y }\n}\n",
+      filename: "file.js",
+      errors: [{ messageId: "fieldAfterMember", data: { name: "instanceof", member: "m" } }],
+      behaviour: ["new A().m()", "Object.keys(new A())"],
+    },
+    {
       name: "regression row 3: a `;[1, 2].forEach(f)` line in a method stays as it is",
       code: "class Tally {\n  add() {\n    const f = (n) => this.seen.push(n)\n    ;[1, 2].forEach(f)\n    return this.seen\n  }\n  seen = []\n}\n",
       output: "class Tally {\n  seen = []\n  add() {\n    const f = (n) => this.seen.push(n)\n    ;[1, 2].forEach(f)\n    return this.seen\n  }\n}\n",
@@ -105,6 +121,24 @@ runRuleTests("fields-first", rule, {
     {
       name: "no fix when the class has an auto-accessor, whose storage initialises in field order",
       code: "class A {\n  accessor a = 1;\n  b = 2;\n}\n",
+      output: null,
+      errors: report,
+    },
+    {
+      name: "no fix when a region directive lies between the field and its new place",
+      code: "class A {\n  x = 1\n  m() { return this.y }\n  /* eslint-disable no-console */\n  y = 2\n}\n",
+      output: null,
+      errors: report,
+    },
+    {
+      name: "no fix when an `istanbul ignore` comment lies between the field and its new place",
+      code: "class A {\n  /* istanbul ignore next */\n  m() { return this.y }\n  y = 2\n}\n",
+      output: null,
+      errors: report,
+    },
+    {
+      name: "no fix when a coverage region surrounds the method the field moves past",
+      code: "class A {\n  // c8 ignore start\n  m() { return this.y }\n  // c8 ignore stop\n  y = 2\n}\n",
       output: null,
       errors: report,
     },

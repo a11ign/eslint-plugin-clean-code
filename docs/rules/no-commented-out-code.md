@@ -16,7 +16,9 @@ Delete commented-out code; version control keeps it.
 
 A comment, or a run of line comments on consecutive lines (each alone on its line), whose text parses as one or more JavaScript statements, when:
 
-- the first statement is not a labelled statement, so prose such as `Note: call(x)` or a URL (`https://…` reads as the label `https`) is never code, and
+- the text does not start with words that introduce an example in prose: `e.g.`, `i.e.`, `eg:`, `ex:`, `example:` or `usage:`, in any case (`// e.g. parse("a=b;c=d")` would otherwise read as `e.g.parse(…)`),
+- the first statement is not a labelled statement, so prose such as `Note: call(x)` or a URL (`https://…` reads as the label `https`) is never code,
+- the text is not a single comparison (`// sum(1, 2) === 3`), which states a fact about the code: a statement with no effect is not something anyone comments out, and
 - the text has code syntax: a `;`, a brace, a call (or `new`), or an assignment (`=`, `+=` and the rest). A single word, a list of words or a parenthesised aside is not code.
 
 The text is parsed with `espree` as an ES module, then as JSX, then as a script that allows a top-level `return` (a commented-out function body). In a block comment whose lines all start with `*`, the `*` decoration is taken off first. A run of line comments is read as one text, so a commented-out `if` block over several lines is one report.
@@ -24,7 +26,7 @@ The text is parsed with `espree` as an ES module, then as JSX, then as a script 
 It does not check:
 
 - doc comments (`/** … */`) and comments with an `@example` section, which hold examples on purpose,
-- directive comments (`eslint-*`, `@ts-*`, `#__PURE__`, `/*! … */` and the others in the catalog's "How fixes stay safe"); a directive line also ends a run,
+- directive comments (`eslint-*`, `@ts-*`, `#__PURE__`, `/*! … */`, `//# sourceMappingURL=`, JetBrains' `language=` and `noinspection`, and the others in the catalog's "How fixes stay safe"); a directive line also ends a run,
 - a comment that starts with `TODO` or `FIXME`, which `no-warning-comments` reports (CMT-10); it also ends a run, so code on the lines after it is still reported.
 
 A run is read as a whole. A run that mixes prose and code (`// Old version:` then `// run();`) does not parse, so it is not reported: reporting one line of it would let the fix delete a line out of the middle of a sentence. TypeScript-only syntax (`// const x: number = 1;`) does not parse as JavaScript, so it is not reported either.

@@ -38,13 +38,13 @@ export function trackFunctionUsage(onExit: (fn: FunctionNode, usage: FunctionUsa
     ReturnStatement(node) {
       const statement = asTs<TSESTree.ReturnStatement>(node);
       const top = stack.at(-1);
-      if (top && statement.argument?.type === "ThisExpression") top.usage.returnsThis = true;
+      if (top && isThis(statement.argument)) top.usage.returnsThis = true;
     },
   };
   for (const type of FUNCTION_TYPES) {
     listeners[type] = (node: unknown) => {
       const fn = asTs<FunctionNode>(node);
-      const returnsThis = fn.type === "ArrowFunctionExpression" && fn.body.type === "ThisExpression";
+      const returnsThis = fn.type === "ArrowFunctionExpression" && isThis(fn.body);
       stack.push({ fn, usage: { usesArguments: false, usesThis: false, returnsThis } });
     };
     listeners[`${type}:exit`] = () => {
@@ -53,6 +53,33 @@ export function trackFunctionUsage(onExit: (fn: FunctionNode, usage: FunctionUsa
     };
   }
   return listeners;
+}
+
+const TYPE_WRAPPERS = new Set(["TSAsExpression", "TSSatisfiesExpression", "TSNonNullExpression", "TSTypeAssertion", "ParenthesizedExpression"]);
+
+/**
+ * Whether an expression gives `this`: `this`, or `this` behind a type-only wrapper (`this as this`, `this satisfies X`,
+ * `this!`, `<this>this`, parentheses), or as the last expression of a sequence.
+ */
+export function isThis(expression: Node | null | undefined): boolean {
+  let current = expression;
+  while (current && (TYPE_WRAPPERS.has(current.type) || current.type === "SequenceExpression")) {
+    current = current.type === "SequenceExpression" ? current.expressions.at(-1) : (current as { expression: Node }).expression;
+  }
+  return current?.type === "ThisExpression";
+}
+
+/** Whether a call is a direct `eval(…)`, which can read the local scope and `arguments`, and call anything in scope by name. */
+export function isDirectEval(call: TSESTree.CallExpression): boolean {
+  return call.callee.type === "Identifier" && call.callee.name === "eval" && !call.optional;
+}
+
+/**
+ * Whether a variable has more than one declaration, not counting TypeScript overload signatures: a second function of the
+ * same name, or a merged namespace. A call may then reach another declaration than the one a fix rewrites.
+ */
+export function hasOtherDeclarations(variable: Scope.Variable): boolean {
+  return variable.defs.filter((definition) => (definition.node as Node).type !== "TSDeclareFunction").length > 1;
 }
 
 /** Whether an identifier reads a binding, rather than naming a property or a key. */

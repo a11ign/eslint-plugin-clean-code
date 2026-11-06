@@ -2,7 +2,7 @@ import type { Rule, SourceCode } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs, type Token, type TSESTree } from "../lib/ast.ts";
 import { continuesStatement } from "../lib/safe-fix.ts";
-import { blockOf, guardedBefore, removeBlock, type Block } from "../lib/moves.ts";
+import { blockOf, crossesDirective, guardedBefore, mergeAdjacent, removeBlock, type Block } from "../lib/moves.ts";
 
 type Member = TSESTree.ClassElement;
 type Field = TSESTree.PropertyDefinition | TSESTree.TSAbstractPropertyDefinition;
@@ -52,20 +52,6 @@ function canMove(sourceCode: SourceCode, body: TSESTree.ClassBody, moved: Field[
   });
 }
 
-/** Runs of moved fields with nothing but blank space between them, each removed in one piece. */
-function runs(sourceCode: SourceCode, blocks: Block[]): Block[] {
-  const merged: Block[] = [];
-  for (const block of blocks) {
-    const last = merged[merged.length - 1];
-    if (last && sourceCode.text.slice(last.lines[1], block.lines[0]).trim() === "") {
-      merged[merged.length - 1] = { range: [last.range[0], block.range[1]], lines: [last.lines[0], block.lines[1]], firstToken: last.firstToken, lastToken: block.lastToken };
-    } else {
-      merged.push(block);
-    }
-  }
-  return merged;
-}
-
 /** Whether a blank line is directly above the line at `lineStart`. */
 function blankAbove(text: string, lineStart: number): boolean {
   if (lineStart === 0) return false;
@@ -79,12 +65,16 @@ function moveFix(sourceCode: SourceCode, body: TSESTree.ClassBody, first: Member
   const blocks = moved.map((field) => blockOf(sourceCode, field));
   if (!target || blocks.some((block) => !block)) return null;
   const fieldBlocks = blocks as Block[];
+  if (crossesDirective(sourceCode, fieldBlocks, target.lines[0])) return null;
   const previous = sourceCode.getTokenBefore({ range: [target.lines[0], target.lines[0]] } as never) as Token;
-  const lead = continuesStatement(previous, fieldBlocks[0].firstToken) ? ";" : "";
   const texts = fieldBlocks.map((block, index) => guardedBefore(sourceCode, block, fieldBlocks[index + 1]?.firstToken ?? target.firstToken));
+  if (continuesStatement(previous, fieldBlocks[0].firstToken)) {
+    const at = fieldBlocks[0].firstToken.range[0] - fieldBlocks[0].lines[0];
+    texts[0] = `${texts[0].slice(0, at)};${texts[0].slice(at)}`;
+  }
   const gap = blankAbove(sourceCode.text, target.lines[0]) ? "\n" : "";
-  const inserted = `${lead}${texts.join("\n")}\n${gap}`;
-  return (fixer) => [fixer.insertTextBeforeRange([target.lines[0], target.lines[0]], inserted), ...runs(sourceCode, fieldBlocks).flatMap((run) => removeBlock(fixer, sourceCode, run))];
+  const inserted = `${texts.join("\n")}\n${gap}`;
+  return (fixer) => [fixer.insertTextBeforeRange([target.lines[0], target.lines[0]], inserted), ...mergeAdjacent(sourceCode, fieldBlocks).flatMap((run) => removeBlock(fixer, sourceCode, run))];
 }
 
 export default defineRule({

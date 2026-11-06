@@ -15,12 +15,13 @@ Delete bylines and `@author` tags; version control records who changed what.
 ## What it reports
 
 - an `@author` tag,
-- `Added by`, `Created by` or `Modified by` followed by a person, then the end of the line or a date. A person is one or more capitalised words (`Ada Lovelace`, `J. R. Smith`), an email address or an `@handle`. A date may follow after `,`, `on` or in parentheses.
+- `Added by`, `Created by` or `Modified by` followed by a person, then the end of the line or a date. A person is two or more capitalised words (`Ada Lovelace`, `J. R. Smith`), an email address or an `@handle`. A date may follow after `,`, `on` or in parentheses.
 
 It does not report:
 
 - `// Created by Object.create(null), so it has no prototype`: what follows `by` is code, not a person,
 - `// Added by the build step`: lower-case words are not a person,
+- `/** Created by ConnectionPool. */` and `// Modified by Terser`: one capitalised word is a class or a tool, not a person,
 - issue keys and pull request numbers (`ABC-123`, `#456`). The book says to put them in commit messages, but a pattern like `ABC-123` also matches part numbers, standards (`ISO-8601`) and error codes,
 - directive comments (`/*! … */`, `@license` and the others), which no fix may change; a legal header keeps its author line.
 

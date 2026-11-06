@@ -5,8 +5,10 @@ import {
   classOf,
   constDeclaratorOf,
   directCall,
+  hasOtherDeclarations,
   hasSpread,
   hasUseStrict,
+  isDirectEval,
   isExported,
   methodOf,
   nameVariable,
@@ -26,6 +28,8 @@ interface Flag {
   type: string | null;
   /** The default value's text, when there is one. */
   initial: string | null;
+  /** `flag: boolean`: annotated, not optional and with no default, so every caller must pass it. */
+  required: boolean;
 }
 
 function isBooleanAnnotation(identifier: TSESTree.Identifier): boolean {
@@ -40,11 +44,11 @@ function standalone(sourceCode: SourceCode, expression: TSESTree.Expression): st
 
 function flagOf(sourceCode: SourceCode, parameter: Parameter): Flag | null {
   const typeText = (identifier: TSESTree.Identifier) => (identifier.typeAnnotation ? sourceCode.getText(identifier.typeAnnotation.typeAnnotation as never) : null);
-  if (parameter.type === "Identifier" && isBooleanAnnotation(parameter)) return { parameter, name: parameter.name, type: typeText(parameter), initial: null };
+  if (parameter.type === "Identifier" && isBooleanAnnotation(parameter)) return { parameter, name: parameter.name, type: typeText(parameter), initial: null, required: !parameter.optional };
   if (parameter.type === "AssignmentPattern" && parameter.left.type === "Identifier") {
     const isBooleanDefault = parameter.right.type === "Literal" && typeof parameter.right.value === "boolean";
     if (!isBooleanDefault && !isBooleanAnnotation(parameter.left)) return null;
-    return { parameter, name: parameter.left.name, type: typeText(parameter.left), initial: standalone(sourceCode, parameter.right) };
+    return { parameter, name: parameter.left.name, type: typeText(parameter.left), initial: standalone(sourceCode, parameter.right), required: false };
   }
   if (parameter.type === "TSParameterProperty") {
     const inner = parameter.parameter;
@@ -100,8 +104,12 @@ function signatureParameter(sourceCode: SourceCode, signature: TSESTree.TSDeclar
   return `${taken ? `${name}Options` : "options"}${optional}: { ${name}${optional}: ${sourceCode.getText(parameter.typeAnnotation.typeAnnotation as never)} }`;
 }
 
-/** `{ verbose = false }: { verbose?: boolean } = {}`: the options object that replaces the flag. */
+/**
+ * The options object that replaces the flag: `{ verbose }: { verbose: boolean }` for a required flag, which keeps it a
+ * `boolean` in the body, and `{ verbose = false }: { verbose?: boolean } = {}` for an optional one or one with a default.
+ */
 function optionsParameter(flag: Flag): string {
+  if (flag.required) return `{ ${flag.name} }: { ${flag.name}: ${flag.type} }`;
   const pattern = flag.initial === null ? `{ ${flag.name} }` : `{ ${flag.name} = ${flag.initial} }`;
   return flag.type === null ? `${pattern} = {}` : `${pattern}: { ${flag.name}?: ${flag.type} } = {}`;
 }
@@ -132,7 +140,7 @@ function canRewriteFunction(sourceCode: SourceCode, fn: FunctionNode, flag: Flag
 /** Every call of the function, or `null` when a reference is not a direct call without spread arguments. */
 function callsOf(sourceCode: SourceCode, fn: FunctionNode): TSESTree.CallExpression[] | null {
   const variables = [nameVariable(sourceCode, fn), ownNameVariable(sourceCode, fn)].filter((variable): variable is Scope.Variable => variable !== null);
-  if (variables.length === 0) return null;
+  if (variables.length === 0 || variables.some(hasOtherDeclarations)) return null;
   const calls: TSESTree.CallExpression[] = [];
   for (const reference of variables.flatMap((variable) => variable.references)) {
     if (isDeclaringName(reference.identifier as Node)) continue;
@@ -147,8 +155,9 @@ function callsOf(sourceCode: SourceCode, fn: FunctionNode): TSESTree.CallExpress
 function fixFor(sourceCode: SourceCode, fn: FunctionNode, flag: Flag, usage: FunctionUsage): Rule.ReportFixer | null {
   if (!canRewriteFunction(sourceCode, fn, flag, usage)) return null;
   const calls = callsOf(sourceCode, fn);
-  if (!calls) return null;
   const index = fn.params.length - 1;
+  // A required flag gets no `= {}`, so a call that leaves it out would throw on destructuring `undefined`.
+  if (!calls || (flag.required && calls.some((call) => call.arguments.length <= index))) return null;
   const signatures = overloadSignatures(fn)
     .filter((signature) => index < signature.params.length)
     .map((signature) => ({ parameter: signature.params[index], text: signatureParameter(sourceCode, signature, signature.params[index], flag.name) }));
@@ -179,18 +188,30 @@ export default defineRule({
   },
   create(context) {
     const sourceCode = context.sourceCode;
-    return trackFunctionUsage((fn, usage) => {
-      for (const parameter of fn.params) {
-        const flag = flagOf(sourceCode, parameter);
-        if (!flag || isExempt(fn, flag, usage)) continue;
-        const fix = fixFor(sourceCode, fn, flag, usage);
-        context.report({
-          node: parameter as never,
-          messageId: "flagArgument",
-          data: { name: flag.name, function: functionName(fn) ?? "(anonymous)" },
-          ...(fix ? { fix } : {}),
-        });
-      }
-    });
+    const found: Array<{ fn: FunctionNode; flag: Flag; usage: FunctionUsage }> = [];
+    let hasDirectEval = false;
+    return {
+      ...trackFunctionUsage((fn, usage) => {
+        for (const parameter of fn.params) {
+          const flag = flagOf(sourceCode, parameter);
+          if (flag && !isExempt(fn, flag, usage)) found.push({ fn, flag, usage });
+        }
+      }),
+      CallExpression(node) {
+        if (isDirectEval(node as TSESTree.CallExpression)) hasDirectEval = true;
+      },
+      // Reported at the end, once the whole file is known: a direct `eval` anywhere can read `arguments` or call the function.
+      "Program:exit"() {
+        for (const { fn, flag, usage } of found) {
+          const fix = hasDirectEval ? null : fixFor(sourceCode, fn, flag, usage);
+          context.report({
+            node: flag.parameter as never,
+            messageId: "flagArgument",
+            data: { name: flag.name, function: functionName(fn) ?? "(anonymous)" },
+            ...(fix ? { fix } : {}),
+          });
+        }
+      },
+    };
   },
 });

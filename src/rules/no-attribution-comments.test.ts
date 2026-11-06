@@ -3,6 +3,8 @@ import rule from "./no-attribution-comments.ts";
 
 runRuleTests("no-attribution-comments", rule, {
   valid: [
+    { name: "review: \"Created by\" a class name is not a byline", code: "/** Created by ConnectionPool. */\nexport class Connection {}" },
+    { name: "review: \"Modified by\" a tool is not a byline", code: "// Modified by Terser\nexport const minified = 1;" },
     { name: "a legal header (CMT-02)", code: "/*\n * Copyright (c) 2024 Acme Corp. All rights reserved.\n * Licensed under the Apache License, Version 2.0.\n */\nexport const a = 1;" },
     { name: "a regular-expression explanation (CMT-02)", code: "// Matches an email such as ada@example.com: a local part, `@`, then a domain.\nconst email = /^[^@\\s]+@[^@\\s]+$/;" },
     { name: "a \"why\" comment (CMT-02)", code: "// We retry once because the first request after a deploy is dropped by the proxy.\nretry(send);" },

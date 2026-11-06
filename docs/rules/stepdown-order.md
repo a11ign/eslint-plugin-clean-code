@@ -58,13 +58,15 @@ The fix moves the reported function declaration to the line after its first call
 
 The removal follows the catalog's "How fixes stay safe": in code without semicolons, when the line after the function starts with `(`, `[`, `` ` ``, `+`, `-`, `/` or `*`, it gets a `;`, and a line that already starts with `;` keeps it.
 
-When a function's callees are above it too, each `--fix` pass moves one function, and the passes continue until the order is settled.
+The fix settles the whole list of statements at once. It works out the order the list reaches when each misplaced function moves to just after its first caller, again and again until none is misplaced, and makes all those moves in one fix. So a chain such as `leaf`, `middle` (calls `leaf`), `main` (calls `middle`) becomes `main`, `middle`, `leaf` in a single `--fix` pass, and the fixed code is not reported again. A function that was in order can move too, when its only caller above it moves below it. Statements that are not moved keep their order.
 
 There is no fix, and the rule only reports, when:
 
-- the code is sloppy-mode script code (not an ES module and with no `"use strict"`). There, a function declared in a block is bound when the block runs, so moving it changes what runs.
+- the code may be sloppy-mode script code: the file has no `import` or `export` (so it may be run as a script) and no `"use strict"`. There, a function declared in a block is bound when the block runs, so moving it changes what runs.
 - the declaration is not directly in a function body or the module body: in a block, a `switch`, a `static {}` block or a namespace.
 - another declaration in the scope has the same name (a `var`, a parameter, another function), since the last one wins.
 - the function has decorators. No syntax allows decorators on a function declaration today, so this condition is there for a future one.
 - the function shares a line with other code, or other code follows the caller on its last line, so the function cannot be moved as whole lines.
+- a directive comment lies between the function's old place and its new one (`/* eslint-disable */`, `// c8 ignore start`, `/* istanbul ignore next */`), so the move would take the function into or out of what the directive covers; or the function holds a region directive (`/* eslint-disable */`, `// c8 ignore start`), which could then cover different code.
+- the list does not settle (a safety limit on the number of moves), or a function the list needs to move cannot be inserted on lines of its own. Then no function in that list is fixed.
 - the function is a class method. Moving a method changes the order of `Object.getOwnPropertyNames(C.prototype)`, which code can observe, and a computed method key is evaluated in source order.

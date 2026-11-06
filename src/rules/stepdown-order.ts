@@ -1,7 +1,7 @@
 import type { Rule, Scope, SourceCode } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
-import { asTs, hasUseStrictDirective, isFunction, isModule, type Node, type TSESTree } from "../lib/ast.ts";
-import { blankLineAfter, blockOf, childOf, endOfLineAfter, insertedAfter, removeBlock } from "../lib/moves.ts";
+import { asTs, hasUseStrictDirective, isFunction, isModule, type Node, type Token, type TSESTree } from "../lib/ast.ts";
+import { blankLineAfter, blockOf, childOf, crossesDirective, endOfLineAfter, insertedAfter, mergeAdjacent, removeBlock, type Block } from "../lib/moves.ts";
 
 type Statement = TSESTree.ProgramStatement;
 type ClassMember = TSESTree.ClassElement;
@@ -39,10 +39,20 @@ function reaches(edges: Map<number, Set<number>>, from: number, to: number): boo
   return false;
 }
 
+/** The functions that call `callee`, leaving out recursion and mutual recursion. */
+function callersOf(edges: Map<number, Set<number>>, callee: number): number[] {
+  return [...edges.keys()].filter((caller) => caller !== callee && edges.get(caller)!.has(callee) && !reaches(edges, callee, caller));
+}
+
+/** The first of `callers` by `position` (source order by default). */
+function earliest(callers: number[], position: (index: number) => number = (index) => index): number | null {
+  if (callers.length === 0) return null;
+  return callers.reduce((first, caller) => (position(caller) < position(first) ? caller : first));
+}
+
 /** The first caller of `callee` in source order, ignoring recursion and mutual recursion. */
 function firstCaller(edges: Map<number, Set<number>>, callee: number): number | null {
-  const callers = [...edges.entries()].filter(([caller, callees]) => caller !== callee && callees.has(callee) && !reaches(edges, callee, caller));
-  return callers.length === 0 ? null : Math.min(...callers.map(([caller]) => caller));
+  return earliest(callersOf(edges, callee));
 }
 
 function addEdge(edges: Map<number, Set<number>>, caller: number, callee: number): void {
@@ -110,38 +120,134 @@ function callerName(statement: Node): string {
   return declaredName(statement) ?? "(anonymous)";
 }
 
-interface Move {
-  statements: readonly Node[];
-  container: Node;
+/** A function declaration with the overload signatures above it (`statements[start..index]`), which move as one. */
+interface Unit {
   start: number;
   index: number;
-  caller: number;
-  variable: Scope.Variable | undefined;
+}
+
+interface List {
+  sourceCode: SourceCode;
+  statements: readonly Node[];
+  container: Node;
+  graph: ListGraph;
 }
 
 /** Whether the catalog's conditions for the move hold: strict code, directly in a body, no duplicate name, no decorator. */
-function canMove(sourceCode: SourceCode, move: Move): boolean {
-  const { statements, container, start, index, variable } = move;
+function canMove(list: List, unit: Unit): boolean {
+  const { sourceCode, statements, container, graph } = list;
   const inBody = container.type === "Program" || (container.type === "BlockStatement" && isFunction(container.parent));
   if (!inBody || !isStrict(sourceCode, container)) return false;
-  const group = new Set(statements.slice(start, index + 1).map(unwrap));
-  const name = declaredName(statements[index]);
+  const group = new Set(statements.slice(unit.start, unit.index + 1).map(unwrap));
+  const name = declaredName(statements[unit.index]);
+  const variable = graph.variables.get(unit.index);
   if (variable && variable.defs.some((def) => !group.has(asTs(def.node)))) return false;
   if (statements.some((statement) => !group.has(unwrap(statement)) && declaredName(statement) === name)) return false;
-  const decorated = [...group].some((node) => ((node as { decorators?: unknown[] }).decorators ?? []).length > 0);
-  return !decorated;
+  return ![...group].some((node) => ((node as { decorators?: unknown[] }).decorators ?? []).length > 0);
 }
 
-function moveFix(sourceCode: SourceCode, move: Move): Rule.ReportFixer | null {
-  if (!canMove(sourceCode, move)) return null;
-  const { statements, start, index, caller } = move;
-  const block = blockOf(sourceCode, statements[start], statements[index]);
-  const anchor = statements[caller];
-  const insertAt = endOfLineAfter(sourceCode, anchor);
-  if (!block || insertAt === null) return null;
-  const previous = sourceCode.getLastToken(anchor as never)!;
-  const text = insertedAfter(sourceCode, previous, block, blankLineAfter(sourceCode, block));
-  return (fixer) => [...removeBlock(fixer, sourceCode, block), fixer.insertTextAfterRange([insertAt, insertAt], text)];
+/** The block a function would move as, or `null` when it cannot move: a catalog condition fails, it shares a line, or it holds a region directive. */
+function movableBlock(list: List, unit: Unit): Block | null {
+  if (unwrap(list.statements[unit.index]).type !== "FunctionDeclaration" || !canMove(list, unit)) return null;
+  const block = blockOf(list.sourceCode, list.statements[unit.start], list.statements[unit.index]);
+  return block && !crossesDirective(list.sourceCode, [block], block.range[0]) ? block : null;
+}
+
+/**
+ * The order the list settles in when each misplaced movable function moves to just after its first caller, repeated
+ * until none is misplaced: what `--fix` passes would reach one move at a time, computed at once so one pass is enough.
+ * `null` when it does not settle.
+ */
+function settle(edges: Map<number, Set<number>>, units: number[], movable: Set<number>): { order: number[]; moved: Set<number> } | null {
+  const order = [...units];
+  const moved = new Set<number>();
+  const callers = new Map([...movable].map((unit) => [unit, callersOf(edges, unit)]));
+  for (let step = 0; step <= order.length * order.length; step++) {
+    const position = (index: number) => order.indexOf(index);
+    const misplaced = order.find((unit) => {
+      const caller = movable.has(unit) ? earliest(callers.get(unit)!, position) : null;
+      return caller !== null && position(caller) > position(unit);
+    });
+    if (misplaced === undefined) return { order, moved };
+    const caller = earliest(callers.get(misplaced)!, position) as number;
+    order.splice(position(misplaced), 1);
+    order.splice(position(caller) + 1, 0, misplaced);
+    moved.add(misplaced);
+  }
+  return null;
+}
+
+/** The moved functions after each statement that stays, in their new order. */
+function groupsAfterAnchors(order: number[], moved: Set<number>): Map<number, number[]> | null {
+  const groups = new Map<number, number[]>();
+  let anchor: number | null = null;
+  for (const unit of order) {
+    if (!moved.has(unit)) {
+      anchor = unit;
+      groups.set(unit, []);
+    } else if (anchor === null) {
+      return null;
+    } else {
+      groups.get(anchor)!.push(unit);
+    }
+  }
+  return groups;
+}
+
+/** The insertions after each statement that stays, or `null` when one cannot be made safely. */
+function insertions(list: List, groups: Map<number, number[]>, blocks: Map<number, Block>): Array<{ at: number; text: string }> | null {
+  const { sourceCode, statements } = list;
+  const result: Array<{ at: number; text: string }> = [];
+  for (const [anchor, group] of groups) {
+    if (group.length === 0) continue;
+    const at = endOfLineAfter(sourceCode, statements[anchor]);
+    const groupBlocks = group.map((unit) => blocks.get(unit)!);
+    if (at === null || crossesDirective(sourceCode, groupBlocks, at)) return null;
+    let previous = sourceCode.getLastToken(statements[anchor] as never) as Token;
+    let text = "";
+    for (const block of groupBlocks) {
+      text += insertedAfter(sourceCode, previous, block, blankLineAfter(sourceCode, block));
+      previous = block.lastToken;
+    }
+    result.push({ at, text });
+  }
+  return result;
+}
+
+/** One fix for the whole list: every function that has to move goes below its first caller, so one pass settles the list. */
+function listFix(list: List, units: Unit[]): Rule.ReportFixer | null {
+  const blocks = new Map<number, Block>();
+  for (const unit of units) {
+    const block = movableBlock(list, unit);
+    if (block) blocks.set(unit.index, block);
+  }
+  const settled = settle(list.graph.edges, units.map((unit) => unit.index), new Set(blocks.keys()));
+  const groups = settled && groupsAfterAnchors(settled.order, settled.moved);
+  const inserts = groups && insertions(list, groups, blocks);
+  if (!settled || !inserts) return null;
+  const removed = [...settled.moved].map((unit) => blocks.get(unit)!).sort((a, b) => a.range[0] - b.range[0]);
+  const { sourceCode } = list;
+  return (fixer) => [
+    ...mergeAdjacent(sourceCode, removed).flatMap((run) => removeBlock(fixer, sourceCode, run)),
+    ...inserts.map(({ at, text }) => fixer.insertTextAfterRange([at, at], text)),
+  ];
+}
+
+/** The list's statements as units: overload signatures belong to the implementation after them. */
+function unitsOf(statements: readonly Node[]): Unit[] {
+  const units: Unit[] = [];
+  statements.forEach((statement, index) => {
+    const declaration = unwrap(statement);
+    const name = declaredName(statement);
+    if (declaration.type === "FunctionDeclaration" && name) {
+      const start = overloadStart(statements, index, name);
+      units.splice(units.length - (index - start), index - start);
+      units.push({ start, index });
+    } else {
+      units.push({ start: index, index });
+    }
+  });
+  return units;
 }
 
 function memberName(member: ClassMember): string | null {
@@ -209,21 +315,24 @@ function checkClass(context: Rule.RuleContext, body: TSESTree.ClassBody, referen
 
 function checkList(context: Rule.RuleContext, statements: readonly Node[], container: Node): void {
   const sourceCode = context.sourceCode;
-  const { edges, variables } = listGraph(sourceCode, statements, container);
-  statements.forEach((statement, index) => {
-    const declaration = unwrap(statement);
-    if (declaration.type !== "FunctionDeclaration" || !declaration.id) return;
-    const caller = firstCaller(edges, index);
-    if (caller === null || caller < index) return;
-    const name = declaration.id.name;
-    const move: Move = { statements, container, start: overloadStart(statements, index, name), index, caller, variable: variables.get(index) };
+  const list: List = { sourceCode, statements, container, graph: listGraph(sourceCode, statements, container) };
+  const units = unitsOf(statements);
+  const reported = units.filter((unit) => {
+    const caller = unwrap(statements[unit.index]).type === "FunctionDeclaration" ? firstCaller(list.graph.edges, unit.index) : null;
+    return caller !== null && caller > unit.index;
+  });
+  if (reported.length === 0) return;
+  const fix = listFix(list, units);
+  for (const unit of reported) {
+    const declaration = unwrap(statements[unit.index]) as TSESTree.FunctionDeclaration;
+    const caller = firstCaller(list.graph.edges, unit.index) as number;
     context.report({
       node: declaration.id as never,
       messageId: "functionAboveCaller",
-      data: { name, caller: callerName(statements[caller]) },
-      fix: moveFix(sourceCode, move),
+      data: { name: declaration.id!.name, caller: callerName(statements[caller]) },
+      fix: fix && movableBlock(list, unit) ? fix : null,
     });
-  });
+  }
 }
 
 export default defineRule({

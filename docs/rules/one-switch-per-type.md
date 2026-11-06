@@ -14,7 +14,7 @@ Switch at most once on a class's own type code.
 
 ## What it reports
 
-The second and every later `switch`, within one class, on the same type code of the object itself. A type code is a member of `this` named `type`, `kind` or `typeCode`, or ending in `Type` or `Kind` (`this.type`, `this.shapeKind`, `this.#accountType`). That is the book's case: an object whose behaviour varies by a type field. The threshold is 1, the book's "at most, one for each switchable type".
+The second and every later `switch`, within one class, on the same type code of the object itself. A type code is a member of `this` named `type`, `kind` or `typeCode`, or ending in `Type` or `Kind` (`this.type`, `this.shapeKind`, `this.#accountType`), also when `this` is behind a type assertion or `!` (`(this as Shape).kind`). That is the book's case: an object whose behaviour varies by a type field. The threshold is 1, the book's "at most, one for each switchable type".
 
 `this` is followed as JavaScript binds it: a switch in an arrow function inside a method counts for the class, and one in a nested `function` does not. A static type code and an instance one are different members.
 

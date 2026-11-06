@@ -38,6 +38,10 @@ runRuleTests("no-command-query-mix", rule, {
       code: "class Person { name = ''; setName(n: string) { this.name = n; return this; } rename(n: string) { return this.setName(n) ? 1 : 0; } }",
     },
     {
+      name: "a fluent setter that returns `this as this` or `this!` is not a query",
+      code: "class P { name = ''; setA(n: string) { this.name = n; return this as this; } setB(n: string) { this.name = n; return this!; } f() { if (this.setA('x')) {} while (this.setB('y')) { break; } } }",
+    },
+    {
       name: "regression: Map.prototype.delete and Set.prototype.add used as conditions",
       code: "const seen = new Set<string>(); const cache = new Map<string, number>();\nif (cache.delete('a')) {}\nwhile (seen.add('b')) { break; }\nconst x = seen.add('c') ? 1 : 0;",
     },

@@ -94,6 +94,12 @@ runRuleTests("one-switch-per-type", rule, {
       output: null,
     },
     {
+      name: "`this` behind a type assertion or `!` is still the object itself",
+      code: "class A { kind = 1; f() { switch ((this as A).kind) {} } g() { switch (this!.kind) {} } }",
+      errors: [{ messageId: "secondSwitch", data: { className: "A", member: "kind", firstLine: "1" } }],
+      output: null,
+    },
+    {
       name: "a switch in a field initialiser's arrow function, and a cast discriminant",
       code: "class A { kind = 1; f = () => { switch (this.kind) {} }; g() { switch ((this.kind as number)) {} } }",
       errors: [{ messageId: "secondSwitch" }],

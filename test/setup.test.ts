@@ -38,6 +38,17 @@ describe("the README setup", () => {
     }
   });
 
+  it("ESLint: a CommonJS file is parsed as a script, so sloppy-mode code in it is not a parse error", async () => {
+    const plugin = (await import(packageName)).default as { configs: Record<string, Linter.Config[]> };
+    const work = workDirectory({ "legacy.cjs": "var package = 1;\nmodule.exports = { value: package + 010 };\n" });
+    try {
+      const eslintReports = await runEslint(work.dir, plugin.configs.recommended, false, ["**/*.cjs"]);
+      assert.deepEqual(eslintReports.flatMap((report) => report.rules.filter((rule) => rule.startsWith("fatal"))), []);
+    } finally {
+      work.dispose();
+    }
+  });
+
   it("Oxlint: recommended loads from the package through oxlint.config.ts and reports on JS, JSX, TS and TSX", () => {
     const work = workDirectory(FILES);
     try {

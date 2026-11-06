@@ -81,9 +81,9 @@ function oxlintRuleName(code: string): string {
 }
 
 /** Runs ESLint with `config` on every source file in `dir`. */
-export async function runEslint(dir: string, config: Linter.Config[], fix = false): Promise<Report[]> {
+export async function runEslint(dir: string, config: Linter.Config[], fix = false, patterns = ["**/*.{js,jsx,ts,tsx}"]): Promise<Report[]> {
   const eslint = new ESLint({ cwd: dir, overrideConfigFile: true, overrideConfig: config, fix });
-  const results = await eslint.lintFiles(["**/*.{js,jsx,ts,tsx}"]);
+  const results = await eslint.lintFiles(patterns);
   if (fix) await ESLint.outputFixes(results);
   return results.map((result) => ({ file: relative(dir, result.filePath), rules: result.messages.map((message) => message.ruleId ?? `fatal: ${message.message}`) }));
 }

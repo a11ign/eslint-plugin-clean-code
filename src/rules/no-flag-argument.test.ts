@@ -1,5 +1,14 @@
-import { runRuleTests } from "../testing/run-rule-tests.ts";
+import { runRuleTests, type InvalidCase } from "../testing/run-rule-tests.ts";
 import rule from "./no-flag-argument.ts";
+
+/**
+ * Every invalid case is an ES module with an `export`, which the fix requires (`isModule`), so that each no-fix case
+ * tests its own condition. The cases that test the module condition itself are left as they are.
+ */
+function inModule(testCase: InvalidCase): InvalidCase {
+  if (testCase.sourceType === "script" || testCase.name?.includes("no `import` or `export`")) return testCase;
+  return { ...testCase, code: `${testCase.code}\nexport {};`, output: testCase.output === null ? null : `${testCase.output}\nexport {};` };
+}
 
 /** Each fix case's code ends with `run(flag)`, which calls the function with `true`, `false`, the argument left out, and `flag`. */
 const flags = "[run(true), run(false), run(), run(undefined), run(0), run('yes')]";
@@ -18,6 +27,11 @@ runRuleTests("no-flag-argument", rule, {
     { name: "a `set` accessor in an object literal", code: "const lamp = { set lit(value: boolean) { this._lit = value; } };" },
     { name: "a fluent setter returns `this`", code: "class Builder { withDebug(debug: boolean) { this.debug = debug; return this; } }" },
     { name: "a fluent setter written as an arrow field", code: "class Builder { withDebug = (debug: boolean) => { this.debug = debug; return this; }; }" },
+    { name: "a fluent setter returning `this as this`", code: "class Builder { withDebug(debug: boolean) { this.debug = debug; return this as this; } }" },
+    { name: "a fluent setter returning `this satisfies Builder`", code: "class Builder { withDebug(debug: boolean) { this.debug = debug; return this satisfies Builder; } }" },
+    { name: "a fluent setter returning `this!` in parentheses", code: "class Builder { withDebug(debug: boolean) { this.debug = debug; return (this!); } }" },
+    { name: "a fluent setter returning `<this>this`", code: "class Builder { withDebug(debug: boolean) { this.debug = debug; return <this>this; } }" },
+    { name: "a fluent arrow field whose body is `this as this`", code: "class Builder { withDebug = (debug: boolean) => (this.debug = debug, this as this); }" },
     { name: "a callback written as a call argument", code: "items.forEach((item, skip: boolean) => use(item, skip));" },
     { name: "a callback written as a `new` argument", code: "new Watcher(function (changed: boolean) { log(changed); });" },
     { name: "a callback written as a JSX attribute", code: "const view = <Toggle onToggle={(open: boolean) => setOpen(open)} />;", filename: "file.tsx" },
@@ -26,7 +40,8 @@ runRuleTests("no-flag-argument", rule, {
     { name: "an overload signature alone is not reported, only the implementation", code: "declare function f(verbose: boolean): void;" },
     { name: "an interface method is a type, not a function", code: "interface Switchable { toggle(on: boolean): void; }" },
   ],
-  invalid: [
+  invalid: (
+    [
     {
       name: "a boolean default value becomes an options property with the same default (JavaScript)",
       code: `${greet}${greetRun}`,
@@ -36,9 +51,9 @@ runRuleTests("no-flag-argument", rule, {
       behaviour: flags,
     },
     {
-      name: "a `boolean` annotation: a call that leaves the argument out still gets `undefined`",
+      name: "a `boolean` annotation that every call passes",
       code: "function label(text: string, upper: boolean): string {\n  return upper ? text.toUpperCase() : `${text}:${upper}`;\n}\nconst run = (flag?: unknown) => [label('a', true), label('b', false), label('c', flag as boolean)];",
-      output: "function label(text: string, { upper }: { upper?: boolean } = {}): string {\n  return upper ? text.toUpperCase() : `${text}:${upper}`;\n}\nconst run = (flag?: unknown) => [label('a', { upper: true }), label('b', { upper: false }), label('c', { upper: flag as boolean })];",
+      output: "function label(text: string, { upper }: { upper: boolean }): string {\n  return upper ? text.toUpperCase() : `${text}:${upper}`;\n}\nconst run = (flag?: unknown) => [label('a', { upper: true }), label('b', { upper: false }), label('c', { upper: flag as boolean })];",
       errors: 1,
       behaviour: flags,
     },
@@ -113,7 +128,7 @@ runRuleTests("no-flag-argument", rule, {
     {
       name: "two flags: the last is fixed, the other is reported without a fix",
       code: "function f(a: boolean, b: boolean) {\n  return [a, b];\n}\nconst run = (flag?: unknown) => [f(true, false), f(false, true), f(flag as boolean, flag as boolean)];",
-      output: "function f(a: boolean, { b }: { b?: boolean } = {}) {\n  return [a, b];\n}\nconst run = (flag?: unknown) => [f(true, { b: false }), f(false, { b: true }), f(flag as boolean, { b: flag as boolean })];",
+      output: "function f(a: boolean, { b }: { b: boolean }) {\n  return [a, b];\n}\nconst run = (flag?: unknown) => [f(true, { b: false }), f(false, { b: true }), f(flag as boolean, { b: flag as boolean })];",
       errors: [{ messageId: "flagArgument", data: { name: "a", function: "f" } }, { messageId: "flagArgument", data: { name: "b", function: "f" } }],
       outputErrors: [{ messageId: "flagArgument", data: { name: "a", function: "f" } }],
       behaviour: flags,
@@ -126,6 +141,25 @@ runRuleTests("no-flag-argument", rule, {
       errors: 1,
       behaviour: flags,
     },
+    {
+      name: "a required `boolean` stays required, so the body still sees a `boolean`",
+      code: "function label(text: string, upper: boolean): string {\n  const flag: boolean = upper;\n  return flag ? text.toUpperCase() : upper.toString();\n}\nconst run = (flag?: unknown) => [label('a', true), label('b', false), label('c', flag as boolean)];",
+      output: "function label(text: string, { upper }: { upper: boolean }): string {\n  const flag: boolean = upper;\n  return flag ? text.toUpperCase() : upper.toString();\n}\nconst run = (flag?: unknown) => [label('a', { upper: true }), label('b', { upper: false }), label('c', { upper: flag as boolean })];",
+      errors: 1,
+      behaviour: "[run(true), run(false), run(0), run('yes')]",
+    },
+    { name: "no fix: a required `boolean` that a call leaves out, which would then throw on destructuring", code: "function label(text: string, upper: boolean) { return [text, upper]; }\nlabel('a');\nlabel('b', true);", errors: 1, output: null },
+    { name: "no fix: no `import` or `export`, so the file may be a classic script", code: "function f(n, verbose = false) { return verbose; }\nf(1, true);", errors: 1, output: null },
+    {
+      name: "no fix: another declaration in the scope has the same name, so a call may reach it instead",
+      code: "function outer() {\n  function pick(a, b = false) { return b ? 'yes' : 'no'; }\n  function pick(a, b) { return b ? 'second-yes' : 'second-no'; }\n  return [pick(1, true), pick(1, false)];\n}",
+      filename: "file.js",
+      errors: 1,
+      output: null,
+    },
+    { name: "no fix: a namespace merges with the function", code: "function pick(a: number, b?: boolean) { return b; }\ndeclare namespace pick { const x: number; }\npick(1, true);", errors: 1, output: null },
+    { name: "no fix: a direct `eval` in the function can read `arguments`", code: "function pick(a, b = false) { return eval('arguments[1]'); }\npick(1, true);", errors: 1, output: null },
+    { name: "no fix: a direct `eval` elsewhere in the file can call the function", code: "function pick(a, b = false) { return b; }\npick(1, true);\neval('pick(1, true)');", errors: 1, output: null },
     { name: "no fix: a method, whose overrides in other files would still receive a boolean", code: "class Report { print(verbose: boolean) { return verbose; } }", errors: 1, output: null },
     { name: "no fix: a constructor", code: "class Report { constructor(verbose: boolean) { this.verbose = verbose; } }", errors: 1, output: null },
     { name: "no fix: an object method", code: "const report = { print(verbose = false) { return verbose; } };\nreport.print(true);", errors: 1, output: null },
@@ -151,5 +185,6 @@ runRuleTests("no-flag-argument", rule, {
       errors: 1,
       output: null,
     },
-  ],
+    ] satisfies InvalidCase[]
+  ).map(inModule),
 });

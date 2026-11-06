@@ -11,14 +11,35 @@ interface Run {
   end: number;
 }
 
-/** The runs of one punctuation character in `text` at least `length` long, except arrows (`----->`, `<-----`). */
+/** Box-drawing characters (U+2500 to U+257F): the line is part of a diagram. */
+const BOX_DRAWING = /[\u2500-\u257f]/;
+const DIAGRAM_EDGE = new Set(["+", "|"]);
+
+/** Whether the line is part of an ASCII or box-drawing diagram: it starts or ends with `+` or `|`, or draws boxes. */
+function isDiagramLine(text: string): boolean {
+  const trimmed = text.trim();
+  return BOX_DRAWING.test(trimmed) || DIAGRAM_EDGE.has(trimmed[0]) || DIAGRAM_EDGE.has(trimmed.at(-1)!);
+}
+
+/**
+ * Whether a run is not a banner: an arrow (`----->`, `<-----`), the edge of a diagram box (`+-----+`, `|=====|`), or
+ * part of a longer token such as a URL or base64 (`eyJ2/////ZXJz`), with other characters right on both sides of it.
+ */
+function isNotBanner(text: string, start: number, end: number): boolean {
+  const before = text[start - 1];
+  const after = text[end];
+  if (after === ">" || before === "<" || DIAGRAM_EDGE.has(before) || DIAGRAM_EDGE.has(after)) return true;
+  return before !== undefined && after !== undefined && /\S/.test(before) && /\S/.test(after);
+}
+
+/** The runs of one punctuation character in `text` at least `length` long that are banners. */
 function runsIn(text: string, length: number): Run[] {
+  if (isDiagramLine(text)) return [];
   const runs: Run[] = [];
   for (let start = 0; start < text.length; ) {
     let end = start + 1;
     if (RUN_CHARACTERS.has(text[start])) while (text[end] === text[start]) end += 1;
-    const arrow = text[end] === ">" || text[start - 1] === "<";
-    if (RUN_CHARACTERS.has(text[start]) && end - start >= length && !arrow) runs.push({ start, end });
+    if (RUN_CHARACTERS.has(text[start]) && end - start >= length && !isNotBanner(text, start, end)) runs.push({ start, end });
     start = end;
   }
   return runs;

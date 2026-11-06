@@ -7,7 +7,6 @@ import { lineBreakOf, replaceCommentText, sourceComments } from "../lib/comment-
 /** The formatting tags CMT-09 names, in lower case only: `<T>` and `<B>` are type parameters, not HTML. */
 const TAG = /<\/?(?:p|br|pre|code|b|i|em|strong|tt|ul|ol|li)(?:\s[^<>]*)?\/?>/g;
 const ENTITY = /&(?:lt|gt|amp|quot|#39|nbsp);/g;
-const HTML = new RegExp(`${TAG.source}|${ENTITY.source}`, "g");
 /** Tags that break a line or a block: removing one between two words leaves a space. */
 const BLOCK_TAG = /^<\/?(?:p|br|pre|ul|ol|li)\b/;
 const DECODED: Record<string, string> = { "&lt;": "<", "&gt;": ">", "&amp;": "&", "&quot;": '"', "&#39;": "'", "&nbsp;": " " };
@@ -21,11 +20,47 @@ function codeRanges(value: string): [number, number][] {
   return ranges;
 }
 
-/** The HTML tags and entities of `value` outside its code. */
+/** A capitalised element (`<List>`, `<Foo.Bar `): the line is a JSX example, so its tags and entities are JSX. */
+const JSX_ELEMENT = /<\p{Lu}[\w.]*[\s/>]/u;
+
+function onJsxLine(value: string, index: number): boolean {
+  const start = value.lastIndexOf("\n", index) + 1;
+  const end = value.indexOf("\n", index);
+  return JSX_ELEMENT.test(value.slice(start, end === -1 ? value.length : end));
+}
+
+/**
+ * The formatting tags among `tags`: each opening tag with its matching closing tag (`<b>…</b>`, `<pre>…</pre>`), and the
+ * tags that stand alone in HTML (`<br>`, `<p>`). A tag named in prose (`an <li>`) has no closing tag and is left alone.
+ */
+function formattingTags(tags: RegExpExecArray[]): RegExpExecArray[] {
+  const formatting = new Set<RegExpExecArray>();
+  const open = new Map<string, RegExpExecArray[]>();
+  for (const tag of tags) {
+    const name = /^<\/?(\w+)/.exec(tag[0])![1];
+    const closing = tag[0].startsWith("</");
+    if (name === "br" || (name === "p" && !closing)) formatting.add(tag);
+    if (closing) {
+      const opening = open.get(name)?.pop();
+      if (opening) formatting.add(opening).add(tag);
+    } else if (!tag[0].endsWith("/>")) {
+      open.set(name, [...(open.get(name) ?? []), tag]);
+    }
+  }
+  return tags.filter((tag) => formatting.has(tag));
+}
+
+/** The HTML formatting tags and the entities of `value`, outside its code and its JSX examples, in order. */
 function htmlIn(value: string): RegExpExecArray[] {
   const code = codeRanges(value);
-  return [...value.matchAll(HTML)].filter((match) => !code.some(([start, end]) => match.index >= start && match.index < end));
+  const outside = (match: RegExpExecArray) => !code.some(([start, end]) => match.index >= start && match.index < end) && !onJsxLine(value, match.index);
+  const tags = formattingTags([...value.matchAll(TAG)].filter(outside));
+  const entities = [...value.matchAll(ENTITY)].filter(outside);
+  return [...tags, ...entities].sort((left, right) => left.index - right.index);
 }
+
+/** Every tag-shaped text in `value`, formatting or not, to tell whether decoding an entity made a new one. */
+const tagCount = (value: string) => [...value.matchAll(TAG)].length;
 
 function replacement(value: string, match: RegExpExecArray): string {
   const html = match[0];
@@ -73,8 +108,9 @@ export default defineRule({
           const found = htmlIn(comment.value);
           if (found.length === 0) continue;
           const value = plainText(comment, found);
-          // One level at a time: when the decoded text is HTML again (`&amp;lt;`, `&lt;b&gt;`), a second pass would change it again.
-          const fixable = htmlIn(value).length === 0;
+          // One level at a time: no fix when the decoded text is HTML again (`&amp;lt;`) or holds a new tag (`&lt;b&gt;`).
+          const removedTags = found.filter((match) => match[0].startsWith("<")).length;
+          const fixable = htmlIn(value).length === 0 && tagCount(value) === tagCount(comment.value) - removedTags;
           context.report({
             loc: comment.loc!,
             messageId: "html",

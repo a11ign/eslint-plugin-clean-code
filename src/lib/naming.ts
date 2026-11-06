@@ -4,7 +4,7 @@
  * deciding when a rename is safe.
  */
 import type { Rule, Scope, SourceCode } from "eslint";
-import { asTs, isFunction, type FunctionNode, type Node, type TSESTree } from "./ast.ts";
+import { asTs, isFunction, type FunctionNode, type Node } from "./ast.ts";
 
 export type ScopeT = Scope.Scope;
 export type VariableT = Scope.Variable;
@@ -148,16 +148,8 @@ export function isAmbient(node: Node, filename: string): boolean {
   return false;
 }
 
-/**
- * Whether the file is an ES module by its configuration and by its syntax: parsed with `sourceType: "module"` and holding
- * an `import` or `export`. TypeScript treats a file without either as a script whose top-level names are global, so a
- * rename there could break another file.
- */
-export function isEsModuleFile(sourceCode: SourceCode): boolean {
-  const program = asTs<TSESTree.Program>(sourceCode.ast);
-  if (program.sourceType !== "module") return false;
-  return program.body.some((statement) => /^(Import|Export|TSImportEquals|TSExportAssignment)/.test(statement.type));
-}
+/** The shared module test (see `isModule`), under the name the naming rules use. */
+export { isModule as isEsModuleFile } from "./ast.ts";
 
 /** Whether `identifier` is the name in an `import` or `export` specifier, `export default`, `export =` or `import x =`. */
 export function isInImportOrExport(identifier: Node): boolean {

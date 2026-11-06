@@ -3,6 +3,12 @@ import rule from "./no-position-markers.ts";
 
 runRuleTests("no-position-markers", rule, {
   valid: [
+    { name: "a run between two other characters is part of a token, so `*=====/` is never joined into `*/`", code: "/* a *=====/ b */\nexport const h = 9;" },
+    { name: "review: an ASCII box diagram", code: "// +--------+     +--------+\n// | parser | --> | linter |\n// +--------+     +--------+\nexport const pipeline = 2;" },
+    { name: "review: a box-drawing diagram", code: "// \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n// \u2502 node \u2502\n// \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2518\n// |=======|\nexport const box = 1;" },
+    { name: "review: a run inside a base64 token", code: "// data: eyJ2/////ZXJzaW9uIjozfQ==\nexport const map = 1;" },
+    { name: "review: an inline source map is a directive", code: "export const a = 1;\n//# sourceMappingURL=data:application/json;base64,eyJ2/////ZXJz\n" },
+    { name: "review: a sourceURL and an old-style source map are directives", code: "export const a = 1;\n//# sourceURL=a-----b.js\n//@ sourceMappingURL=x=====y.map\n" },
     { name: "a legal header (CMT-02)", code: "/*\n * Copyright (c) 2024 Acme Corp. All rights reserved.\n * Licensed under the Apache License, Version 2.0.\n */\nexport const a = 1;" },
     { name: "a regular-expression explanation (CMT-02)", code: "// Matches a rule line such as `----` or `====`: four or more of one character.\nconst rule = /^(-{4,}|={4,})$/;" },
     { name: "a \"why\" comment (CMT-02)", code: "// We retry once because the first request after a deploy is dropped by the proxy.\nretry(send);" },
@@ -108,13 +114,6 @@ runRuleTests("no-position-markers", rule, {
       output: "// setup\nexport const g = 8;",
       errors: 1,
       behaviour: "g",
-    },
-    {
-      name: "a run between `*` and `/` leaves a space, so the comment cannot end early",
-      code: "/* a *=====/ b */\nexport const h = 9;",
-      output: "/* a * / b */\nexport const h = 9;",
-      errors: 1,
-      behaviour: "h",
     },
   ],
 });

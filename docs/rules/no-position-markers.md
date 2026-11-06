@@ -20,9 +20,11 @@ These are not runs:
 
 - JSDoc's opening `/**`: the `*` after `/*` never counts, so `/*****` is a run of 4,
 - an arrow: a run followed by `>` or preceded by `<` (`[A] -----> [B]`, `<=====`),
+- part of a diagram: a run next to `+` or `|` (`+--------+`, `|=====|`), and any run on a line that starts or ends with `+` or `|` or that has box-drawing characters (U+2500 to U+257F),
+- part of a longer token, such as a URL or base64 text (`eyJ2/////ZXJz`): a run with other characters right on both sides of it,
 - in a doc comment, a line made only of a run that directly underlines a line of text (a Markdown heading), and a Markdown table rule (`| ----- | ----- |`) under a table row.
 
-Directive comments (`/*! … */`, `@license` and the others) are not reported, because no fix may change them.
+Directive comments (`/*! … */`, `@license`, `//# sourceMappingURL=`, `//# sourceURL=` and the others) are not reported, because no fix may change them; an inline source map is base64 and often has runs of `/`.
 
 ## Examples
 
@@ -60,4 +62,4 @@ The shortest run that counts, `5` by default:
 
 The fix removes each run and the blank space around it, keeping one space between text on both sides and between text and the comment's delimiters (`/********** Section **********/` becomes `/* Section */`). A line left with no text is removed. When the comment then has no text at all, the fix deletes it, following the catalog's "How fixes stay safe": a comment alone on its lines goes with them, so a `;[1, 2]` line after it keeps its `;`; a block comment between `return` and its value becomes a line break; and `return/*=====*/value` becomes `return value`.
 
-It does not apply when the new text would change what the comment is: end it early (`*/`), turn a plain block comment into a doc comment (`/**`), turn a line comment into a triple-slash directive, or make it a directive comment. Because a space is kept between text on both sides of a run, `*=====/` becomes `* /`, not `*/`.
+It does not apply when the new text would change what the comment is: end it early (`*/`), turn a plain block comment into a doc comment (`/**`), turn a line comment into a triple-slash directive, or make it a directive comment. A run with other characters right on both sides (`*=====/`) is not counted, so no fix can join `*` and `/`.

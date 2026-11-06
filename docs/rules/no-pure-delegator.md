@@ -63,7 +63,10 @@ The fix does not apply, and the rule reports without fixing, when:
 - `g` is not a function declaration, or is reassigned. A `const` function is not hoisted, so calling it before its declaration would throw before the arguments are evaluated instead of after;
 - the delegator or its call has type parameters or type arguments;
 - the delegator is overloaded;
-- the delegator is a top-level function of a script, which other scripts may call;
+- the delegator is a top-level function of a script, which other scripts may call, or the file has no `import` or `export`, so it may be a classic script;
+- the delegator's parameters have type annotations and a call passes an arrow function, a function expression, an object literal or an array literal (also as a branch of `?:`, `&&`, `||` or `??`). Such an argument takes its type from the delegator's parameter, and passed to `g` it would be typed by `g`'s parameter instead, which can fail to type-check (an arrow's parameter becomes an implicit `any`, TS7006);
+- another declaration in the same scope has the delegator's name, so a call may reach it instead;
+- the file has a direct `eval(…)` call, which could call the delegator by name;
 - a directive comment (`eslint-disable`, `@ts-…` and the rest) is inside the delegator or directly above it.
 
 The delegator cannot use `this` or `arguments`: its body is one call whose callee and arguments are plain names.

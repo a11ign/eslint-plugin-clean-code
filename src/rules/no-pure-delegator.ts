@@ -2,7 +2,7 @@ import type { Rule, Scope, SourceCode } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs, isModule, type Comment, type Node, type TSESTree } from "../lib/ast.ts";
 import { isDirectiveComment, isDocComment, removeRange } from "../lib/safe-fix.ts";
-import { directCall, hasSpread, isExported, nameVariable, overloadSignatures, resolveAt } from "../lib/functions.ts";
+import { directCall, hasOtherDeclarations, hasSpread, isDirectEval, isExported, nameVariable, overloadSignatures, resolveAt } from "../lib/functions.ts";
 
 type Parameter = TSESTree.Parameter;
 
@@ -84,10 +84,35 @@ function isStableTarget(target: Scope.Variable): boolean {
   return target.defs[0].type === "FunctionName" && !target.references.some((reference) => reference.isWrite());
 }
 
+/**
+ * Whether an argument takes its type from the parameter it is passed to: a function, an object or an array literal, also
+ * as a branch of `?:`, `&&`, `||` or `??` or the last expression of a sequence. Passed to `g` instead, it would be typed
+ * by `g`'s parameter, and an arrow's `value` could become an implicit `any` (TS7006).
+ */
+function isContextuallyTyped(argument: Node): boolean {
+  switch (argument.type) {
+    case "ArrowFunctionExpression":
+    case "FunctionExpression":
+    case "ObjectExpression":
+    case "ArrayExpression":
+      return true;
+    case "ConditionalExpression":
+      return isContextuallyTyped(argument.consequent) || isContextuallyTyped(argument.alternate);
+    case "LogicalExpression":
+      return isContextuallyTyped(argument.left) || isContextuallyTyped(argument.right);
+    case "SequenceExpression":
+      return isContextuallyTyped(argument.expressions.at(-1) as Node);
+    default:
+      return false;
+  }
+}
+
 /** Whether a reference to the delegator can call the target instead and do the same thing. */
 function canRedirect(sourceCode: SourceCode, { fn, returns, target }: Delegation, reference: Scope.Reference): boolean {
   const site = directCall(reference.identifier as Node);
   if (!site || hasSpread(site) || site.arguments.length !== fn.params.length || site.typeArguments) return false;
+  const annotated = fn.params.some((parameter) => parameter.type === "Identifier" && parameter.typeAnnotation);
+  if (annotated && site.arguments.some((argument) => isContextuallyTyped(argument))) return false;
   if (resolveAt(sourceCode, site, target.name) !== target) return false;
   const statement = site.parent?.type === "ChainExpression" ? site.parent.parent : site.parent;
   return returns || statement?.type === "ExpressionStatement";
@@ -95,7 +120,7 @@ function canRedirect(sourceCode: SourceCode, { fn, returns, target }: Delegation
 
 /** Whether every condition of the catalog's fix holds (ONE-02). */
 function canFix(sourceCode: SourceCode, delegation: Delegation, self: Scope.Variable): boolean {
-  if (!canRemoveDelegator(sourceCode, delegation) || !isStableTarget(delegation.target)) return false;
+  if (!canRemoveDelegator(sourceCode, delegation) || !isStableTarget(delegation.target) || hasOtherDeclarations(self)) return false;
   return self.references.every((reference) => canRedirect(sourceCode, delegation, reference));
 }
 
@@ -127,7 +152,24 @@ export default defineRule({
   },
   create(context) {
     const sourceCode = context.sourceCode;
+    const found: Array<{ delegation: Delegation; self: Scope.Variable }> = [];
+    let hasDirectEval = false;
     return {
+      CallExpression(node) {
+        if (isDirectEval(node as TSESTree.CallExpression)) hasDirectEval = true;
+      },
+      // Reported at the end, once the whole file is known: a direct `eval` anywhere can call the delegator by name.
+      "Program:exit"() {
+        for (const { delegation, self } of found) {
+          const fix = hasDirectEval ? null : fixFor(sourceCode, delegation, self);
+          context.report({
+            node: delegation.fn.id as never,
+            messageId: "pureDelegator",
+            data: { name: self.name, target: delegation.target.name },
+            ...(fix ? { fix } : {}),
+          });
+        }
+      },
       FunctionDeclaration(node) {
         const fn = asTs<TSESTree.FunctionDeclaration>(node);
         if (!fn.id || isExported(sourceCode, fn)) return;
@@ -137,13 +179,7 @@ export default defineRule({
         const self = nameVariable(sourceCode, fn);
         const target = resolveAt(sourceCode, delegated.call, delegated.call.callee.name);
         if (!self || !target || target === self || !declaredFunction(target)) return;
-        const fix = fixFor(sourceCode, { fn, ...delegated, target }, self);
-        context.report({
-          node: fn.id as never,
-          messageId: "pureDelegator",
-          data: { name: fn.id.name, target: target.name },
-          ...(fix ? { fix } : {}),
-        });
+        found.push({ delegation: { fn, ...delegated, target }, self });
       },
     };
   },

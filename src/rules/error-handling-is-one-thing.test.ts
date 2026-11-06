@@ -11,6 +11,11 @@ runRuleTests("error-handling-is-one-thing", rule, {
     { name: "a `finally` block ends the function", code: "const f = () => { try { work(); } finally { close(); } };" },
     { name: "a directive before the `try` is not a statement", code: "function f() { 'use strict'; try { work(); } catch (e) { log(e); } }", sourceType: "script" },
     { name: "TypeScript type declarations do nothing at run time", code: "function f() { type R = number; try { work(); } catch (e) { log(e); } }" },
+    {
+      name: "a function declaration after the `try` is hoisted and does not run there",
+      code: "function total(values) {\n  try {\n    return values.reduce(add, 0);\n  } catch {\n    return 0;\n  }\n  function add(sum, value) {\n    return sum + value;\n  }\n}",
+    },
+    { name: "TypeScript type declarations after the `try`", code: "function f() { try { work(); } catch (e) { log(e); } type R = number; interface S { r: R; } }" },
     { name: "a function without `try`", code: "function f() { a(); b(); }" },
     { name: "a `try` that is not at the top level of the body is not this rule's", code: "function f() { if (x) { try { work(); } catch (e) { log(e); } } after(); }" },
     { name: "a `try` in a function inside a `catch` is that function's own", code: "function f() { try { work(); } catch (e) { retry(() => { try { again(); } catch (f) { log(f); } }); } }" },

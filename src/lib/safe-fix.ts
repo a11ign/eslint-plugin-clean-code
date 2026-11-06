@@ -14,14 +14,20 @@ type Range = [number, number];
 const CONTINUING_START = /^[([`+\-/*]/;
 
 /**
- * Whether `next`, placed directly after `previous`, would be read as part of `previous`'s statement. Only a `;` or a
- * `{` before it, or nothing at all, makes the start of `next` the start of a new statement for certain.
+ * Binary operators spelled as words. No statement starts with one, but in a class body a member can be named `in` or
+ * `instanceof`, and after a field without `;` (`x = 2` then `in() {}`) it continues the field's initializer.
+ */
+const CONTINUING_WORD = new Set(["in", "instanceof"]);
+
+/**
+ * Whether `next`, placed directly after `previous`, would be read as part of `previous`'s statement (or class field).
+ * Only a `;` or a `{` before it, or nothing at all, makes the start of `next` the start of a new statement for certain.
  */
 export function continuesStatement(previous: Token | Comment | null, next: Token | Comment | null): boolean {
   if (!previous || !next) return false;
   if (previous.type === "Punctuator" && (previous.value === ";" || previous.value === "{")) return false;
   if (next.type === "Template" || next.type === "RegularExpression") return true;
-  return CONTINUING_START.test(next.value);
+  return CONTINUING_START.test(next.value) || CONTINUING_WORD.has(next.value);
 }
 
 /** `";"` when removing `range` would let the code after it continue the statement before it, else `""`. */
@@ -106,6 +112,9 @@ const DIRECTIVE = [
   /^\s*(istanbul|c8|v8|node:coverage)\s+(ignore|disable|enable)\b/,
   /^\s*(biome-ignore|deno-lint-ignore|deno-fmt-ignore|dprint-ignore)\b/,
   /^\s*#(region|endregion)\b/,
+  /^[#@]\s*source(Mapping)?URL=/,
+  /^\s*language=/,
+  /^\s*noinspection\b/,
 ];
 
 /** Whether a comment is read by a tool (a linter, a compiler, a bundler or a formatter), so no fix may change or remove it. */

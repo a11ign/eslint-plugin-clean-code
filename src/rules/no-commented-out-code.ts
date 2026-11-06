@@ -39,13 +39,25 @@ function hasCall(node: unknown): boolean {
   return Object.entries(node).some(([key, value]) => key !== "tokens" && key !== "loc" && hasCall(value));
 }
 
+/** Words that introduce an example in prose: `e.g. parse("a=b")` reads as `e.g.parse(…)` but is a sentence. */
+const PROSE_START = /^\s*(?:e\.g\.|i\.e\.|eg:|ex:|example:|usage:)/i;
+
+const COMPARISON = new Set(["==", "!=", "===", "!==", "<", ">", "<=", ">="]);
+
+/** A single comparison (`sum(1, 2) === 3`) states a fact about the code; nobody comments out a statement with no effect. */
+function isClaim(statements: SyntaxNode[]): boolean {
+  if (statements.length !== 1 || statements[0].type !== "ExpressionStatement") return false;
+  const expression = statements[0].expression as SyntaxNode;
+  return expression.type === "BinaryExpression" && COMPARISON.has(expression.operator as string);
+}
+
 /** Whether `text` is JavaScript statements with code syntax, and does not start with a label (so `Note: call(x)` is prose). */
 function isCode(text: string): boolean {
-  if (text.trim() === "") return false;
+  if (text.trim() === "" || PROSE_START.test(text)) return false;
   const parsed = parse(text);
   if (!parsed) return false;
   const statements = (parsed.program.body as SyntaxNode[]).filter((statement) => statement.type !== "EmptyStatement");
-  if (statements.length === 0 || statements[0].type === "LabeledStatement") return false;
+  if (statements.length === 0 || statements[0].type === "LabeledStatement" || isClaim(statements)) return false;
   return parsed.tokens.some((token) => token.type === "Punctuator" && CODE_PUNCTUATION.test(token.value)) || hasCall(parsed.program);
 }
 

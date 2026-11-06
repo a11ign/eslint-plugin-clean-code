@@ -16,8 +16,8 @@ A class is either an object (hidden data, public behaviour) or a data structure 
 
 A class that has both a public mutable field and a method with behaviour. The book's convention is: "data structures had public variables and no functions, whereas objects had private variables and public functions".
 
-- A public mutable field is an instance field declaration, a TypeScript `public` parameter property, or a `this.x =` assignment in the constructor to a field the class does not declare, without `private`, `#`, `protected` or `readonly`.
-- A method has behaviour unless it is the constructor, a `get` or `set` accessor, or a method whose every `return` returns `this`. A method with no `return` has behaviour. A field initialised with a function counts as a method.
+- A public mutable field is an instance field declaration, a TypeScript `public` parameter property, or a `this.x =` (or `(this as T).x =`) assignment in the constructor to a field the class does not declare, without `private`, `#`, `protected` or `readonly`. A `declare` field is not one: it only gives a type, and creates nothing at run time.
+- A method has behaviour unless it is the constructor, a `get` or `set` accessor, or a method whose every `return` returns `this`, including through a type assertion, `satisfies` or `!` (`return this as this`). A method with no `return` has behaviour. A field initialised with a function counts as a method.
 
 It does not report:
 

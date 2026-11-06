@@ -29,6 +29,13 @@ runRuleTests("loop-variable-in-loop", rule, {
       behaviour: lengths,
     },
     {
+      name: "a definite-assignment `!` is dropped, since `for (let j!: number = 0; …)` does not parse",
+      code: "export function f(n: number): number[] {\n  const out: number[] = []\n  let j!: number\n  for (j = 0; j < n; j++) out.push(j)\n  return out\n}\n",
+      output: "export function f(n: number): number[] {\n  const out: number[] = []\n  for (let j: number = 0; j < n; j++) out.push(j)\n  return out\n}\n",
+      errors: report,
+      behaviour: lengths,
+    },
+    {
       name: "regression row 3: a `;[1, 2].forEach(g)` line after the loop keeps its `;`",
       code: "function f(n) {\n  const seen = []\n  const g = (x) => seen.push(x)\n  let i\n  for (i = 0; i < n; i++) g(i)\n  ;[1, 2].forEach(g)\n  return seen\n}\n",
       output: "function f(n) {\n  const seen = []\n  const g = (x) => seen.push(x)\n  for (let i = 0; i < n; i++) g(i)\n  ;[1, 2].forEach(g)\n  return seen\n}\n",

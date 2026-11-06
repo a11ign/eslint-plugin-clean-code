@@ -16,12 +16,14 @@ Write comments as plain text, without HTML tags or entities.
 
 In any comment:
 
-- the formatting tags `p`, `br`, `pre`, `code`, `b`, `i`, `em`, `strong`, `tt`, `ul`, `ol` and `li`, opening, closing or self-closing, with or without attributes,
+- formatting markup made of the tags `p`, `br`, `pre`, `code`, `b`, `i`, `em`, `strong`, `tt`, `ul`, `ol` and `li`, with or without attributes: an opening tag with its matching closing tag (`<b>…</b>`, `<pre>…</pre>`, which may span lines), and the tags that stand alone in HTML (`<br>`, `<br/>`, `<p>`, `<p/>`),
 - the entities `&lt;`, `&gt;`, `&amp;`, `&quot;`, `&#39;` and `&nbsp;`.
 
 It does not report:
 
-- other angle-bracket text, such as a JSX example (`<Button onClick={go}>`) or a comparison,
+- a tag named in prose, with no closing tag (`Wraps each item in an <li> so the list stays valid HTML.`),
+- anything on a line that holds a JSX example: a capitalised element (`<List><b>Bold</b></List>`, `<Button onClick={go}>`) makes the whole line JSX, entities included,
+- other angle-bracket text, such as a comparison,
 - tags in upper case: `<T>`, `<B>`, `<I>` and `<P>` are type parameters (`Map<K, V>`, `List<I>`), not HTML,
 - HTML inside code: an `@example` section, a fenced code block (```` ``` ````) or a backtick span (`` `<b>` ``),
 - a bare `&` (`R&D`, `a && b`),
@@ -55,5 +57,5 @@ The fix removes the tags, keeping the text between them, and decodes the entitie
 
 It works one level at a time, and does not apply, so the rule reports without a fix, when:
 
-- the decoded text would be HTML again: a double-escaped entity (`&amp;lt;`) or an escaped tag (`&lt;b&gt;`). A second `--fix` would decode it again, and an escaped tag is often meant to be read as text,
+- the decoded text would be HTML again: a double-escaped entity (`&amp;lt;`) or an escaped tag (`&lt;b&gt;`), even one that would not be reported. A second `--fix` would decode it again, and an escaped tag is often meant to be read as text,
 - the new text would end the comment early (`*/`) or change what kind of comment it is (a doc comment, a directive).

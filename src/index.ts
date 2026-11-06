@@ -2,7 +2,7 @@
  * The ESLint plugin: its rules and its two flat configs.
  *
  * - `recommended`: every custom rule that needs only syntax, and the built-in rules the catalog maps to the book, for
- *   JavaScript, TypeScript, JSX and TSX. It parses with typescript-eslint's parser.
+ *   JavaScript, TypeScript, JSX and TSX. TypeScript files are parsed with typescript-eslint's parser, JavaScript with ESLint's own.
  * - `recommended-type-checked`: `recommended`, plus the rules that need type information, with typescript-eslint's
  *   `projectService` turned on.
  */
@@ -19,14 +19,16 @@ const recommended: Linter.Config[] = [
     name: `${PLUGIN_PREFIX}/recommended`,
     files: ALL_FILES,
     plugins: { [PLUGIN_PREFIX]: plugin as unknown as ESLint.Plugin, "@typescript-eslint": tseslint.plugin as unknown as ESLint.Plugin },
-    languageOptions: {
-      parser: tseslint.parser as Linter.Parser,
-      sourceType: "module",
-      parserOptions: { ecmaFeatures: { jsx: true } },
-    },
+    // JavaScript keeps ESLint's own parser, which reads sloppy-mode code in a CommonJS file as ESLint's defaults say; JSX is on for every file.
+    languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
     rules: { ...BUILT_IN_RULES, ...JS_UNUSED_VARS, ...TYPESCRIPT_ESLINT_RULES, ...prefixed(SYNTAX_RULES) } as unknown as Linter.RulesRecord,
   },
-  { name: `${PLUGIN_PREFIX}/recommended/typescript`, files: TS_FILES, rules: TS_UNUSED_VARS as unknown as Linter.RulesRecord },
+  {
+    name: `${PLUGIN_PREFIX}/recommended/typescript`,
+    files: TS_FILES,
+    languageOptions: { parser: tseslint.parser as Linter.Parser },
+    rules: TS_UNUSED_VARS as unknown as Linter.RulesRecord,
+  },
   { name: `${PLUGIN_PREFIX}/recommended/tests`, files: TEST_FILES, rules: { ...TEST_FILE_OFF, ...prefixed(TEST_FILE_RULES) } },
 ];
 

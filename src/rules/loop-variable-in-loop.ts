@@ -67,7 +67,9 @@ function moveFix(sourceCode: SourceCode, candidate: Candidate): Rule.ReportFixer
   const next = sourceCode.getTokenAfter(declaration as never) as Token;
   const sameLine = next.loc.start.line === declaration.loc.end.line;
   const removed: [number, number] = [declaration.range[0], sameLine ? next.range[0] : declaration.range[1]];
-  const header = `let ${sourceCode.getText(declarator.id as never)} = ${sourceCode.getText(init.right as never)}`;
+  const annotation = declarator.id.typeAnnotation ? sourceCode.getText(declarator.id.typeAnnotation as never) : "";
+  // A definite-assignment `!` is left out: it is not allowed on a declaration with an initializer (TS1263).
+  const header = `let ${declarator.id.name}${annotation} = ${sourceCode.getText(init.right as never)}`;
   return (fixer) => [removeRange(fixer, sourceCode, removed), fixer.replaceTextRange(init.range, header)];
 }
 

@@ -3,6 +3,8 @@ import rule from "./no-html-in-comments.ts";
 
 runRuleTests("no-html-in-comments", rule, {
   valid: [
+    { name: "review: a tag named in prose, with no closing tag", code: "/**\n * Wraps each item in an <li> so the list stays valid HTML.\n */\nexport function wrap() {}" },
+    { name: "review: a JSX example with a lower-case tag inside a capitalised element", filename: "file.tsx", code: "/**\n * Usage: <List><b>Bold</b></List>\n */\nexport function List() { return null; }" },
     { name: "a legal header (CMT-02)", code: "/*\n * Copyright (c) 2024 Acme Corp. All rights reserved.\n * Licensed under the Apache License, Version 2.0.\n */\nexport const a = 1;" },
     { name: "a regular-expression explanation (CMT-02)", code: "// Matches a tag name such as `div`: a letter, then letters or digits.\nconst tag = /^[a-z][a-z0-9]*$/;" },
     { name: "a \"why\" comment (CMT-02)", code: "// We retry once because the first request after a deploy is dropped by the proxy.\nretry(send);" },
@@ -52,6 +54,13 @@ runRuleTests("no-html-in-comments", rule, {
       output: "// Returns the first visible item.\nexport const first = 1;",
       errors: 1,
       behaviour: "first",
+    },
+    {
+      name: "a tag named in prose stays while a matched pair goes",
+      code: "// Wrap each item in an <li>; the <b>list</b> must stay valid.\nexport const g = 7;",
+      output: "// Wrap each item in an <li>; the list must stay valid.\nexport const g = 7;",
+      errors: [{ messageId: "html", data: { html: "<b>" } }],
+      behaviour: "g",
     },
     {
       name: "a block tag between two words leaves a space",
