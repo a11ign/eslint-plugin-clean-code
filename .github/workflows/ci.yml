@@ -1,0 +1,46 @@
+# The merge gate. Every pull request and every merge-queue entry runs it, and the single job `gate` below is the check the
+# `merge-queue-main` ruleset requires (`.github/rulesets/merge-queue-main.json`). `merge_group` is what lets the queue's temporary
+# branches run it: a required check that never runs on one blocks the queue for ever. Copied in shape from a11ign/announcement-emulator's.
+#
+# The repository holds no package yet, so the only job is `repository`. When the package lands, its build, lint, typecheck and test
+# jobs go into `gate`'s `needs` and into the loop below, and nowhere else.
+#
+# No `push` trigger: `auto-arm.yml`'s own `push` trigger is what runs after a merge (a11ign/a11ign#4139).
+name: ci
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # What the repository must always hold, whatever else lands.
+  repository:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: The Apache-2.0 LICENSE is present
+        run: grep -q "Apache License" LICENSE && grep -q "Version 2.0" LICENSE
+
+  # THE REQUIRED CHECK. `if: always()` because a job whose need failed is SKIPPED, and a skipped required check counts as passed; the step
+  # accepts `success` ONLY, so a job that was skipped or cancelled fails the gate.
+  gate:
+    needs: [repository]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job ran, and ran clean
+        run: |
+          for result in "${{ needs.repository.result }}"; do
+            if [ "$result" != "success" ]; then
+              echo "::error::a job reported '$result', not success"
+              exit 1
+            fi
+          done
