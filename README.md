@@ -7,6 +7,7 @@ Every rule comes from a passage of the book, and its doc page quotes it. Every r
 - 36 rules of its own, and the built-in rules that check what the book asks of size and shape (function length, parameters, nesting, complexity, file length), all at the book's values.
 - One codebase for ESLint and Oxlint: every rule's tests run under both.
 - TypeScript, JavaScript, JSX and TSX.
+- An opt-in `ai` config, with five more rules for the habits of AI-generated code. It is separate from the book's rules, and `recommended` does not turn it on.
 
 ## Requirements
 
@@ -73,6 +74,30 @@ export default { extends: [recommended] };
 ```
 
 and run `oxlint -c oxlint.config.ts`. The Oxlint config has the same rules as ESLint's `recommended`, under Oxlint's names, and loads this plugin's rules through `jsPlugins`. The five type-aware rules are not in it.
+
+## The `ai` config
+
+`ai` is an opt-in config of five rules for the habits AI-generated code brings: comments that narrate code which should describe itself, a `catch` that only logs, stub bodies, emoji, and placeholder strings. These rules are not from the book. Each one is justified by the habit and the harm it does, in [`docs/catalog-ai.md`](docs/catalog-ai.md). Every `ai` rule is an `error`, and none has a fix. `/** */` doc comments stay allowed.
+
+`ai` stands alone: add it after `recommended`, or use it on its own. In ESLint:
+
+<!-- setup: eslint-ai -->
+```js
+import cleanCode from "eslint-plugin-clean-code-book";
+
+export default [...cleanCode.configs.recommended, ...cleanCode.configs.ai];
+```
+
+In Oxlint:
+
+<!-- setup: oxlint-ai -->
+```ts
+import { ai, recommended } from "eslint-plugin-clean-code-book/oxlint";
+
+export default { extends: [recommended, ai] };
+```
+
+`ai-no-placeholder-implementation` and `ai-no-placeholder-values` are off in test files, where stubs and sample values belong. `ai-no-ceremonial-catch` can report the book's own pattern, a boundary `catch` that only logs; its [doc page](docs/rules/ai/ai-no-ceremonial-catch.md#where-this-departs-from-the-book) says why, and its `allowSwallow` option keeps that pattern.
 
 ## Changing a rule
 
@@ -175,6 +200,16 @@ Each rule's page quotes the book passage it comes from, and says what the rule r
 
 `no-command-query-mix` is in `recommended`; `recommended-type-checked` also turns on its `checkMethodCalls` option.
 
+### In `ai`
+
+| Rule | What it checks | Fix |
+| --- | --- | --- |
+| [`ai-no-ceremonial-catch`](docs/rules/ai/ai-no-ceremonial-catch.md) | Don't catch an error only to log it and rethrow it, or only to log it and carry on. | no |
+| [`ai-no-emoji`](docs/rules/ai/ai-no-emoji.md) | Keep emoji out of comments, strings and log messages. | no |
+| [`ai-no-inline-comments`](docs/rules/ai/ai-no-inline-comments.md) | Say it in the code, not in a `//` or `/* */` comment: only `/** */` doc comments and tool directives stay. | no |
+| [`ai-no-placeholder-implementation`](docs/rules/ai/ai-no-placeholder-implementation.md) | Don't ship a function whose body is only a placeholder: `throw new Error("Not implemented")` or a stub return. | no |
+| [`ai-no-placeholder-values`](docs/rules/ai/ai-no-placeholder-values.md) | Don't leave placeholder strings such as `"YOUR_API_KEY"` or `"<insert token>"` in the code. | no |
+
 ### Built-in rules
 
 `recommended` also turns on these built-in rules, under ESLint and under Oxlint. A threshold is the book's value, or one the catalog gives a reason for (`complexity` is one):
@@ -201,7 +236,7 @@ Each rule's page quotes the book passage it comes from, and says what the rule r
 
 ## The catalog
 
-[`docs/catalog.md`](docs/catalog.md) is the record of how the book became these rules. It lists every rule, heuristic and smell in the book with the passage it comes from, and says whether it is checked from syntax, needs type information, is covered by a built-in rule, or cannot be linted, and why. Rules that cannot be linted, such as "one level of abstraction per function", are not in this plugin.
+[`docs/catalog.md`](docs/catalog.md) is the record of how the book became these rules. It lists every rule, heuristic and smell in the book with the passage it comes from, and says whether it is checked from syntax, needs type information, is covered by a built-in rule, or cannot be linted, and why. Rules that cannot be linted, such as "one level of abstraction per function", are not in this plugin. The `ai` config's rules have a catalog of their own, [`docs/catalog-ai.md`](docs/catalog-ai.md).
 
 ## Contributing
 
