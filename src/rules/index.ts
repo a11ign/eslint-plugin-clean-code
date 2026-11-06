@@ -35,6 +35,10 @@ import noRedundantComments from "./no-redundant-comments.ts";
 import noSharedTestState from "./no-shared-test-state.ts";
 import noSideEffectsInPredicates from "./no-side-effects-in-predicates.ts";
 import noSubtypeCheck from "./no-subtype-check.ts";
+import nodeExitAfterFatalError from "./node/node-exit-after-fatal-error.ts";
+import nodeNoErrorMessageMatching from "./node/node-no-error-message-matching.ts";
+import nodeNoRecursiveNextTick from "./node/node-no-recursive-next-tick.ts";
+import nodeNoSyncInHandler from "./node/node-no-sync-in-handler.ts";
 import noTrivialAccessors from "./no-trivial-accessors.ts";
 import oneSwitchPerType from "./one-switch-per-type.ts";
 import predicateReturnsBoolean from "./predicate-returns-boolean.ts";
@@ -79,6 +83,10 @@ export const rules: Record<string, CleanCodeRule> = {
   "no-side-effects-in-predicates": noSideEffectsInPredicates,
   "no-subtype-check": noSubtypeCheck,
   "no-trivial-accessors": noTrivialAccessors,
+  "node-exit-after-fatal-error": nodeExitAfterFatalError,
+  "node-no-error-message-matching": nodeNoErrorMessageMatching,
+  "node-no-recursive-next-tick": nodeNoRecursiveNextTick,
+  "node-no-sync-in-handler": nodeNoSyncInHandler,
   "one-switch-per-type": oneSwitchPerType,
   "predicate-returns-boolean": predicateReturnsBoolean,
   "return-boolean-directly": returnBooleanDirectly,

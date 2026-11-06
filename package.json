@@ -45,11 +45,15 @@
   },
   "peerDependencies": {
     "eslint": ">=10.0.0",
+    "eslint-plugin-n": ">=17.0.0",
     "oxlint": ">=1.92.0",
     "typescript-eslint": "^8.72.1"
   },
   "peerDependenciesMeta": {
     "eslint": {
+      "optional": true
+    },
+    "eslint-plugin-n": {
       "optional": true
     },
     "oxlint": {
@@ -70,6 +74,7 @@
     "@typescript-eslint/parser": "8.72.1",
     "@typescript-eslint/types": "8.72.1",
     "eslint": "10.14.0",
+    "eslint-plugin-n": "18.5.0",
     "globals": "^17.14.0",
     "jiti": "2.7.0",
     "oxlint": "1.92.0",

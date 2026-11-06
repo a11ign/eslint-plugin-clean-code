@@ -1,5 +1,5 @@
 /**
- * What `recommended`, `recommended-type-checked` and `ai` turn on, written once as data so the ESLint config and the Oxlint config
+ * What `recommended`, `recommended-type-checked`, `ai`, `node` and `node-extended` turn on, written once as data so the ESLint config and the Oxlint config
  * are built from the same list. Every rule is `"error"` (the catalog's decision). Thresholds the book states are its values;
  * the others are the values the catalog's owner sign-off approved. A custom rule's threshold is its own default.
  */
@@ -99,6 +99,30 @@ export const AI_TEST_FILE_OFF = {
   "clean-code-book/ai-no-placeholder-implementation": "off",
   "clean-code-book/ai-no-placeholder-values": "off",
 } as const;
+
+/**
+ * The opt-in `node` config (ADR 0004 of A11-415): rules for Node's event loop and error model, from `docs/catalog-node.md`.
+ * It stacks on `recommended`: `[...recommended, ...node]`. It adds no peer dependency.
+ */
+export const NODE_RULES = [
+  "node-exit-after-fatal-error",
+  "node-no-error-message-matching",
+  "node-no-recursive-next-tick",
+  "node-no-sync-in-handler",
+] as const;
+
+/**
+ * NODE-08: the callback-error name pattern, owner sign-off. `eslint-plugin-n`'s default matches only `err`; this adds `error`.
+ * The same value is the ESLint and the Oxlint setting.
+ */
+export const CALLBACK_ERROR_PATTERN = "^(err|error)$";
+
+/**
+ * The opt-in `node-extended` config: the `third-party` entries of `docs/catalog-node.md`, listed one by one. It stacks on
+ * `node`. It leaves out `n/no-process-exit`, which would report the exit NODE-04 asks for, and `n/no-sync`, which reports the
+ * startup reads NODE-01 leaves alone, and it uses none of `eslint-plugin-n`'s presets.
+ */
+export const NODE_EXTENDED_RULES = { "n/handle-callback-err": ["error", CALLBACK_ERROR_PATTERN] } as const;
 
 const SOURCE_EXTENSIONS = "{js,mjs,cjs,jsx,ts,mts,cts,tsx}";
 export const ALL_FILES = [`**/*.${SOURCE_EXTENSIONS}`];
