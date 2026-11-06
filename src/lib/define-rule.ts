@@ -1,6 +1,6 @@
 /**
  * One shape for every rule in this plugin, so each report reads the same way to an agent: the problem, the passage of
- * *Clean Code, 2nd Edition* it breaks, and the refactor the book recommends. Rules are written against the rule API ESLint
+ * *Clean Code, 2nd Edition* it breaks (or, for a rule of the opt-in `ai` config, the AI pattern and its harm), and the refactor. Rules are written against the rule API ESLint
  * and Oxlint share (ADR 0002), so `create` sees only `context.sourceCode`, `context.options`, `context.report` and the
  * visitor object.
  */
@@ -13,6 +13,14 @@ export function docsUrl(ruleName: string): string {
   return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/${ruleName}.md`;
 }
 
+/** The rules of the opt-in `ai` config are named `ai-<name>`, and their doc pages are under `docs/rules/ai/`. */
+export const AI_RULE_PREFIX = "ai-";
+
+/** Where an `ai` rule's doc page is served from. */
+export function aiDocsUrl(ruleName: string): string {
+  return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/ai/${ruleName}.md`;
+}
+
 /** The passage a rule enforces: the chapter and section, and the quote copied from the catalog entry. */
 export interface BookSource {
   /** The catalog entry id, such as `FH-01`. */
@@ -23,17 +31,29 @@ export interface BookSource {
   passage: string;
 }
 
+/**
+ * The habit of AI-generated code an `ai` rule checks, from its `docs/catalog-ai.md` entry. It takes the place of a book
+ * passage: an `ai` rule is justified by the pattern and the harm it does, not by the book (ADR 0001).
+ */
+export interface AiPattern {
+  /** The catalog entry id, such as `AI-01`. */
+  entry: string;
+  /** The pattern's short name, such as `narrating comments`. */
+  name: string;
+  /** One sentence on the harm the pattern does. */
+  harm: string;
+}
+
 /** One report a rule can make. `problem` may use `{{placeholders}}` filled from the report's `data`. */
 export interface MessageSpec {
   problem: string;
   refactor: string;
 }
 
-export interface RuleSpec<Options extends unknown[] = unknown[]> {
+interface SpecBase<Options extends unknown[]> {
   name: string;
   type: "problem" | "suggestion" | "layout";
   description: string;
-  book: BookSource;
   messages: Record<string, MessageSpec>;
   /** Set when the rule has an autofix (complete or partial). */
   fixable?: "code";
@@ -44,30 +64,53 @@ export interface RuleSpec<Options extends unknown[] = unknown[]> {
   create: (context: Rule.RuleContext) => Rule.RuleListener;
 }
 
+export interface RuleSpec<Options extends unknown[] = unknown[]> extends SpecBase<Options> {
+  book: BookSource;
+}
+
+/** An `ai` rule: report-only, so it has no `fixable`, and it names the AI pattern where a book rule names its passage. */
+export interface AiRuleSpec<Options extends unknown[] = unknown[]> extends Omit<SpecBase<Options>, "fixable" | "requiresTypeChecking"> {
+  pattern: AiPattern;
+}
+
 /** The text of one message: the problem, then the book passage, then the refactor. */
 export function bookMessage(message: MessageSpec, book: BookSource): string {
   return `${message.problem} Clean Code, ${book.chapter}: "${book.passage}" Refactor: ${message.refactor}`;
 }
 
-export interface CleanCodeDocs {
+/** The text of one `ai` message: the problem, then the AI pattern and its harm, then the refactor. */
+export function aiMessage(message: MessageSpec, pattern: AiPattern): string {
+  return `${message.problem} AI pattern ${pattern.entry}, ${pattern.name}: ${pattern.harm} Refactor: ${message.refactor}`;
+}
+
+interface DocsBase {
   description: string;
   url: string;
   requiresTypeChecking: boolean;
-  book: BookSource;
 }
+
+/** A book rule's docs carry its passage; an `ai` rule's carry its pattern. */
+export type CleanCodeDocs = (DocsBase & { book: BookSource; pattern?: never }) | (DocsBase & { pattern: AiPattern; book?: never });
 
 export type CleanCodeRule = Rule.RuleModule & { meta: Rule.RuleMetaData & { docs: CleanCodeDocs } };
 
 export function defineRule<Options extends unknown[]>(spec: RuleSpec<Options>): CleanCodeRule {
-  const messages = Object.fromEntries(
-    Object.entries(spec.messages).map(([id, message]) => [id, bookMessage(message, spec.book)]),
-  );
   const docs: CleanCodeDocs = {
     description: spec.description,
     url: docsUrl(spec.name),
     requiresTypeChecking: spec.requiresTypeChecking ?? false,
     book: spec.book,
   };
+  return buildRule(spec, docs, (message) => bookMessage(message, spec.book));
+}
+
+export function defineAiRule<Options extends unknown[]>(spec: AiRuleSpec<Options>): CleanCodeRule {
+  const docs: CleanCodeDocs = { description: spec.description, url: aiDocsUrl(spec.name), requiresTypeChecking: false, pattern: spec.pattern };
+  return buildRule(spec, docs, (message) => aiMessage(message, spec.pattern));
+}
+
+function buildRule<Options extends unknown[]>(spec: SpecBase<Options>, docs: CleanCodeDocs, write: (message: MessageSpec) => string): CleanCodeRule {
+  const messages = Object.fromEntries(Object.entries(spec.messages).map(([id, message]) => [id, write(message)]));
   return {
     meta: {
       type: spec.type,

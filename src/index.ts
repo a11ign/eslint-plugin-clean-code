@@ -5,12 +5,14 @@
  *   JavaScript, TypeScript, JSX and TSX. TypeScript files are parsed with typescript-eslint's parser, JavaScript with ESLint's own.
  * - `recommended-type-checked`: `recommended`, plus the rules that need type information, with typescript-eslint's
  *   `projectService` turned on.
+ * - `ai`: opt-in and standalone, the five `ai-` rules for the habits of AI-generated code (ADR 0001), with the same parsers as
+ *   `recommended`. Stack it after `recommended`, or use it alone.
  */
 import type { ESLint, Linter } from "eslint";
 import tseslint from "typescript-eslint";
 import plugin from "./plugin.ts";
 import {
-  ALL_FILES, BUILT_IN_RULES, JS_UNUSED_VARS, PLUGIN_PREFIX, SYNTAX_RULES, TEST_FILES, TEST_FILE_OFF, TEST_FILE_RULES, TS_FILES,
+  AI_RULES, AI_TEST_FILE_OFF, ALL_FILES, BUILT_IN_RULES, JS_UNUSED_VARS, PLUGIN_PREFIX, SYNTAX_RULES, TEST_FILES, TEST_FILE_OFF, TEST_FILE_RULES, TS_FILES,
   TS_UNUSED_VARS, TYPE_CHECKED_OPTIONS, TYPE_CHECKED_RULES, TYPESCRIPT_ESLINT_RULES, prefixed, prefixedOptions,
 } from "./configs.ts";
 
@@ -42,9 +44,21 @@ const recommendedTypeChecked: Linter.Config[] = [
   },
 ];
 
-const eslintPlugin: ESLint.Plugin & { configs: Record<"recommended" | "recommended-type-checked", Linter.Config[]> } = {
+const ai: Linter.Config[] = [
+  {
+    name: `${PLUGIN_PREFIX}/ai`,
+    files: ALL_FILES,
+    plugins: { [PLUGIN_PREFIX]: plugin as unknown as ESLint.Plugin },
+    languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
+    rules: prefixed(AI_RULES),
+  },
+  { name: `${PLUGIN_PREFIX}/ai/typescript`, files: TS_FILES, languageOptions: { parser: tseslint.parser as Linter.Parser } },
+  { name: `${PLUGIN_PREFIX}/ai/tests`, files: TEST_FILES, rules: AI_TEST_FILE_OFF },
+];
+
+const eslintPlugin: ESLint.Plugin & { configs: Record<"recommended" | "recommended-type-checked" | "ai", Linter.Config[]> } = {
   ...(plugin as unknown as ESLint.Plugin),
-  configs: { recommended, "recommended-type-checked": recommendedTypeChecked },
+  configs: { recommended, "recommended-type-checked": recommendedTypeChecked, ai },
 };
 
 export default eslintPlugin;

@@ -1,5 +1,5 @@
 /**
- * What `recommended` and `recommended-type-checked` turn on, written once as data so the ESLint config and the Oxlint config
+ * What `recommended`, `recommended-type-checked` and `ai` turn on, written once as data so the ESLint config and the Oxlint config
  * are built from the same list. Every rule is `"error"` (the catalog's decision). Thresholds the book states are its values;
  * the others are the values the catalog's owner sign-off approved. A custom rule's threshold is its own default.
  */
@@ -81,6 +81,24 @@ export const TYPE_CHECKED_RULES = [
 
 /** FH-04's method-call half: the same rule, resolving `obj.method()` through types. */
 export const TYPE_CHECKED_OPTIONS = { "no-command-query-mix": ["error", { checkMethodCalls: true }] } as const;
+
+/**
+ * The opt-in `ai` config (ADR 0001): rules for the habits of AI-generated code, from `docs/catalog-ai.md`, not from the book.
+ * It stands alone, so it can be used with `recommended` or without it.
+ */
+export const AI_RULES = [
+  "ai-no-ceremonial-catch",
+  "ai-no-emoji",
+  "ai-no-inline-comments",
+  "ai-no-placeholder-implementation",
+  "ai-no-placeholder-values",
+] as const;
+
+/** A stub body and a placeholder value are what a test is allowed to use (AI-03, AI-05). */
+export const AI_TEST_FILE_OFF = {
+  "clean-code-book/ai-no-placeholder-implementation": "off",
+  "clean-code-book/ai-no-placeholder-values": "off",
+} as const;
 
 const SOURCE_EXTENSIONS = "{js,mjs,cjs,jsx,ts,mts,cts,tsx}";
 export const ALL_FILES = [`**/*.${SOURCE_EXTENSIONS}`];

@@ -2,6 +2,16 @@
 
 Every rule in this plugin comes from an entry of [`docs/catalog.md`](docs/catalog.md). The catalog entry is the specification: what the rule reports, what it leaves alone, its threshold, and exactly when its fix applies. A rule does what its entry says, no more and no less. If the entry is wrong or impossible to build as written, change the catalog in the same pull request and say why.
 
+## A rule for `ai` or for `recommended`
+
+A rule earns a place in `recommended` with a passage of the book: its entry in `docs/catalog.md` quotes it. A rule earns a place in the opt-in `ai` config with an AI pattern and its harm instead: a habit that AI-generated code shows, and what that habit costs the people who maintain the code. Its entry goes in [`docs/catalog-ai.md`](docs/catalog-ai.md) (ADR 0001), and has:
+
+- an **AI pattern** line and a **Harm** line;
+- a **Language basis** line: *universal*, or *JS/TS-specific*, with the reason;
+- a book passage only where one supports it; it is not required.
+
+An `ai` rule is named `ai-<name>`, lives in `src/rules/ai/`, is built with `defineAiRule` instead of `defineRule`, and its page is `docs/rules/ai/<rule>.md`. Its messages name the pattern and its harm where a book rule's name the passage. Its page has `## The AI pattern` (with the **Language basis** line) in place of `## What the book says`, and a rule that contradicts a book example has a `## Where this departs from the book` section that explains why. Add it to `AI_RULES` in `src/configs.ts`, which builds the `ai` config for both linters, and to the README's "In `ai`" table.
+
 ## Setup
 
 ```sh

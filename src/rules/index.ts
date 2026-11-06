@@ -1,5 +1,10 @@
 /** Every rule of the plugin, by name. `src/configs.ts` says which config each one is in. */
 import type { CleanCodeRule } from "../lib/define-rule.ts";
+import aiNoCeremonialCatch from "./ai/ai-no-ceremonial-catch.ts";
+import aiNoEmoji from "./ai/ai-no-emoji.ts";
+import aiNoInlineComments from "./ai/ai-no-inline-comments.ts";
+import aiNoPlaceholderImplementation from "./ai/ai-no-placeholder-implementation.ts";
+import aiNoPlaceholderValues from "./ai/ai-no-placeholder-values.ts";
 import errorHandlingIsOneThing from "./error-handling-is-one-thing.ts";
 import fieldsFirst from "./fields-first.ts";
 import lawOfDemeter from "./law-of-demeter.ts";
@@ -38,6 +43,11 @@ import stepdownOrder from "./stepdown-order.ts";
 import testAsserts from "./test-asserts.ts";
 
 export const rules: Record<string, CleanCodeRule> = {
+  "ai-no-ceremonial-catch": aiNoCeremonialCatch,
+  "ai-no-emoji": aiNoEmoji,
+  "ai-no-inline-comments": aiNoInlineComments,
+  "ai-no-placeholder-implementation": aiNoPlaceholderImplementation,
+  "ai-no-placeholder-values": aiNoPlaceholderValues,
   "error-handling-is-one-thing": errorHandlingIsOneThing,
   "fields-first": fieldsFirst,
   "law-of-demeter": lawOfDemeter,
