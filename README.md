@@ -2,7 +2,7 @@
 
 Lint rules from *Clean Code, 2nd Edition*, for ESLint and Oxlint, with fixes that keep what the code does unchanged.
 
-Every rule comes from a passage of the book, and its doc page quotes it. Every report says three things: what is wrong, what the book says about it, and the refactor the book recommends. That makes the reports something a person or a coding agent can act on without looking anything up. Where a rule can fix what it reports without changing how the code behaves, `--fix` does; where no such fix exists, the rule's doc page says why.
+Every rule of `recommended` comes from a passage of the book, and its doc page quotes it. Every report says three things: what is wrong, what the book says about it, and the refactor the book recommends. That makes the reports something a person or a coding agent can act on without looking anything up. Where a rule can fix what it reports without changing how the code behaves, `--fix` does; where no such fix exists, the rule's doc page says why.
 
 - 36 rules of its own, and the built-in rules that check what the book asks of size and shape (function length, parameters, nesting, complexity, file length), all at the book's values.
 - One codebase for ESLint and Oxlint: every rule's tests run under both.
@@ -145,7 +145,7 @@ The built-in rules keep their own behaviour, including the fixes some of them ha
 
 ## Rules
 
-Each rule's page quotes the book passage it comes from, and says what the rule reports, what it leaves alone, and how its fix works or why it has none.
+Each book rule's page quotes the passage it comes from, and each `ai` rule's page names the AI pattern and its harm. Every page says what the rule reports, what it leaves alone, and how its fix works or why it has none.
 
 ### In `recommended`
 
