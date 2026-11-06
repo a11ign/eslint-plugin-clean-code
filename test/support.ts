@@ -13,9 +13,13 @@ export const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const WORK = join(ROOT, "test", "work");
 const OXLINT = join(ROOT, "node_modules", ".bin", "oxlint");
 
+const SOURCE_PATTERNS = ["**/*.{js,jsx,ts,tsx}"];
+
 export interface Report {
   file: string;
   rules: string[];
+  /** The rules in `rules` reported as warnings rather than errors. */
+  warnings: string[];
 }
 
 /** A fresh directory under `test/work/` holding `files`, removed by `dispose`. */
@@ -48,26 +52,28 @@ export function readTree(dir: string): Record<string, string> {
 
 export const OXLINT_CONFIG = `import { recommended } from "eslint-plugin-clean-code-book/oxlint";\n\nexport default { extends: [recommended] };\n`;
 
-/** Runs Oxlint with this package's `recommended` on every source file in `dir`, and returns what it reported per file. */
-export function runOxlint(dir: string, extraArgs: string[] = []): Report[] {
-  writeFileSync(join(dir, "oxlint.config.ts"), OXLINT_CONFIG);
+/** Runs Oxlint with `config` (by default this package's `recommended`) on every source file in `dir`, and returns what it reported per file. */
+export function runOxlint(dir: string, extraArgs: string[] = [], config = OXLINT_CONFIG): Report[] {
+  writeFileSync(join(dir, "oxlint.config.ts"), config);
   // The files are named one by one: given a directory, Oxlint skips what the repository's `.gitignore` ignores, `test/work/` included, even with `--no-ignore`.
   const files = Object.keys(readTree(dir)).filter((name) => /\.[cm]?[jt]sx?$/.test(name) && name !== "oxlint.config.ts");
   const result = spawnSync(OXLINT, ["-c", "oxlint.config.ts", "--no-ignore", "--format", "json", ...extraArgs, ...files], { cwd: dir, encoding: "utf8" });
   if (result.error) throw result.error;
-  let parsed: { diagnostics: Array<{ filename: string; code: string }> };
+  let parsed: { diagnostics: Array<{ filename: string; code: string; severity: string }> };
   try {
     parsed = JSON.parse(result.stdout);
   } catch {
     throw new Error(`oxlint gave no JSON (exit ${result.status}):\n${result.stdout}\n${result.stderr}`);
   }
-  const byFile = new Map<string, string[]>();
+  const byFile = new Map<string, Report>();
   for (const diagnostic of parsed.diagnostics) {
-    const rules = byFile.get(diagnostic.filename) ?? [];
-    rules.push(oxlintRuleName(diagnostic.code));
-    byFile.set(diagnostic.filename, rules);
+    const report = byFile.get(diagnostic.filename) ?? { file: diagnostic.filename, rules: [], warnings: [] };
+    const rule = oxlintRuleName(diagnostic.code);
+    report.rules.push(rule);
+    if (diagnostic.severity === "warning") report.warnings.push(rule);
+    byFile.set(diagnostic.filename, report);
   }
-  return [...byFile].map(([file, rules]) => ({ file, rules }));
+  return [...byFile.values()];
 }
 
 /** `eslint(max-params)` gives `max-params`, `clean-code-book(stepdown-order)` gives `clean-code-book/stepdown-order`. */
@@ -81,9 +87,29 @@ function oxlintRuleName(code: string): string {
 }
 
 /** Runs ESLint with `config` on every source file in `dir`. */
-export async function runEslint(dir: string, config: Linter.Config[], fix = false, patterns = ["**/*.{js,jsx,ts,tsx}"]): Promise<Report[]> {
-  const eslint = new ESLint({ cwd: dir, overrideConfigFile: true, overrideConfig: config, fix });
+export async function runEslint(dir: string, config: Linter.Config[], fix = false, patterns = SOURCE_PATTERNS): Promise<Report[]> {
+  return lintWith(new ESLint({ cwd: dir, overrideConfigFile: true, overrideConfig: config, fix }), dir, fix, patterns);
+}
+
+/** Runs ESLint on every source file in `dir` with the `eslint.config.js` found there, as `npx eslint .` would. */
+export async function runEslintWithConfigFile(dir: string): Promise<Report[]> {
+  return lintWith(new ESLint({ cwd: dir }), dir, false, SOURCE_PATTERNS);
+}
+
+async function lintWith(eslint: ESLint, dir: string, fix: boolean, patterns: string[]): Promise<Report[]> {
   const results = await eslint.lintFiles(patterns);
   if (fix) await ESLint.outputFixes(results);
-  return results.map((result) => ({ file: relative(dir, result.filePath), rules: result.messages.map((message) => message.ruleId ?? `fatal: ${message.message}`) }));
+  return results.map((result) => {
+    const rules = result.messages.map((message) => message.ruleId ?? `fatal: ${message.message}`);
+    const warnings = result.messages.filter((message) => message.severity === 1).map((message) => message.ruleId ?? "");
+    return { file: relative(dir, result.filePath), rules, warnings };
+  });
+}
+
+/** The code block of README.md that follows `<!-- setup: <name> -->`: the setup a project copies, run as written. */
+export function readmeBlock(name: string): string {
+  const readme = readFileSync(join(ROOT, "README.md"), "utf8");
+  const match = new RegExp(`<!-- setup: ${name} -->\\n\`\`\`\\w+\\n([\\s\\S]*?)\`\`\`\\n`).exec(readme);
+  if (!match) throw new Error(`README.md has no setup block named ${name}`);
+  return match[1];
 }

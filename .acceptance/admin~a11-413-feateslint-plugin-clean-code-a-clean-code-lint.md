@@ -1,4 +1,4 @@
-Step 4 of 5 of the Clean Code lint plugin: every catalog entry classed lintable is built. `recommended` holds 31 custom rules that need only syntax, plus the built-in rules the catalog maps to the book, for ESLint 10 flat config and (as `eslint-plugin-clean-code-book/oxlint`) for Oxlint. `recommended-type-checked` adds 5 rules that need type information, for ESLint. Each rule has a doc page in `docs/rules/`, every message names the problem, the book passage and the refactor, and 13 rules fix what they report. Every rule's cases run under ESLint and under Oxlint 1.92.0; every fix is checked for its output, for no report on the output, and for the same results before and after on the same inputs. The whole-config tests run each linter's setup on JS, JSX, TS and TSX, and the regression cases of the catalog with every fix applied.
+Step 5 of 5 of the Clean Code lint plugin: the README and the release. `README.md` shows the setup for ESLint 10 flat config (`recommended` and `recommended-type-checked`) and for Oxlint, how to change a rule in each, and lists every rule under the config it is in, with its doc page and whether it fixes. The setup tests write the README's own config blocks into a project and run each linter on them, so the README cannot show a setup that does not work. `.github/workflows/release.yml` releases the package to npm from `main` through the organisation's per-merge Changesets workflow; the two changesets make it 0.1.0. The package ships its build, its rule docs, the README and the LICENSE.
 
 Acceptance:
 ```bash
@@ -7,14 +7,21 @@ pnpm install --frozen-lockfile
 pnpm run build
 pnpm run typecheck
 pnpm run lint
-# Every rule's cases under ESLint and Oxlint, the typed rules, the config setup in both linters, and the regression cases.
+# Every test: each rule under ESLint and Oxlint, the README's setup blocks run as written, the README's rule tables, the package contents.
 pnpm exec rstest run
-# The pinned Oxlint is the one the tests ran under.
-test "$(node -p 'require("./package.json").devDependencies.oxlint')" = "1.92.0"
-test "$(./node_modules/.bin/oxlint --version | grep -o '[0-9.]*$')" = "1.92.0"
-# 36 rules, each with its doc page.
+# The README's setup blocks are the ones the setup tests run.
+test "$(grep -c '<!-- setup: ' README.md)" -eq 5
+# The release is 0.1.0.
+pnpm exec changeset status --verbose | grep -q 'eslint-plugin-clean-code-book -> 0.1.0'
+# The release workflow publishes to npm through the shared workflow, pinned by full sha, gated on `gate`.
+grep -Eq 'uses: a11ign/toolchain/\.github/workflows/release-per-merge\.yml@[0-9a-f]{40}$' .github/workflows/release.yml
+grep -q 'kind: npm' .github/workflows/release.yml
+grep -q 'gate-check: gate' .github/workflows/release.yml
+# The package carries the README and no organisation branding in it.
+npm pack --dry-run --ignore-scripts --json | grep -q '"path": "README.md"'
+! grep -qi 'a11ign' README.md
+# Still 36 rules, each with its doc page, and the pinned Oxlint.
 test "$(ls src/rules/*.ts | grep -v -e '\.test\.ts$' -e '/index\.ts$' | wc -l)" -eq 36
 test "$(ls docs/rules/*.md | wc -l)" -eq 36
-# No organisation branding in the published docs and rule URLs.
-! grep -rniE 'a11ign' docs/rules src/lib/define-rule.ts
+test "$(./node_modules/.bin/oxlint --version | grep -o '[0-9.]*$')" = "1.92.0"
 ```

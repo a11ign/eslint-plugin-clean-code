@@ -1,0 +1,11 @@
+# Moves the full-sha pins in the workflows, the release workflow's pin of `release-per-merge.yml` included, by pull request.
+# No `npm` entry: the devDependencies are exact pins on purpose (Oxlint is pinned to the release CI tests the rules under), and a
+# move of one is its own reviewed change.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps
