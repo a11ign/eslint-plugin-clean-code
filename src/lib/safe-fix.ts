@@ -51,11 +51,19 @@ export function removeRange(fixer: Rule.RuleFixer, sourceCode: SourceCode, range
   return fixer.replaceTextRange([removed[0], next.range[0]], `${sourceCode.text.slice(removed[1], next.range[0])};`);
 }
 
+/** Every character JavaScript reads as a line break, as escaped strings: a raw U+2028 in a regex literal does not parse. */
+const LINE_BREAKS = ["\n", "\r", "\u2028", "\u2029"];
+
+/** Whether `text` holds a line break: `\n`, but also `\r`, U+2028 and U+2029, which end a statement the same way. */
+export function hasLineBreak(text: string): boolean {
+  return LINE_BREAKS.some((lineBreak) => text.includes(lineBreak));
+}
+
 /**
  * Deletes a comment without changing how the code around it parses.
  * - Alone on its lines: the lines go.
  * - Code on both sides on the same line: it becomes one space, so `return/*x*\/value` never becomes `returnvalue`.
- * - A block comment containing a line break, with code beside it: it becomes a line break, because a line break can end a statement.
+ * - A block comment containing a line break (`\n`, `\r`, U+2028 or U+2029), with code beside it: it becomes a line break, because a line break can end a statement.
  * - Code only before it: it goes with the blank space between.
  * - Code only after it: it goes with the blank space after it.
  */
@@ -64,7 +72,7 @@ export function removeComment(fixer: Rule.RuleFixer, sourceCode: SourceCode, com
   const [start, end] = comment.range as Range;
   const lines = wholeLinesRange(text, start, end);
   if (lines) return fixer.removeRange(lines);
-  if (text.slice(start, end).includes("\n")) return fixer.replaceTextRange([start, end], "\n");
+  if (hasLineBreak(text.slice(start, end))) return fixer.replaceTextRange([start, end], "\n");
   const lineStart = text.lastIndexOf("\n", start - 1) + 1;
   const lineEndIndex = text.indexOf("\n", end);
   const lineEnd = lineEndIndex === -1 ? text.length : lineEndIndex;

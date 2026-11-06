@@ -1,0 +1,186 @@
+import { runRuleTests } from "../testing/run-rule-tests.ts";
+import rule from "./stepdown-order.ts";
+
+const report = [{ messageId: "functionAboveCaller" }];
+const methodReport = [{ messageId: "methodAboveCaller" }];
+
+runRuleTests("stepdown-order", rule, {
+  valid: [
+    { name: "the caller is above the function it calls", code: "function a() { return b(); }\nfunction b() { return 1; }" },
+    { name: "an arrow function in a `const` is never checked", code: "const b = () => 1;\nfunction a() { return b(); }" },
+    { name: "recursion", code: "function f(n) { return n > 0 ? f(n - 1) : 0; }" },
+    {
+      name: "mutual recursion",
+      code: "function isEven(n) { return n === 0 ? true : isOdd(n - 1); }\nfunction isOdd(n) { return n === 0 ? false : isEven(n - 1); }",
+    },
+    { name: "a call from top-level code is not a caller", code: "function b() { return 1; }\nb();" },
+    {
+      name: "regression row 4: a function declaration after `return`, called before it",
+      code: "export function f() {\n  return g();\n  function g() {\n    return 1;\n  }\n}",
+    },
+    { name: "a function in another scope with the same name", code: "function b() { return 1; }\nfunction a() { function b() { return 2; } return b(); }" },
+    { name: "methods in stepdown order", code: "class A {\n  a() { return this.b(); }\n  b() { return 1; }\n}" },
+    {
+      name: "`this` inside a nested `function` is not the instance",
+      code: "class A {\n  b() { return 1; }\n  a() { return function () { return this.b(); }; }\n}",
+    },
+    { name: "a static and an instance method with the same name are different methods", code: "class A {\n  static b() { return 1; }\n  a() { return this.b(); }\n}" },
+  ],
+  invalid: [
+    {
+      name: "a function moves below its first caller",
+      code: "function b() {\n  return 2;\n}\n\nfunction a() {\n  return b() + 1;\n}\n",
+      output: "function a() {\n  return b() + 1;\n}\n\nfunction b() {\n  return 2;\n}\n",
+      errors: [{ messageId: "functionAboveCaller", data: { name: "b", caller: "a" }, line: 1 }],
+      behaviour: ["a()", "b()"],
+    },
+    {
+      name: "the comments attached to the function move with it",
+      code: "// A comment that stays.\n\n/** Doubles a number. */\n// eslint-disable-next-line no-console\nfunction double(x) {\n  return x * 2;\n}\n\nfunction run(x) {\n  return double(x) + 1; // the entry point\n}\n\nrun(1);\n",
+      output: "// A comment that stays.\n\nfunction run(x) {\n  return double(x) + 1; // the entry point\n}\n\n/** Doubles a number. */\n// eslint-disable-next-line no-console\nfunction double(x) {\n  return x * 2;\n}\n\nrun(1);\n",
+      errors: report,
+      behaviour: ["run(-1)", "run(0)", "run(2.5)", "double(3)"],
+    },
+    {
+      name: "a comment after the caller on its last line stays with the caller",
+      code: "function b() { return 1; }\nfunction a() { return b(); } // the entry point\n",
+      output: "function a() { return b(); } // the entry point\nfunction b() { return 1; }\n",
+      errors: report,
+      behaviour: "a()",
+    },
+    {
+      name: "exported functions",
+      code: "export function helper(x: number): number {\n  return x * 3;\n}\n\nexport function main(x: number): number {\n  return helper(x) - 1;\n}\n",
+      output: "export function main(x: number): number {\n  return helper(x) - 1;\n}\n\nexport function helper(x: number): number {\n  return x * 3;\n}\n",
+      errors: report,
+      behaviour: ["main(0)", "main(-2)", "helper(4)"],
+    },
+    {
+      name: "regression row 2: an overload group moves as one block",
+      code: "function parse(v: string): number;\nfunction parse(v: number): number;\nfunction parse(v: unknown): number {\n  return Number(v);\n}\n\nexport function total(a: string, b: number): number {\n  return parse(a) + parse(b);\n}\n",
+      output: "export function total(a: string, b: number): number {\n  return parse(a) + parse(b);\n}\n\nfunction parse(v: string): number;\nfunction parse(v: number): number;\nfunction parse(v: unknown): number {\n  return Number(v);\n}\n",
+      errors: [{ messageId: "functionAboveCaller", data: { name: "parse", caller: "total" }, line: 3 }],
+      behaviour: ["total('2', 3)", "total('', 0)", "total('x', 1)"],
+    },
+    {
+      name: "regression row 3: a `;[1, 2].forEach(f)` line after the moved function keeps its `;`",
+      code: "const seen = []\nconst f = (n) => seen.push(n)\nfunction b() {\n  return 1\n}\n;[1, 2].forEach(f)\nfunction a() {\n  return b()\n}\n",
+      output: "const seen = []\nconst f = (n) => seen.push(n)\n;[1, 2].forEach(f)\nfunction a() {\n  return b()\n}\nfunction b() {\n  return 1\n}\n",
+      errors: report,
+      behaviour: ["seen", "a()"],
+    },
+    {
+      name: "regression row 3: a `[3, 4].forEach(f)` line after the moved function gets a `;`",
+      code: "const seen = []\nconst f = (n) => seen.push(n)\nfunction b() {\n  return 1\n}\n[3, 4].forEach(f)\nfunction a() {\n  return b()\n}\n",
+      output: "const seen = []\nconst f = (n) => seen.push(n)\n;[3, 4].forEach(f)\nfunction a() {\n  return b()\n}\nfunction b() {\n  return 1\n}\n",
+      errors: report,
+      behaviour: ["seen", "a()"],
+    },
+    {
+      name: "directly in a function body",
+      code: "export function outer(n: number): number {\n  function b(): number {\n    return n * 2;\n  }\n  function a(): number {\n    return b() + 1;\n  }\n  return a();\n}\n",
+      output: "export function outer(n: number): number {\n  function a(): number {\n    return b() + 1;\n  }\n  function b(): number {\n    return n * 2;\n  }\n  return a();\n}\n",
+      errors: report,
+      behaviour: ["outer(0)", "outer(5)", "outer(-1)"],
+    },
+    {
+      name: "strict-mode script code",
+      code: "\"use strict\";\nfunction b() {\n  return 1;\n}\nfunction a() {\n  return b();\n}\n",
+      output: "\"use strict\";\nfunction a() {\n  return b();\n}\nfunction b() {\n  return 1;\n}\n",
+      filename: "file.js",
+      sourceType: "script",
+      errors: report,
+      behaviour: "a()",
+    },
+    {
+      name: "the caller is an arrow function in a `const`",
+      code: "function b(x) {\n  return x + 1;\n}\nexport const a = (x) => b(x) * 2;\n",
+      output: "export const a = (x) => b(x) * 2;\nfunction b(x) {\n  return x + 1;\n}\n",
+      filename: "file.js",
+      errors: [{ messageId: "functionAboveCaller", data: { name: "b", caller: "a" } }],
+      behaviour: ["a(0)", "a(-1)", "a(10)"],
+    },
+    {
+      name: "the first caller decides where it goes",
+      code: "function c() {\n  return 3;\n}\nfunction a() {\n  return c();\n}\nfunction b() {\n  return c() + 1;\n}\n",
+      output: "function a() {\n  return c();\n}\nfunction c() {\n  return 3;\n}\nfunction b() {\n  return c() + 1;\n}\n",
+      errors: report,
+      behaviour: ["a()", "b()"],
+    },
+    {
+      name: "no fix in sloppy-mode code",
+      code: "function b() { return 1; }\nfunction a() { return b(); }\n",
+      output: null,
+      filename: "file.js",
+      sourceType: "script",
+      errors: report,
+    },
+    {
+      name: "no fix in a block",
+      code: "export function f(x: boolean): number {\n  if (x) {\n    function b(): number { return 1; }\n    function a(): number { return b(); }\n    return a();\n  }\n  return 0;\n}\n",
+      output: null,
+      errors: report,
+    },
+    {
+      name: "no fix in a `switch` case",
+      code: "export function f(x: number): number {\n  switch (x) {\n    case 1:\n      function b(): number { return 1; }\n      function a(): number { return b(); }\n      return a();\n  }\n  return 0;\n}\n",
+      output: null,
+      errors: report,
+    },
+    {
+      name: "no fix in a namespace",
+      code: "namespace N {\n  function b() { return 1; }\n  export function a() { return b(); }\n}\n",
+      output: null,
+      errors: report,
+    },
+    {
+      name: "no fix when a `var` has the same name",
+      code: "export function outer() {\n  function b() { return 1; }\n  function a() { return b(); }\n  var b;\n  return a();\n}\n",
+      output: null,
+      errors: report,
+    },
+    {
+      name: "no fix when a parameter has the same name",
+      code: "export function outer(b) {\n  function b() { return 1; }\n  function a() { return b(); }\n  return a();\n}\n",
+      output: null,
+      filename: "file.js",
+      errors: report,
+    },
+    {
+      name: "no fix when the function shares its line with other code",
+      code: "function b() { return 1; } function a() { return b(); }\n",
+      output: null,
+      errors: report,
+    },
+    {
+      name: "no fix when other code follows the caller on its last line",
+      code: "function b() { return 1; }\nfunction a() { return b(); } a();\n",
+      output: null,
+      errors: report,
+    },
+    {
+      name: "a class method is reported without a fix",
+      code: "class A {\n  b() { return 1; }\n  a() { return this.b(); }\n}\n",
+      output: null,
+      errors: [{ messageId: "methodAboveCaller", data: { name: "b", caller: "a" }, line: 2 }],
+    },
+    {
+      name: "a private method called from the constructor",
+      code: "class A {\n  #b() { return 1; }\n  constructor() { this.#b(); }\n}\n",
+      output: null,
+      errors: [{ messageId: "methodAboveCaller", data: { name: "#b", caller: "constructor" } }],
+    },
+    {
+      name: "a static method called through the class name",
+      code: "class A {\n  static b() { return 1; }\n  static a() { return A.b(); }\n}\n",
+      output: null,
+      errors: methodReport,
+    },
+    {
+      name: "a method called from an arrow function in a field",
+      code: "class A {\n  b() { return 1; }\n  handle = () => this.b();\n}\n",
+      output: null,
+      errors: [{ messageId: "methodAboveCaller", data: { name: "b", caller: "handle" } }],
+    },
+  ],
+});

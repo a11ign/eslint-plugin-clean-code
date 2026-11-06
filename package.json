@@ -82,6 +82,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "test": "rstest run",
-    "changeset": "changeset"
+    "changeset": "changeset",
+    "pretest": "pnpm run build"
   }
 }

@@ -5,7 +5,7 @@ import tseslint from "typescript-eslint";
 import globals from "globals";
 
 export default tseslint.config(
-  { ignores: ["node_modules/**", "dist/**", "src/testing/typed-fixture/**"] },
+  { ignores: ["node_modules/**", "dist/**", "src/testing/typed-fixture/**", "test/fixtures/**", "test/work/**"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

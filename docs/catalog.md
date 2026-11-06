@@ -450,9 +450,10 @@ The README will not say which projects this replaces. The pull request body reco
 - **Class:** syntax.
 - **Rule:** `fields-first` reports a class field declared after a method, accessor or constructor. Fields go first, which is the JavaScript and TypeScript convention.
 - **Fix:** moves the fields above the first non-field member, keeping their order relative to each other. Field initializers run in the order the fields are declared, and methods live on the prototype, so the move changes nothing at runtime. There is no fix when the class has any of these, because each runs in source order and the move would change that order:
-  - a member with a computed key (`[k()]`),
+  - a moved field with a computed key (`[k()] = 1`), because its key is evaluated when the class is defined, in source order with the other computed keys. A computed key elsewhere, such as `[Symbol.iterator]() {}`, does not block the fix: a field with a plain key has nothing to evaluate when the class is defined, so moving it past a computed method changes no order.
   - a decorator on any member,
   - a `static {}` block,
+  - an auto-accessor (`accessor x`), whose storage is initialised in order with the fields,
   - a field initializer that refers to the class.
   
   The move follows [How fixes stay safe](#how-fixes-stay-safe). A moved field without a `;` gets one when the next member would otherwise continue it (`size = 0` followed by `[Symbol.iterator]() {}`).
@@ -1182,7 +1183,7 @@ Partial fixes, for sign-off with the rest. In each case below the rule reports a
 - `no-encodings`: anything other than a local variable, a plain parameter or a `#private` member in an ES module, and any binding used in shorthand or destructuring (NAM-09, NAM-10).
 - `no-pure-delegator`: an `async` or generator delegator, one with non-plain parameters, or one called with a different number of arguments, `new` or a tagged template (ONE-02).
 - `stepdown-order`: class methods, functions in blocks or in sloppy-mode code, duplicate names, and decorated functions (FMT-04).
-- `fields-first`: classes with computed keys, decorators, `static` blocks, or initializers that refer to the class (FMT-03).
+- `fields-first`: a moved field with a computed key, and classes with decorators, `static` blocks, auto-accessors, or initializers that refer to the class (FMT-03).
 - `loop-variable-in-loop`: any reference outside the `for` statement or inside a nested function, a declaration with other declarators or an initializer, or a loop init that assigns more than the variable (FMT-05).
 - `no-attribution-comments`: a byline inside a comment with other text (CMT-08).
 - `no-html-in-comments`: double-escaped entities, and a tag whose removal would end the comment (CMT-09).

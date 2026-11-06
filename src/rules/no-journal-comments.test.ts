@@ -1,0 +1,86 @@
+import { runRuleTests } from "../testing/run-rule-tests.ts";
+import rule from "./no-journal-comments.ts";
+
+runRuleTests("no-journal-comments", rule, {
+  valid: [
+    { name: "a legal header (CMT-02)", code: "/*\n * Copyright (c) 2000-2024 Acme Corp. All rights reserved.\n * Licensed under the Apache License, Version 2.0.\n */\nexport const a = 1;" },
+    { name: "a regular-expression explanation (CMT-02)", code: "// Matches 2024-01-31: four digits, a dash, two digits, a dash, two digits.\nconst date = /^\\d{4}-\\d{2}-\\d{2}$/;" },
+    { name: "a \"why\" comment (CMT-02)", code: "// 2024-03-01: the API stopped returning `id`, so we read `uuid` instead.\nread(row.uuid);" },
+    { name: "two dated lines are an \"as of\" note, not a journal", code: "/*\n * 2024-01-31: rates as published by the central bank.\n * 2024-02-29: leap day handled by the calendar.\n */\nexport const rates = {};" },
+    { name: "dates not at the start of a line", code: "/*\n * Released on 2024-01-01: first.\n * Released on 2024-02-01: second.\n * Released on 2024-03-01: third.\n */\nrun();" },
+    { name: "dates without `:` or `-` after them", code: "// 2024-01-01 first\n// 2024-02-01 second\n// 2024-03-01 third\nrun();" },
+    { name: "dated lines in separate comments are not one journal", code: "// 2024-01-01: one\nrun();\n// 2024-02-01: two\nrun();\n// 2024-03-01: three\nrun();" },
+    { name: "a directive comment is never changed", code: "/*! 2024-01-01: a\n * 2024-02-01: b\n * 2024-03-01: c */\nrun();" },
+    { name: "a higher threshold", options: [4], code: "// 2024-01-01: a\n// 2024-02-01: b\n// 2024-03-01: c\nrun();" },
+  ],
+  invalid: [
+    {
+      name: "the book's change log, with continuation lines, under a heading that stays",
+      code: [
+        "/*",
+        " * Changes (from 11-Oct-2001)",
+        " * 11-Oct-2001 : Re-organised the class and moved it to new package",
+        " *               com.jrefinery.date (DG);",
+        " * 05-Nov-2001 : Added a getDescription() method, and eliminated NotableDate",
+        " *               class (DG);",
+        " * 12-Nov-2001 : IBD requires setDescription() method, now that NotableDate",
+        " *               class is gone (DG);",
+        " */",
+        "export const day = 1;",
+      ].join("\n"),
+      output: "/*\n * Changes (from 11-Oct-2001)\n */\nexport const day = 1;",
+      errors: [{ messageId: "journal", line: 1 }],
+      behaviour: "day",
+    },
+    {
+      name: "a comment that is only a journal goes as a whole",
+      code: "const a = 1;\n/**\n * 2024-01-31: created\n * 2024-02-01: fixed rounding\n * 2024-03-12 - renamed\n */\nexport function f() { return a; }",
+      output: "const a = 1;\nexport function f() { return a; }",
+      errors: 1,
+      behaviour: "f()",
+    },
+    {
+      name: "the three date formats",
+      code: "/* 31-Jan-2024: a\n   1/31/2024: b\n   2024-01-31: c */\nexport const x = 2;",
+      output: "export const x = 2;",
+      errors: 1,
+      behaviour: "x",
+    },
+    {
+      name: "a run of line comments; the other lines stay",
+      code: "// History:\n// 2024-01-01: a\n// 2024-02-01: b\n// 2024-03-01: c\n// See the README.\nexport const x = 3;",
+      output: "// History:\n// See the README.\nexport const x = 3;",
+      errors: [{ messageId: "journal", line: 1, endLine: 5 }],
+      behaviour: "x",
+    },
+    {
+      name: "regression: a `;[1, 2]` line after a journal, in code without semicolons, keeps its `;`",
+      code: "let r = 0\n// 2024-01-01: a\n// 2024-02-01: b\n// 2024-03-01: c\n;[1, 2].forEach((v) => { r += v })",
+      output: "let r = 0\n;[1, 2].forEach((v) => { r += v })",
+      errors: 1,
+      behaviour: "r",
+    },
+    {
+      name: "a journal between `return` and its value becomes a line break",
+      code: "function f() {\n  return /* 2024-01-01: a\n  2024-02-01: b\n  2024-03-01: c */ 42\n}",
+      output: "function f() {\n  return \n 42\n}",
+      errors: 1,
+      behaviour: ["f()", "typeof f()"],
+    },
+    {
+      name: "a journal at the end of the file with no line break after it",
+      code: "export const x = 4;\n// 2024-01-01: a\n// 2024-02-01: b\n// 2024-03-01: c",
+      output: "export const x = 4;\n",
+      errors: 1,
+      behaviour: "x",
+    },
+    {
+      name: "a lower threshold",
+      options: [2],
+      code: "/*\n * Notes.\n * 2024-01-01: a\n * 2024-02-01: b\n */\nexport const x = 5;",
+      output: "/*\n * Notes.\n */\nexport const x = 5;",
+      errors: 1,
+      behaviour: "x",
+    },
+  ],
+});

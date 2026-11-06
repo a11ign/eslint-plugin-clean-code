@@ -43,3 +43,14 @@ export function runTypedRuleTests(ruleName: string, rule: Rule.RuleModule, cases
     });
   });
 }
+
+/**
+ * Lints each case with typescript-eslint's parser and no `projectService`, so `parserServices.program` is `null`. A
+ * type-aware rule must then report nothing and not crash: every case here is valid.
+ */
+export function runWithoutTypeInformation(ruleName: string, rule: Rule.RuleModule, valid: string[]): void {
+  const tester = new RuleTester({ languageOptions: { parser: tsParser } });
+  describe(`${ruleName} under ESLint without type information`, () => {
+    tester.run(ruleName, rule, { valid: valid.map((code) => ({ code, filename: "file.ts" })), invalid: [] });
+  });
+}
