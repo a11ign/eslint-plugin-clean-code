@@ -1,7 +1,7 @@
 /**
  * One shape for every rule in this plugin, so each report reads the same way to an agent: the problem, the passage of
  * *Clean Code, 2nd Edition* it breaks (or, for a rule of the opt-in `ai` config, the AI pattern and its harm; for one of the opt-in
- * `node` config, the passage of its Node book), and the refactor. Rules are written against the rule API ESLint
+ * `node` or `react` config, the passage of its Node or React book), and the refactor. Rules are written against the rule API ESLint
  * and Oxlint share (ADR 0002), so `create` sees only `context.sourceCode`, `context.options`, `context.report` and the
  * visitor object.
  */
@@ -30,6 +30,14 @@ export function nodeDocsUrl(ruleName: string): string {
   return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/node/${ruleName}.md`;
 }
 
+/** The rules of the opt-in `react` config are named `react-<name>`, and their doc pages are under `docs/rules/react/`. */
+export const REACT_RULE_PREFIX = "react-";
+
+/** Where a `react` rule's doc page is served from. */
+export function reactDocsUrl(ruleName: string): string {
+  return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/react/${ruleName}.md`;
+}
+
 /** The passage a rule enforces: the chapter and section, and the quote copied from the catalog entry. */
 export interface BookSource {
   /** The catalog entry id, such as `FH-01`. */
@@ -54,11 +62,12 @@ export interface AiPattern {
 }
 
 /**
- * The passage of a Node book a `node` rule enforces, from its `docs/catalog-node.md` entry. It takes the place of a passage of
- * *Clean Code*: the `node` config's rules come from the Node books in the bookCTX library (ADR 0004 of A11-415).
+ * The passage of a language book a `node` or `react` rule enforces, from its entry in `docs/catalog-node.md` or
+ * `docs/catalog-react.md`. It takes the place of a passage of *Clean Code*: these configs' rules come from the Node and React
+ * books in the bookCTX library (ADR 0004 of A11-415).
  */
-export interface NodeSource {
-  /** The catalog entry id, such as `NODE-01`. */
+export interface LanguageSource {
+  /** The catalog entry id, such as `NODE-01` or `RCT-06`. */
   entry: string;
   /** The book's title, such as `Distributed Systems with Node.js`. */
   book: string;
@@ -107,13 +116,15 @@ export function aiMessage(message: MessageSpec, pattern: AiPattern): string {
   return `${message.problem} AI pattern ${pattern.entry}, ${pattern.name}: ${pattern.harm} Refactor: ${message.refactor}`;
 }
 
-/** A `node` rule: report-only, like an `ai` rule, and it names its Node book where a book rule names *Clean Code*. */
-export interface NodeRuleSpec<Options extends unknown[] = unknown[]> extends Omit<SpecBase<Options>, "fixable" | "requiresTypeChecking"> {
-  source: NodeSource;
+/**
+ * A `node` or `react` rule: report-only, like an `ai` rule, and it names its language book where a book rule names *Clean Code*.
+ */
+export interface LanguageRuleSpec<Options extends unknown[] = unknown[]> extends Omit<SpecBase<Options>, "fixable" | "requiresTypeChecking"> {
+  source: LanguageSource;
 }
 
-/** The text of one `node` message: the problem, then the Node book's passage, then the refactor. */
-export function nodeMessage(message: MessageSpec, source: NodeSource): string {
+/** The text of one `node` or `react` message: the problem, then the language book's passage, then the refactor. */
+export function languageMessage(message: MessageSpec, source: LanguageSource): string {
   return `${message.problem} ${source.book}, ${source.section}: "${source.passage}" Refactor: ${message.refactor}`;
 }
 
@@ -123,11 +134,11 @@ interface DocsBase {
   requiresTypeChecking: boolean;
 }
 
-/** A book rule's docs carry its passage, an `ai` rule's its pattern, and a `node` rule's its Node book's passage. */
+/** A book rule's docs carry its passage, an `ai` rule's its pattern, and a `node` or `react` rule's its language book's passage. */
 export type CleanCodeDocs =
   | (DocsBase & { book: BookSource; pattern?: never; source?: never })
   | (DocsBase & { pattern: AiPattern; book?: never; source?: never })
-  | (DocsBase & { source: NodeSource; book?: never; pattern?: never });
+  | (DocsBase & { source: LanguageSource; book?: never; pattern?: never });
 
 export type CleanCodeRule = Rule.RuleModule & { meta: Rule.RuleMetaData & { docs: CleanCodeDocs } };
 
@@ -146,9 +157,17 @@ export function defineAiRule<Options extends unknown[]>(spec: AiRuleSpec<Options
   return buildRule(spec, docs, (message) => aiMessage(message, spec.pattern));
 }
 
-export function defineNodeRule<Options extends unknown[]>(spec: NodeRuleSpec<Options>): CleanCodeRule {
-  const docs: CleanCodeDocs = { description: spec.description, url: nodeDocsUrl(spec.name), requiresTypeChecking: false, source: spec.source };
-  return buildRule(spec, docs, (message) => nodeMessage(message, spec.source));
+export function defineNodeRule<Options extends unknown[]>(spec: LanguageRuleSpec<Options>): CleanCodeRule {
+  return defineLanguageRule(spec, nodeDocsUrl(spec.name));
+}
+
+export function defineReactRule<Options extends unknown[]>(spec: LanguageRuleSpec<Options>): CleanCodeRule {
+  return defineLanguageRule(spec, reactDocsUrl(spec.name));
+}
+
+function defineLanguageRule<Options extends unknown[]>(spec: LanguageRuleSpec<Options>, url: string): CleanCodeRule {
+  const docs: CleanCodeDocs = { description: spec.description, url, requiresTypeChecking: false, source: spec.source };
+  return buildRule(spec, docs, (message) => languageMessage(message, spec.source));
 }
 
 function buildRule<Options extends unknown[]>(spec: SpecBase<Options>, docs: CleanCodeDocs, write: (message: MessageSpec) => string): CleanCodeRule {

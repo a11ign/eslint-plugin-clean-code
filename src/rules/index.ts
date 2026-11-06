@@ -42,6 +42,8 @@ import nodeNoSyncInHandler from "./node/node-no-sync-in-handler.ts";
 import noTrivialAccessors from "./no-trivial-accessors.ts";
 import oneSwitchPerType from "./one-switch-per-type.ts";
 import predicateReturnsBoolean from "./predicate-returns-boolean.ts";
+import reactNoStateMutation from "./react/react-no-state-mutation.ts";
+import reactNoUntypedEmptyState from "./react/react-no-untyped-empty-state.ts";
 import returnBooleanDirectly from "./return-boolean-directly.ts";
 import stepdownOrder from "./stepdown-order.ts";
 import testAsserts from "./test-asserts.ts";
@@ -89,6 +91,8 @@ export const rules: Record<string, CleanCodeRule> = {
   "node-no-sync-in-handler": nodeNoSyncInHandler,
   "one-switch-per-type": oneSwitchPerType,
   "predicate-returns-boolean": predicateReturnsBoolean,
+  "react-no-state-mutation": reactNoStateMutation,
+  "react-no-untyped-empty-state": reactNoUntypedEmptyState,
   "return-boolean-directly": returnBooleanDirectly,
   "stepdown-order": stepdownOrder,
   "test-asserts": testAsserts,

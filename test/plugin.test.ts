@@ -5,6 +5,8 @@
  *   and is in the `ai` config of both linters and in no other config;
  * - every `node-` rule is in `docs/catalog-node.md`'s rule table and in the `node` config of both linters only, and its
  *   `third-party` rule is in `node-extended` only, with eslint-plugin-n an optional peer dependency;
+ * - every `react-` rule is in `docs/catalog-react.md`'s rule table and in the `react` config of both linters only, on `.jsx` and
+ *   `.tsx` files, and its `third-party` rules are in `react-extended` only, with the two React plugins optional peer dependencies;
  * - type-aware rules are only in `recommended-type-checked`; every rule is `"error"`; the book's stated thresholds are used;
  * - every rule has its doc page, with "Why there is no autofix" exactly when it has no fix;
  * - every message names the problem, the book passage (for an `ai` rule, the AI pattern and its harm) and the refactor;
@@ -19,22 +21,40 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import type { Linter } from "eslint";
 import plugin from "../src/index.ts";
-import { ai as oxlintAi, node as oxlintNode, nodeExtended as oxlintNodeExtended, recommended as oxlintRecommended } from "../src/oxlint.ts";
-import { AI_RULES, BUILT_IN_RULES, NODE_EXTENDED_RULES, NODE_RULES, PLUGIN_PREFIX, SYNTAX_RULES, TEST_FILE_RULES, TYPE_CHECKED_RULES } from "../src/configs.ts";
-import { AI_RULE_PREFIX, NODE_RULE_PREFIX, PACKAGE_NAME } from "../src/lib/define-rule.ts";
+import {
+  ai as oxlintAi, node as oxlintNode, nodeExtended as oxlintNodeExtended, react as oxlintReact, reactExtended as oxlintReactExtended, recommended as oxlintRecommended,
+} from "../src/oxlint.ts";
+import {
+  AI_RULES, BUILT_IN_RULES, NODE_EXTENDED_RULES, NODE_RULES, PLUGIN_PREFIX, REACT_RULES, SYNTAX_RULES, TEST_FILE_RULES, TYPE_CHECKED_RULES,
+} from "../src/configs.ts";
+import { AI_RULE_PREFIX, NODE_RULE_PREFIX, PACKAGE_NAME, REACT_RULE_PREFIX } from "../src/lib/define-rule.ts";
 import { ROOT } from "./support.ts";
 
 const catalog = readFileSync(join(ROOT, "docs", "catalog.md"), "utf8");
 const aiCatalog = readFileSync(join(ROOT, "docs", "catalog-ai.md"), "utf8");
 const nodeCatalog = readFileSync(join(ROOT, "docs", "catalog-node.md"), "utf8");
+const reactCatalog = readFileSync(join(ROOT, "docs", "catalog-react.md"), "utf8");
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 const readme = readFileSync(join(ROOT, "README.md"), "utf8");
 const rules = plugin.rules as unknown as Record<string, { meta: { fixable?: string; messages: Record<string, string>; docs: { url: string; requiresTypeChecking: boolean; source?: { entry: string; passage: string } } } }>;
 const isAiRule = (name: string) => name.startsWith(AI_RULE_PREFIX);
 const isNodeRule = (name: string) => name.startsWith(NODE_RULE_PREFIX);
-const bookRuleNames = Object.keys(rules).filter((name) => !isAiRule(name) && !isNodeRule(name));
+const isReactRule = (name: string) => name.startsWith(REACT_RULE_PREFIX);
+const isLanguageRule = (name: string) => isNodeRule(name) || isReactRule(name);
+const bookRuleNames = Object.keys(rules).filter((name) => !isAiRule(name) && !isLanguageRule(name));
+
+/** The opt-in language configs whose rules quote a book of their own: the config, its rule folder, its catalog and its books. */
+const LANGUAGES = [
+  { config: "node", isRule: isNodeRule, catalog: nodeCatalog, catalogFile: "docs/catalog-node.md", entry: /NODE-\d{2}/, books: /Distributed Systems with Node\.js|JavaScript: The Definitive Guide/ },
+  { config: "react", isRule: isReactRule, catalog: reactCatalog, catalogFile: "docs/catalog-react.md", entry: /RCT-\d{2}/, books: /Learn React with TypeScript/ },
+] as const;
+
 /** Where a rule's doc page is, by the config its prefix names. */
-const docPath = (name: string) => (isAiRule(name) ? `docs/rules/ai/${name}.md` : isNodeRule(name) ? `docs/rules/node/${name}.md` : `docs/rules/${name}.md`);
+function docPath(name: string): string {
+  if (isAiRule(name)) return `docs/rules/ai/${name}.md`;
+  const language = LANGUAGES.find((candidate) => candidate.isRule(name));
+  return language ? `docs/rules/${language.config}/${name}.md` : `docs/rules/${name}.md`;
+}
 
 interface TableRow {
   names: string[];
@@ -60,6 +80,11 @@ const BUILT_IN_NAMES = new Set([...Object.keys(BUILT_IN_RULES), "no-unused-vars"
 
 function rulesOf(config: Linter.Config[]): Record<string, unknown> {
   return Object.assign({}, ...config.map((entry) => entry.rules ?? {}));
+}
+
+/** Every rule an Oxlint config turns on, at its top level and in its `overrides`. */
+function oxlintRulesOf(config: { rules?: Record<string, unknown>; overrides?: Array<{ rules: Record<string, unknown> }> }): Record<string, unknown> {
+  return Object.assign({}, config.rules ?? {}, ...(config.overrides ?? []).map((override) => override.rules));
 }
 
 function severity(setting: unknown): unknown {
@@ -176,6 +201,38 @@ describe("the node catalog", () => {
   });
 });
 
+describe("the react catalog", () => {
+  /** The rows of `docs/catalog-react.md`'s "The rule set at a glance" table that name a rule. */
+  function reactTable(): Array<{ name: string; entry: string; config: string; ruleClass: string; fix: string }> {
+    const section = reactCatalog.slice(reactCatalog.indexOf("## The rule set at a glance"), reactCatalog.indexOf("## Entries"));
+    return section.split("\n").filter((line) => /^\| `/.test(line)).map((line) => {
+      const [name, entry, config, ruleClass, fix] = tableCells(line);
+      return { name: name.replaceAll("`", ""), entry, config, ruleClass, fix };
+    });
+  }
+
+  it("lists exactly the registered react- rules, each a syntax rule in react with no fix", () => {
+    const syntaxRows = reactTable().filter((row) => row.ruleClass === "syntax");
+    assert.deepEqual(syntaxRows.map((row) => row.name).sort(), Object.keys(rules).filter(isReactRule).sort());
+    for (const row of syntaxRows) {
+      assert.equal(row.config, "react", row.name);
+      assert.equal(row.fix, "no fix", row.name);
+      assert.equal(rules[row.name].meta.fixable, undefined, `${row.name} should have no fix`);
+      assert.equal(rules[row.name].meta.docs.requiresTypeChecking, false, `${row.name} should need no type information`);
+    }
+  });
+
+  it("each third-party row is in react-extended, and react-extended has exactly the rules the table names", () => {
+    const thirdParty = reactTable().filter((row) => row.ruleClass === "third-party");
+    assert.deepEqual([...new Set(thirdParty.map((row) => row.config))], ["react-extended"]);
+    assert.deepEqual(Object.keys(rulesOf(plugin.configs["react-extended"])).sort(), thirdParty.map((row) => row.name).sort());
+  });
+
+  it("leaves the book's catalog alone: it names no react- rule", () => {
+    assert.doesNotMatch(catalog, /`react-/);
+  });
+});
+
 describe("the configs", () => {
   it("every rule in every config is an error", () => {
     for (const [name, config] of Object.entries(plugin.configs as Record<string, Linter.Config[]>)) {
@@ -208,10 +265,11 @@ describe("the configs", () => {
     const ai = Object.keys(plugin.configs.ai[0].rules ?? {});
     assert.deepEqual(ai.sort(), AI_RULES.map((name) => `${PLUGIN_PREFIX}/${name}`).sort());
     assert.deepEqual(Object.keys(rules).filter(isAiRule).sort(), [...AI_RULES].sort());
-    for (const config of [plugin.configs.recommended, plugin.configs["recommended-type-checked"], plugin.configs.node, plugin.configs["node-extended"]]) {
+    const others = ["recommended", "recommended-type-checked", "node", "node-extended", "react", "react-extended"] as const;
+    for (const config of others.map((name) => plugin.configs[name])) {
       assert.deepEqual(Object.keys(rulesOf(config)).filter((name) => name.includes(`/${AI_RULE_PREFIX}`)), []);
     }
-    const oxlint = { ...oxlintRecommended.rules, ...oxlintRecommended.overrides[0].rules, ...oxlintNode.rules, ...oxlintNodeExtended.rules };
+    const oxlint = { ...oxlintRecommended.rules, ...oxlintRecommended.overrides[0].rules, ...oxlintNode.rules, ...oxlintNodeExtended.rules, ...oxlintRulesOf(oxlintReact), ...oxlintRulesOf(oxlintReactExtended) };
     assert.deepEqual(Object.keys(oxlint).filter((name) => name.includes(`/${AI_RULE_PREFIX}`)), []);
   });
 
@@ -224,8 +282,8 @@ describe("the configs", () => {
   it("node turns on exactly the node- rules, and they are in no other config of either linter", () => {
     assert.deepEqual(Object.keys(rulesOf(plugin.configs.node)).sort(), NODE_RULES.map((name) => `${PLUGIN_PREFIX}/${name}`).sort());
     assert.deepEqual(Object.keys(rules).filter(isNodeRule).sort(), [...NODE_RULES].sort());
-    const others = [plugin.configs.recommended, plugin.configs["recommended-type-checked"], plugin.configs.ai, plugin.configs["node-extended"]].map(rulesOf);
-    const oxlintOthers = [{ ...oxlintRecommended.rules, ...oxlintRecommended.overrides[0].rules }, oxlintAi.rules, oxlintNodeExtended.rules];
+    const others = [plugin.configs.recommended, plugin.configs["recommended-type-checked"], plugin.configs.ai, plugin.configs["node-extended"], plugin.configs.react, plugin.configs["react-extended"]].map(rulesOf);
+    const oxlintOthers = [{ ...oxlintRecommended.rules, ...oxlintRecommended.overrides[0].rules }, oxlintAi.rules, oxlintNodeExtended.rules, oxlintRulesOf(oxlintReact), oxlintRulesOf(oxlintReactExtended)];
     for (const configured of [...others, ...oxlintOthers]) {
       assert.deepEqual(Object.keys(configured).filter((name) => name.includes(`/${NODE_RULE_PREFIX}`)), []);
     }
@@ -251,6 +309,53 @@ describe("the configs", () => {
 
   it("the Oxlint node-extended config runs the rule natively, with the same pattern, and loads no JS plugin", () => {
     assert.deepEqual(oxlintNodeExtended, { plugins: ["node"], rules: { "node/handle-callback-err": ["error", "^(err|error)$"] } });
+  });
+
+  it("react turns on exactly the react- rules, on .jsx and .tsx files only, and they are in no other config of either linter", () => {
+    const configured = plugin.configs.react.filter((entry) => entry.rules);
+    assert.deepEqual(configured.map((entry) => entry.files), [["**/*.{jsx,tsx}"]]);
+    assert.deepEqual(Object.keys(rulesOf(plugin.configs.react)).sort(), REACT_RULES.map((name) => `${PLUGIN_PREFIX}/${name}`).sort());
+    assert.deepEqual(Object.keys(rules).filter(isReactRule).sort(), [...REACT_RULES].sort());
+    const others = [plugin.configs.recommended, plugin.configs["recommended-type-checked"], plugin.configs.ai, plugin.configs.node, plugin.configs["node-extended"], plugin.configs["react-extended"]].map(rulesOf);
+    const oxlintOthers = [{ ...oxlintRecommended.rules, ...oxlintRecommended.overrides[0].rules }, oxlintAi.rules, oxlintNode.rules, oxlintNodeExtended.rules, oxlintRulesOf(oxlintReactExtended)];
+    for (const rulesConfigured of [...others, ...oxlintOthers]) {
+      assert.deepEqual(Object.keys(rulesConfigured).filter((name) => name.includes(`/${REACT_RULE_PREFIX}`)), []);
+    }
+  });
+
+  it("react overrides no rule of recommended, so max-lines-per-function keeps its 12 lines on components and hooks", () => {
+    const recommendedRules = Object.keys(rulesOf(plugin.configs.recommended));
+    for (const config of [rulesOf(plugin.configs.react), rulesOf(plugin.configs["react-extended"]), oxlintRulesOf(oxlintReact), oxlintRulesOf(oxlintReactExtended)]) {
+      assert.deepEqual(Object.keys(config).filter((name) => recommendedRules.includes(name)), []);
+    }
+  });
+
+  it("the Oxlint react config has the same rules as ESLint's, on the same files, through this plugin's jsPlugins entry", () => {
+    assert.deepEqual(oxlintReact.overrides, [{ files: plugin.configs.react[0].files, rules: plugin.configs.react[0].rules }]);
+    assert.deepEqual(oxlintReact.jsPlugins, [{ name: PLUGIN_PREFIX, specifier: `${PACKAGE_NAME}/plugin` }]);
+  });
+
+  it("react loads no plugin but this one, so it adds no peer dependency", () => {
+    assert.deepEqual(plugin.configs.react.flatMap((entry) => Object.keys(entry.plugins ?? {})), [PLUGIN_PREFIX]);
+  });
+
+  it("react-extended turns on the hooks rules on components and use* hook files, and the list-key rules on .jsx and .tsx only", () => {
+    const byFiles = plugin.configs["react-extended"].filter((entry) => entry.rules).map((entry) => [entry.files, entry.rules]);
+    assert.deepEqual(byFiles, [
+      [["**/*.{jsx,tsx}", "**/use*.{js,ts}"], { "react-hooks/rules-of-hooks": "error", "react-hooks/exhaustive-deps": "error" }],
+      [["**/*.{jsx,tsx}"], { "react/jsx-key": "error", "react/no-array-index-key": "error" }],
+    ]);
+    assert.deepEqual(plugin.configs["react-extended"].flatMap((entry) => Object.keys(entry.plugins ?? {})), ["react-hooks", "react"]);
+    assert.equal(plugin.configs["react-extended"], plugin.configs["react-extended"], "react-extended is built once, like the other configs");
+  });
+
+  it("the Oxlint react-extended config runs the same rules natively, on the same files, and loads no JS plugin", () => {
+    assert.deepEqual(oxlintReactExtended, {
+      overrides: [
+        { files: ["**/*.{jsx,tsx}", "**/use*.{js,ts}"], plugins: ["react"], rules: { "react/rules-of-hooks": "error", "react/exhaustive-deps": "error" } },
+        { files: ["**/*.{jsx,tsx}"], plugins: ["react"], rules: { "react/jsx-key": "error", "react/no-array-index-key": "error" } },
+      ],
+    });
   });
 
   it("the Oxlint config has the same custom rules as ESLint's recommended", () => {
@@ -295,40 +400,42 @@ describe("the rule docs and messages", () => {
     assert.match(section, /checked exception/);
   });
 
-  for (const [name, rule] of Object.entries(rules).filter(([ruleName]) => isNodeRule(ruleName))) {
-    it(`${name} has its doc page under docs/rules/node/, quoting its Node book`, () => {
-      const path = join(ROOT, docPath(name));
-      assert.ok(existsSync(path), `${docPath(name)} is missing`);
-      const doc = readFileSync(path, "utf8");
-      assert.match(doc, new RegExp(`^# clean-code-book/${name}\\n`));
-      assert.match(doc, /\n- \*\*Config:\*\* `node`\n/);
-      assert.match(doc, /\n- \*\*Catalog entry:\*\* NODE-\d{2} in /);
-      assert.match(doc, /\n## What the book says\n\n> "/);
-      assert.match(doc, /\n## What it reports\n/);
-      assert.match(doc, /\n## Examples\n/);
-      assert.match(doc, /\n## Why there is no autofix\n/);
-      assert.equal(rule.meta.fixable, undefined);
-      assert.equal(rule.meta.docs.url, `https://unpkg.com/${PACKAGE_NAME}/${docPath(name)}`);
-    });
+  for (const language of LANGUAGES) {
+    for (const [name, rule] of Object.entries(rules).filter(([ruleName]) => language.isRule(ruleName))) {
+      it(`${name} has its doc page under docs/rules/${language.config}/, quoting its ${language.config} book`, () => {
+        const path = join(ROOT, docPath(name));
+        assert.ok(existsSync(path), `${docPath(name)} is missing`);
+        const doc = readFileSync(path, "utf8");
+        assert.match(doc, new RegExp(`^# clean-code-book/${name}\\n`));
+        assert.match(doc, new RegExp(`\\n- \\*\\*Config:\\*\\* \`${language.config}\`\\n`));
+        assert.match(doc, new RegExp(`\\n- \\*\\*Catalog entry:\\*\\* ${language.entry.source} in `));
+        assert.match(doc, /\n## What the book says\n\n> "/);
+        assert.match(doc, /\n## What it reports\n/);
+        assert.match(doc, /\n## Examples\n/);
+        assert.match(doc, /\n## Why there is no autofix\n/);
+        assert.equal(rule.meta.fixable, undefined);
+        assert.equal(rule.meta.docs.url, `https://unpkg.com/${PACKAGE_NAME}/${docPath(name)}`);
+      });
 
-    it(`${name}: every message names the problem, the Node book's passage and the refactor`, () => {
-      for (const message of Object.values(rule.meta.messages)) {
-        assert.match(message, /^.+ (Distributed Systems with Node\.js|JavaScript: The Definitive Guide), § [^:]+: ".+" Refactor: .+$/s);
-      }
-    });
+      it(`${name}: every message names the problem, its ${language.config} book's passage and the refactor`, () => {
+        for (const message of Object.values(rule.meta.messages)) {
+          assert.match(message, new RegExp(`^.+ (${language.books.source}), § [^:]+: ".+" Refactor: .+$`, "s"));
+        }
+      });
 
-    it(`${name}: its passage is copied from its catalog entry`, () => {
-      const { source } = rule.meta.docs;
-      assert.ok(source, `${name} names no Node book source`);
-      const start = nodeCatalog.indexOf(`\n#### ${source.entry} · `);
-      assert.notEqual(start, -1, `docs/catalog-node.md has no entry ${source.entry}`);
-      const entry = nodeCatalog.slice(start + 1).split(/\n#{2,4} /)[0];
-      assert.match(entry, new RegExp(`\\*\\*Rule:\\*\\* \`${name}\``));
-      assert.ok(entry.includes(source.passage), `${name}'s passage is not in ${source.entry}'s quote`);
-    });
+      it(`${name}: its passage is copied from its catalog entry`, () => {
+        const { source } = rule.meta.docs;
+        assert.ok(source, `${name} names no ${language.config} book source`);
+        const start = language.catalog.indexOf(`\n#### ${source.entry} · `);
+        assert.notEqual(start, -1, `${language.catalogFile} has no entry ${source.entry}`);
+        const entry = language.catalog.slice(start + 1).split(/\n#{2,4} /)[0];
+        assert.match(entry, new RegExp(`\\*\\*Rule:\\*\\* \`${name}\``));
+        assert.ok(entry.includes(source.passage), `${name}'s passage is not in ${source.entry}'s quote`);
+      });
+    }
   }
 
-  for (const [name, rule] of Object.entries(rules).filter(([ruleName]) => !isAiRule(ruleName) && !isNodeRule(ruleName))) {
+  for (const [name, rule] of Object.entries(rules).filter(([ruleName]) => !isAiRule(ruleName) && !isLanguageRule(ruleName))) {
     it(`${name} has its doc page, with the sections its fix calls for`, () => {
       const path = join(ROOT, "docs", "rules", `${name}.md`);
       assert.ok(existsSync(path), `docs/rules/${name}.md is missing`);
@@ -366,11 +473,22 @@ describe("the published package", () => {
     assert.equal(pkg.dependencies?.["eslint-plugin-n"], undefined);
   });
 
+  it("lists eslint-plugin-react-hooks and eslint-plugin-react as optional peer dependencies, and tests with them as dev dependencies", () => {
+    for (const name of ["eslint-plugin-react-hooks", "eslint-plugin-react"]) {
+      assert.ok(pkg.peerDependencies[name], `${name} is not a peer dependency`);
+      assert.deepEqual(pkg.peerDependenciesMeta[name], { optional: true });
+      assert.ok(pkg.devDependencies[name], `${name} is not a dev dependency`);
+      assert.equal(pkg.dependencies?.[name], undefined);
+    }
+    assert.equal(pkg.peerDependencies["eslint-plugin-react-hooks"], ">=6.0.0", "version 6 or later, as the catalog asks");
+  });
+
   it("its README, rule docs and rule URLs carry no organisation branding", () => {
     const docFiles = readdirSync(join(ROOT, "docs", "rules"), { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile());
     const docs = docFiles.map((entry) => readFileSync(join(entry.parentPath, entry.name), "utf8"));
     assert.ok(docFiles.some((entry) => entry.parentPath.endsWith("ai")), "the ai rule docs are read too");
     assert.ok(docFiles.some((entry) => entry.parentPath.endsWith("node")), "the node rule docs are read too");
+    assert.ok(docFiles.some((entry) => entry.parentPath.endsWith("react")), "the react rule docs are read too");
     for (const text of [readme, ...docs, ...Object.values(rules).map((rule) => rule.meta.docs.url)]) assert.doesNotMatch(text, /a11ign/i);
   });
 
@@ -403,6 +521,7 @@ describe("the README", () => {
     ["In `recommended-type-checked` only", TYPE_CHECKED_RULES],
     ["In `ai`", AI_RULES],
     ["In `node`", NODE_RULES],
+    ["In `react`", REACT_RULES],
   ] as const;
 
   for (const [heading, configured] of SECTIONS) {
@@ -419,6 +538,10 @@ describe("the README", () => {
 
   it("lists exactly the rules node-extended turns on", () => {
     assert.deepEqual(readmeTable("In `node-extended`").map((row) => row.name), Object.keys(NODE_EXTENDED_RULES));
+  });
+
+  it("lists exactly the rules react-extended turns on", () => {
+    assert.deepEqual(readmeTable("In `react-extended`").map((row) => row.name).sort(), Object.keys(rulesOf(plugin.configs["react-extended"])).sort());
   });
 
   it("lists exactly the built-in rules recommended turns on", () => {
