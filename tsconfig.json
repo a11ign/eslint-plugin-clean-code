@@ -1,0 +1,10 @@
+{
+  // The typecheck program: the sources, their tests and the test helpers. Rslib reads `tsconfig.build.json` for the published declarations.
+  "extends": "@a11ign/toolchain/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "eslint.config.ts", "rslib.config.ts"]
+}

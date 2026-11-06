@@ -1,0 +1,11 @@
+{
+  // What Rslib reads for the published declarations: the package's own sources, without tests or test helpers.
+  "extends": "@a11ign/toolchain/tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "noEmit": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/testing"]
+}
