@@ -1,4 +1,3 @@
-import type { SourceCode } from "eslint";
 import { defineAiRule } from "../../lib/define-rule.ts";
 import { asTs, type TSESTree } from "../../lib/ast.ts";
 
@@ -47,7 +46,7 @@ export default defineAiRule<[Options]>({
   ],
   defaultOptions: [{ allow: [], checkJsxText: false }],
   create(context) {
-    const sourceCode: SourceCode = context.sourceCode;
+    const sourceCode = context.sourceCode;
     const options = (context.options[0] as Options | undefined) ?? {};
     const allowed = new Set((options.allow ?? []).map(bare));
 

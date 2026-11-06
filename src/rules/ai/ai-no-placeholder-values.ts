@@ -1,5 +1,6 @@
 import { defineAiRule } from "../../lib/define-rule.ts";
 import { asTs, type TSESTree } from "../../lib/ast.ts";
+import { shortQuote } from "../../lib/quote.ts";
 
 /** The placeholders AI-generated code leaves for a person to fill in, matched against the whole string, ignoring case. */
 const DEFAULT_PATTERNS = [
@@ -9,9 +10,6 @@ const DEFAULT_PATTERNS = [
   String.raw`^(replace[-_ ]?me|changeme|xxx+|placeholder)$`,
   String.raw`^sk-(xxx+|\.\.\.)$`,
 ];
-
-/** The longest piece of a string the message quotes. */
-const QUOTE_LENGTH = 60;
 
 interface Options {
   patterns?: string[];
@@ -28,10 +26,6 @@ function isName(node: TSESTree.Node): boolean {
   if (parent.type === "MemberExpression" && parent.property === node) return true;
   if (parent.type === "TSLiteralType") return true;
   return (parent.type === "ImportDeclaration" || parent.type === "ExportNamedDeclaration" || parent.type === "ExportAllDeclaration" || parent.type === "ImportExpression") && parent.source === node;
-}
-
-function quoted(text: string): string {
-  return text.length > QUOTE_LENGTH ? `${text.slice(0, QUOTE_LENGTH - 1)}…` : text;
 }
 
 export default defineAiRule<[Options]>({
@@ -62,7 +56,7 @@ export default defineAiRule<[Options]>({
     const patterns = [...DEFAULT_PATTERNS, ...extra].map((pattern) => new RegExp(pattern, "iu"));
     function check(node: TSESTree.Node, text: string) {
       if (isName(node) || !patterns.some((pattern) => pattern.test(text))) return;
-      context.report({ node: node as never, messageId: "placeholder", data: { text: quoted(text) } });
+      context.report({ node: node as never, messageId: "placeholder", data: { text: shortQuote(text) } });
     }
     return {
       Literal(node) {

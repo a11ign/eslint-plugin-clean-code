@@ -2,26 +2,19 @@ import { defineAiRule } from "../../lib/define-rule.ts";
 import type { Comment } from "../../lib/ast.ts";
 import { isDirectiveComment, isDocComment } from "../../lib/safe-fix.ts";
 import { sourceComments } from "../../lib/comment-text.ts";
+import { shortQuote } from "../../lib/quote.ts";
 
 /** What marks the first comment of a file as its licence header. */
 const LICENCE = /\b(copyright|licen[cs]ed?|SPDX-License-Identifier)\b|\(c\)|©/i;
-
-/** The longest piece of a comment's text the message quotes. */
-const QUOTE_LENGTH = 60;
 
 interface Options {
   allow?: string[];
 }
 
-/** Whether the comment is the file's licence header: the first thing in the file, after a hashbang at most. */
-function isLicenceHeader(comment: Comment, firstCodeStart: number, isFirst: boolean): boolean {
-  return isFirst && comment.range![1] <= firstCodeStart && LICENCE.test(comment.value);
-}
-
-/** The comment's text on one line, cut to QUOTE_LENGTH characters. */
-function quoted(comment: Comment): string {
-  const text = comment.value.replace(/\s+/g, " ").trim();
-  return text.length > QUOTE_LENGTH ? `${text.slice(0, QUOTE_LENGTH - 1)}…` : text;
+/** The file's licence header: its first comment, when no code comes before it and it names a licence. A hashbang may precede it. */
+function licenceHeader(comments: Comment[], firstCodeStart: number): Comment | undefined {
+  const [first] = comments;
+  return first && first.range![1] <= firstCodeStart && LICENCE.test(first.value) ? first : undefined;
 }
 
 export default defineAiRule<[Options]>({
@@ -53,12 +46,12 @@ export default defineAiRule<[Options]>({
     const isAllowed = (comment: Comment) => allow.some((pattern) => pattern.test(comment.value));
     return {
       Program(program) {
-        const firstCodeStart = program.body[0]?.range?.[0] ?? sourceCode.text.length;
-        sourceComments(sourceCode).forEach((comment, index) => {
-          if (isDocComment(comment) || isDirectiveComment(comment) || isAllowed(comment)) return;
-          if (isLicenceHeader(comment, firstCodeStart, index === 0)) return;
-          context.report({ loc: comment.loc!, messageId: "comment", data: { text: quoted(comment) } });
-        });
+        const comments = sourceComments(sourceCode);
+        const header = licenceHeader(comments, program.body[0]?.range?.[0] ?? sourceCode.text.length);
+        for (const comment of comments) {
+          if (comment === header || isDocComment(comment) || isDirectiveComment(comment) || isAllowed(comment)) continue;
+          context.report({ loc: comment.loc!, messageId: "comment", data: { text: shortQuote(comment.value) } });
+        }
       },
     };
   },

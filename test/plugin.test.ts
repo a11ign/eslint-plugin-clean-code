@@ -217,8 +217,9 @@ describe("the rule docs and messages", () => {
 
   it("ai-no-ceremonial-catch's doc explains where it departs from the book's Java delete() example", () => {
     const doc = readFileSync(join(ROOT, "docs", "rules", "ai", "ai-no-ceremonial-catch.md"), "utf8");
-    const section = doc.slice(doc.indexOf("\n## Where this departs from the book\n"));
-    assert.notEqual(doc.indexOf("\n## Where this departs from the book\n"), -1);
+    const start = doc.indexOf("\n## Where this departs from the book\n");
+    assert.notEqual(start, -1, "the doc has no \"Where this departs from the book\" section");
+    const section = doc.slice(start);
     assert.match(section, /delete\(\)/);
     assert.match(section, /Java/);
     assert.match(section, /checked exception/);
