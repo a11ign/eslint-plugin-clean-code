@@ -2,9 +2,10 @@
  * The Oxlint config: the same rules as ESLint's `recommended`, under Oxlint's names, with this plugin loaded through
  * `jsPlugins`. Use it from `oxlint.config.ts` with `extends: [recommended]`. Rules that need type information are not here:
  * Oxlint's JS plugins have no type information (ADR 0002). `ai` is the opt-in config of the same name in ESLint, used with
- * `extends: [ai]` or `extends: [recommended, ai]`.
+ * `extends: [ai]` or `extends: [recommended, ai]`. `node` and `nodeExtended` are the opt-in configs `node` and `node-extended`,
+ * used with `extends: [recommended, node, nodeExtended]`. `nodeExtended` uses Oxlint's native `node` plugin and loads no JS plugin.
  */
-import { AI_RULES, AI_TEST_FILE_OFF, BUILT_IN_RULES, PLUGIN_PREFIX, SYNTAX_RULES, TEST_FILES, TEST_FILE_OFF, TEST_FILE_RULES, prefixed } from "./configs.ts";
+import { AI_RULES, AI_TEST_FILE_OFF, BUILT_IN_RULES, CALLBACK_ERROR_PATTERN, NODE_RULES, PLUGIN_PREFIX, SYNTAX_RULES, TEST_FILES, TEST_FILE_OFF, TEST_FILE_RULES, prefixed } from "./configs.ts";
 import { PACKAGE_NAME } from "./lib/define-rule.ts";
 
 /**
@@ -31,4 +32,15 @@ export const ai = {
   overrides: [{ files: TEST_FILES, rules: AI_TEST_FILE_OFF }],
 };
 
-export default { recommended, ai };
+export const node = {
+  jsPlugins: [{ name: PLUGIN_PREFIX, specifier: `${PACKAGE_NAME}/plugin` }],
+  rules: prefixed(NODE_RULES),
+};
+
+/** NODE-08 under Oxlint's native `node` plugin: `n/handle-callback-err`, as `node/handle-callback-err`, with the same pattern. */
+export const nodeExtended = {
+  plugins: ["node"],
+  rules: { "node/handle-callback-err": ["error", CALLBACK_ERROR_PATTERN] },
+};
+
+export default { recommended, ai, node, "node-extended": nodeExtended };

@@ -1,0 +1,5 @@
+---
+"eslint-plugin-clean-code-book": minor
+---
+
+An opt-in `node` config, with four report-only rules for Node's event loop and error model, from the Node books of `docs/catalog-node.md`: `node-no-sync-in-handler` reports a blocking `…Sync()` call inside an `EventEmitter` listener or an `http`/`https`/`net` server handler, `node-no-recursive-next-tick` a function that schedules itself with `process.nextTick()`, `node-exit-after-fatal-error` an `uncaughtException` or `unhandledRejection` handler that never ends the process, and `node-no-error-message-matching` a `catch` that tells errors apart by their message. And `node-extended`, which adds `eslint-plugin-n`'s `n/handle-callback-err` with `^(err|error)$`, and leaves out `n/no-process-exit` and `n/no-sync`. ESLint gets `configs.node` and `configs["node-extended"]`; Oxlint the `node` and `nodeExtended` exports of `eslint-plugin-clean-code-book/oxlint`, where `nodeExtended` runs Oxlint's native `node/handle-callback-err`. `eslint-plugin-n` is a new optional peer dependency, needed only by ESLint's `node-extended`. `recommended`, `recommended-type-checked` and `ai` are unchanged.

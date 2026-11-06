@@ -8,6 +8,7 @@ Every rule of `recommended` comes from a passage of the book, and its doc page q
 - One codebase for ESLint and Oxlint: every rule's tests run under both.
 - TypeScript, JavaScript, JSX and TSX.
 - An opt-in `ai` config, with five more rules for the habits of AI-generated code. It is separate from the book's rules, and `recommended` does not turn it on.
+- An opt-in `node` config, with four rules for Node's event loop and error model from the Node books, and a `node-extended` companion that adds `eslint-plugin-n`'s callback-error check.
 
 ## Requirements
 
@@ -15,6 +16,7 @@ Every rule of `recommended` comes from a passage of the book, and its doc page q
 - ESLint 10 or later, with flat config, **or** Oxlint 1.92 or later.
 - With ESLint: typescript-eslint 8.72.1 or later in 8.x, for `recommended` too, since it parses the TypeScript files. `recommended-type-checked` also needs a `tsconfig.json`.
 - With Oxlint: nothing else. Oxlint doesn't need ESLint or typescript-eslint.
+- For `node-extended` with ESLint only: `eslint-plugin-n` 17 or later. Nothing else needs it, and Oxlint runs the same rule natively.
 
 ## Setup with ESLint
 
@@ -99,6 +101,56 @@ export default { extends: [recommended, ai] };
 
 `ai-no-placeholder-implementation` and `ai-no-placeholder-values` are off in test files, where stubs and sample values belong. `ai-no-ceremonial-catch` can report the book's own pattern, a boundary `catch` that only logs; its [doc page](docs/rules/ai/ai-no-ceremonial-catch.md#where-this-departs-from-the-book) says why, and its `allowSwallow` option keeps that pattern.
 
+## The `node` config
+
+`node` is an opt-in config of four rules for code that runs under Node: a blocking `…Sync()` call in an event or request handler, a function that schedules itself with `process.nextTick()`, a fatal-error handler that logs and keeps the process running, and telling errors apart by their message. These rules are not from *Clean Code*. Each one quotes a passage of *Distributed Systems with Node.js* or *JavaScript: The Definitive Guide*, in [`docs/catalog-node.md`](docs/catalog-node.md). Every `node` rule is an `error`, and none has a fix. `node` needs nothing that `recommended` does not.
+
+Add it after `recommended`. In ESLint:
+
+<!-- setup: eslint-node -->
+```js
+import cleanCode from "eslint-plugin-clean-code-book";
+
+export default [...cleanCode.configs.recommended, ...cleanCode.configs.node];
+```
+
+In Oxlint:
+
+<!-- setup: oxlint-node -->
+```ts
+import { node, recommended } from "eslint-plugin-clean-code-book/oxlint";
+
+export default { extends: [recommended, node] };
+```
+
+### `node-extended`
+
+`node-extended` adds `eslint-plugin-n`'s `n/handle-callback-err`, which reports a Node-style callback that never checks its error argument, named `err` or `error`. It lists that one rule rather than using `eslint-plugin-n`'s presets, and leaves out `n/no-process-exit`, which would report the exit `node-exit-after-fatal-error` asks for, and `n/no-sync`, which would report the startup reads `node-no-sync-in-handler` leaves alone.
+
+With ESLint, install `eslint-plugin-n`, an optional peer dependency that only `node-extended` needs:
+
+```sh
+npm install --save-dev eslint-plugin-n
+```
+
+and add `node-extended` after `node`:
+
+<!-- setup: eslint-node-extended -->
+```js
+import cleanCode from "eslint-plugin-clean-code-book";
+
+export default [...cleanCode.configs.recommended, ...cleanCode.configs.node, ...cleanCode.configs["node-extended"]];
+```
+
+Oxlint runs the same rule natively, as `node/handle-callback-err`, so nothing more is installed:
+
+<!-- setup: oxlint-node-extended -->
+```ts
+import { node, nodeExtended, recommended } from "eslint-plugin-clean-code-book/oxlint";
+
+export default { extends: [recommended, node, nodeExtended] };
+```
+
 ## Changing a rule
 
 Every rule is an `error`, and every threshold is the book's value, or a value the [catalog](docs/catalog.md#thresholds-the-book-does-not-state) gives a reason for. To change one, add your own settings after `recommended`. A setting added this way applies to every file. In ESLint that includes test files, where `recommended` turns `max-lines-per-function` off, so to change that rule, give the entry a `files` or `ignores` of its own.
@@ -145,7 +197,7 @@ The built-in rules keep their own behaviour, including the fixes some of them ha
 
 ## Rules
 
-Each book rule's page quotes the passage it comes from, and each `ai` rule's page names the AI pattern and its harm. Every page says what the rule reports, what it leaves alone, and how its fix works or why it has none.
+Each book rule's page quotes the passage it comes from, each `ai` rule's page names the AI pattern and its harm, and each `node` rule's page quotes its Node book. Every page says what the rule reports, what it leaves alone, and how its fix works or why it has none.
 
 ### In `recommended`
 
@@ -210,6 +262,21 @@ Each book rule's page quotes the passage it comes from, and each `ai` rule's pag
 | [`ai-no-placeholder-implementation`](docs/rules/ai/ai-no-placeholder-implementation.md) | Don't ship a function whose body is only a placeholder: `throw new Error("Not implemented")` or a stub return. | no |
 | [`ai-no-placeholder-values`](docs/rules/ai/ai-no-placeholder-values.md) | Don't leave placeholder strings such as `"YOUR_API_KEY"` or `"<insert token>"` in the code. | no |
 
+### In `node`
+
+| Rule | What it checks | Fix |
+| --- | --- | --- |
+| [`node-exit-after-fatal-error`](docs/rules/node/node-exit-after-fatal-error.md) | A handler for an uncaught exception or an unhandled rejection ends the process; it does not log the error and carry on. | no |
+| [`node-no-error-message-matching`](docs/rules/node/node-no-error-message-matching.md) | Tell errors apart by their `code` or their class, not by matching the text of their message. | no |
+| [`node-no-recursive-next-tick`](docs/rules/node/node-no-recursive-next-tick.md) | Don't break work up by having a function schedule itself again with `process.nextTick()`. | no |
+| [`node-no-sync-in-handler`](docs/rules/node/node-no-sync-in-handler.md) | Don't call a blocking `…Sync()` function inside an event handler or a server's request handler. | no |
+
+### In `node-extended`
+
+| Rule | Setting | Catalog entry |
+| --- | --- | --- |
+| `n/handle-callback-err` | `^(err\|error)$`; `node/handle-callback-err` in Oxlint | NODE-08 |
+
 ### Built-in rules
 
 `recommended` also turns on these built-in rules, under ESLint and under Oxlint. A threshold is the book's value, or one the catalog gives a reason for (`complexity` is one):
@@ -236,7 +303,7 @@ Each book rule's page quotes the passage it comes from, and each `ai` rule's pag
 
 ## The catalog
 
-[`docs/catalog.md`](docs/catalog.md) is the record of how the book became these rules. It lists every rule, heuristic and smell in the book with the passage it comes from, and says whether it is checked from syntax, needs type information, is covered by a built-in rule, or cannot be linted, and why. Rules that cannot be linted, such as "one level of abstraction per function", are not in this plugin. The `ai` config's rules have a catalog of their own, [`docs/catalog-ai.md`](docs/catalog-ai.md).
+[`docs/catalog.md`](docs/catalog.md) is the record of how the book became these rules. It lists every rule, heuristic and smell in the book with the passage it comes from, and says whether it is checked from syntax, needs type information, is covered by a built-in rule, or cannot be linted, and why. Rules that cannot be linted, such as "one level of abstraction per function", are not in this plugin. The `ai` config's rules have a catalog of their own, [`docs/catalog-ai.md`](docs/catalog-ai.md), and so do the `node` config's, [`docs/catalog-node.md`](docs/catalog-node.md).
 
 ## Contributing
 

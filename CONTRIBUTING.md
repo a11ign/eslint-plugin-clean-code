@@ -12,6 +12,14 @@ A rule earns a place in `recommended` with a passage of the book: its entry in `
 
 An `ai` rule is named `ai-<name>`, lives in `src/rules/ai/`, is built with `defineAiRule` instead of `defineRule`, and its page is `docs/rules/ai/<rule>.md`. Its messages name the pattern and its harm where a book rule's name the passage. Its page has `## The AI pattern` (with the **Language basis** line) in place of `## What the book says`, and a rule that contradicts a book example has a `## Where this departs from the book` section that explains why. Add it to `AI_RULES` in `src/configs.ts`, which builds the `ai` config for both linters, and to the README's "In `ai`" table.
 
+## A rule for `node`
+
+A rule earns a place in the opt-in `node` config with a passage of a Node book instead of *Clean Code*: its entry in [`docs/catalog-node.md`](docs/catalog-node.md) quotes *Distributed Systems with Node.js* or *JavaScript: The Definitive Guide* (ADR 0004 of A11-415). Its class is `syntax`: a custom rule that needs only the syntax tree and scope analysis, and runs under both linters.
+
+A `node` rule is named `node-<name>`, lives in `src/rules/node/`, is built with `defineNodeRule` instead of `defineRule`, and its page is `docs/rules/node/<rule>.md`. `defineNodeRule` takes a `source` (the entry, the book's title, the section and a short verbatim passage) where `defineRule` takes `book`, and writes each message as *problem, then the Node book's passage, then the refactor*. A `node` rule reports only: like an `ai` rule, it has no `fixable`. Its page has the same sections as a book rule's, with `## What the book says` quoting the Node book, and `## Why there is no autofix`. The helpers in `src/rules/node/node-calls.ts` read a call's method and receiver and resolve a function passed by name. Add the rule to `NODE_RULES` in `src/configs.ts`, which builds the `node` config for both linters, and to the README's "In `node`" table.
+
+A `third-party` entry of the catalog is configuration, not a rule: it goes in `NODE_EXTENDED_RULES` in `src/configs.ts`, which builds the ESLint `node-extended` config, and its native Oxlint name goes in `nodeExtended` in `src/oxlint.ts`. List each rule one by one; never turn on a plugin's preset. The plugin it comes from is an optional peer dependency, loaded only when `node-extended` is read, so the plain `node` config never needs it.
+
 ## Setup
 
 ```sh
