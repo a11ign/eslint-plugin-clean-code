@@ -36,11 +36,32 @@ function reportBanner(context: Rule.RuleContext, comment: Comment, length: numbe
   });
 }
 
-/** The comment's banner runs, or null when it has none. Markdown rules in a doc comment are not banners. */
+/** The comment's banner runs, or null when it has none. */
 function findBanner(comment: Comment, length: number): Banner | null {
   const { lines, movedStar } = linesOf(comment);
-  const runs = lines.map((line, index) => (isMarkdownRule(lines, index, { doc: isDocComment(comment) }) ? [] : runsIn(line.content, length)));
+  const doc = isDocComment(comment);
+  const runs = lines.map((_, index) => bannerRunsOnLine(lines, index, { doc, length }));
   return runs.some((found) => found.length > 0) ? { comment, lines, runs, movedStar } : null;
+}
+
+/**
+ * The banner runs on one line. In a doc comment, a Markdown rule is not a banner, and neither is a run inside a Markdown
+ * code span (`` `/****** Section ******\/` ``): that quotes code, as a doc comment about banners does.
+ */
+function bannerRunsOnLine(lines: CommentLine[], index: number, { doc, length }: { doc: boolean; length: number }): Run[] {
+  if (!doc) return runsIn(lines[index].content, length);
+  if (isMarkdownRule(lines, index, { doc })) return [];
+  const text = lines[index].content;
+  const spans = codeSpans(text);
+  return runsIn(text, length).filter((run) => !spans.some((span) => span.start < run.start && run.end <= span.end));
+}
+
+/** The Markdown code spans of a line: from each opening backtick to its closing one. An unclosed backtick opens none. */
+function codeSpans(text: string): Run[] {
+  const ticks = [...text.matchAll(/`/g)].map((match) => match.index);
+  const spans: Run[] = [];
+  for (let index = 0; index + 1 < ticks.length; index += 2) spans.push({ start: ticks[index], end: ticks[index + 1] });
+  return spans;
 }
 
 /** The length and the character of the first banner run, for the message. */
@@ -142,8 +163,7 @@ interface LinePlace {
 
 /**
  * One line with its runs removed. Text that a run kept apart from the comment's delimiters stays one space away from
- * them: a block comment of a run of `*`, ` Section ` and another run of `*` becomes `/* Section *\/`, and a line comment of
- * `//`, a run of `=` and `Section` becomes `// Section`.
+ * them, so `/****** Section ******\/` becomes `/* Section *\/` and `//===== Section` becomes `// Section`.
  */
 function rewriteLine(line: CommentLine, runs: Run[], place: LinePlace): CommentLine {
   const content = withoutRuns(line.content, runs);

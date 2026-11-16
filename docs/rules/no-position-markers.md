@@ -23,6 +23,7 @@ These are not runs:
 - part of a diagram: a run next to `+` or `|` (`+--------+`, `|=====|`), and any run on a line that starts or ends with `+` or `|` or that has box-drawing characters (U+2500 to U+257F),
 - part of a longer token, such as a URL or base64 text (`eyJ2/////ZXJz`): a run with other characters right on both sides of it,
 - in a doc comment, a line made only of a run that directly underlines a line of text (a Markdown heading), and a Markdown table rule (`| ----- | ----- |`) under a table row.
+- in a doc comment, a run inside a Markdown code span (`` `//===== Section` ``): it quotes code, as the doc comment of code that handles banners does. Outside a doc comment, backticks are plain text.
 
 Directive comments (`/*! … */`, `@license`, `//# sourceMappingURL=`, `//# sourceURL=` and the others) are not reported, because no fix may change them; an inline source map is base64 and often has runs of `/`.
 
