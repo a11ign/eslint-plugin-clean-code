@@ -32,7 +32,7 @@ function reportHtml(context: Rule.RuleContext, comment: Comment): void {
     loc: comment.loc!,
     messageId: "html",
     data: { html: found[0][0] },
-    ...(isOneLevelFix(comment, found, value) ? { fix: (fixer: Rule.RuleFixer) => replaceCommentText(fixer, sourceCode, comment, value) } : {}),
+    ...(isOneLevelFix(comment, found, value) ? { fix: (fixer: Rule.RuleFixer) => replaceCommentText({ fixer, sourceCode }, comment, value) } : {}),
   });
 }
 

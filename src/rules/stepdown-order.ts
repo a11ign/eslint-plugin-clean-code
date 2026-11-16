@@ -1,7 +1,7 @@
 import type { Rule, Scope, SourceCode } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs, hasUseStrictDirective, isFunction, isModule, type Node, type Token, type TSESTree } from "../lib/ast.ts";
-import { blankLineAfter, blockOf, childOf, crossesDirective, endOfLineAfter, insertedAfter, mergeAdjacent, removeBlock, type Block } from "../lib/moves.ts";
+import { blockOf, childOf, crossesDirective, endOfLineAfter, insertedAfter, mergeAdjacent, removeBlock, type Block } from "../lib/moves.ts";
 
 type Statement = TSESTree.ProgramStatement;
 type ClassMember = TSESTree.ClassElement;
@@ -396,7 +396,7 @@ function movedText(sourceCode: SourceCode, anchor: Node, blocks: Block[]): strin
   let previous = sourceCode.getLastToken(anchor as never) as Token;
   let text = "";
   for (const block of blocks) {
-    text += insertedAfter(sourceCode, previous, block, blankLineAfter(sourceCode, block));
+    text += insertedAfter(sourceCode, previous, block);
     previous = block.lastToken;
   }
   return text;

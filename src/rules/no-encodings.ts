@@ -90,7 +90,7 @@ function variableCandidate(variable: VariableT, file: LintedFile): Candidate | n
   const encoding = variable.defs.some(isInterfaceDef) ? interfaceEncoding(variable.name) : memberEncoding(variable.name);
   if (!encoding) return null;
   const fixable = isEsModuleFile(file.sourceCode) && canRenameVariable(variable, encoding, file.filename);
-  return nameCandidate(first, encoding, fixable ? (fixer) => renameAll(fixer, variableIdentifiers(variable), variable.name, encoding.suggestion) : null);
+  return nameCandidate(first, encoding, fixable ? (fixer) => renameAll(fixer, variableIdentifiers(variable), { from: variable.name, to: encoding.suggestion }) : null);
 }
 
 function isInParameterProperty(identifier: Node): boolean {

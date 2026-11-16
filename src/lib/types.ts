@@ -90,13 +90,17 @@ function modifierTexts(declaration: ts.Node): string[] {
 }
 
 /** Whether `symbol` extends or implements `ancestor`, directly or through other types. */
-export function inheritsFrom(checker: ts.TypeChecker, symbol: ts.Symbol, ancestor: ts.Symbol, seen = new Set<ts.Symbol>()): boolean {
-  if (seen.has(symbol)) return false;
-  seen.add(symbol);
-  return directSupertypes(checker, symbol).some((base) => {
-    const baseSymbol = base.getSymbol();
-    return baseSymbol !== undefined && (baseSymbol === ancestor || inheritsFrom(checker, baseSymbol, ancestor, seen));
-  });
+export function inheritsFrom(checker: ts.TypeChecker, symbol: ts.Symbol, ancestor: ts.Symbol): boolean {
+  const seen = new Set<ts.Symbol>();
+  const reaches = (current: ts.Symbol): boolean => {
+    if (seen.has(current)) return false;
+    seen.add(current);
+    return directSupertypes(checker, current).some((base) => {
+      const baseSymbol = base.getSymbol();
+      return baseSymbol !== undefined && (baseSymbol === ancestor || reaches(baseSymbol));
+    });
+  };
+  return reaches(symbol);
 }
 
 /** The class's direct supertypes: what it `extends` and `implements` (an interface: what it `extends`). */

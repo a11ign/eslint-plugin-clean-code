@@ -104,9 +104,9 @@ function runLines(run: Comment[]) {
 
 /** Deletes the entries' lines from the block comment, or the entries' comments from the run of line comments. */
 function journalFix(sourceCode: SourceCode, group: Comment[], entries: Set<number>): Rule.ReportFixer {
-  if (group[0].type !== "Block") return (fixer) => keepInRun(fixer, sourceCode, group, (_, index) => !entries.has(index));
+  if (group[0].type !== "Block") return (fixer) => keepInRun({ fixer, sourceCode }, group, (_, index) => !entries.has(index));
   const comment = group[0];
-  return (fixer) => replaceCommentText(fixer, sourceCode, comment, joinLines(comment, withoutLines(comment, commentLines(comment), entries)));
+  return (fixer) => replaceCommentText({ fixer, sourceCode }, comment, joinLines(comment, withoutLines(comment, commentLines(comment), entries)));
 }
 
 export default defineRule<[number]>({

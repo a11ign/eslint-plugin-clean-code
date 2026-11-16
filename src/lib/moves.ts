@@ -117,11 +117,6 @@ function isBlankLine(text: string, lineStart: number): boolean {
   return text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd).trim() === "" && lineEnd !== -1;
 }
 
-/** Whether a blank line separates `block` from the code after it, so a moved copy keeps the same spacing. */
-export function blankLineAfter(sourceCode: SourceCode, block: Block): boolean {
-  return isBlankLine(sourceCode.text, block.lines[1]);
-}
-
 /**
  * Where code can be inserted on its own line after `node`: the end of the line `node` ends on. `null` when other code, or a
  * comment that runs onto the next line, follows `node` on that line.
@@ -140,9 +135,15 @@ export function endOfLineAfter(sourceCode: SourceCode, node: Node): number | nul
  * The text of `block` inserted on new lines after `previous` (the last token before the insertion point), with a `;` in
  * front when the block's first token would otherwise continue `previous`'s statement.
  */
-export function insertedAfter(sourceCode: SourceCode, previous: Token, block: Block, blankLine: boolean): string {
+export function insertedAfter(sourceCode: SourceCode, previous: Token, block: Block): string {
   const guard = continuesStatement(previous, block.firstToken) ? ";" : "";
-  return `\n${blankLine ? "\n" : ""}${guard}${blockText(sourceCode, block)}`;
+  const blankLine = blankLineAfter(sourceCode, block) ? "\n" : "";
+  return `\n${blankLine}${guard}${blockText(sourceCode, block)}`;
+}
+
+/** Whether a blank line separates `block` from the code after it, so a moved copy keeps the same spacing. */
+export function blankLineAfter(sourceCode: SourceCode, block: Block): boolean {
+  return isBlankLine(sourceCode.text, block.lines[1]);
 }
 
 /** The block's lines, without the line break after the last one. */

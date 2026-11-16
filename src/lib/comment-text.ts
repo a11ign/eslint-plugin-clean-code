@@ -42,6 +42,12 @@ export function sourceComments(sourceCode: SourceCode): Comment[] {
   return sourceCode.getAllComments().filter((comment) => comment.type === "Line" || comment.type === "Block");
 }
 
+/** What an edit of a comment works with: the fixer that makes the fix, and the file the comment is in. */
+export interface CommentEdit {
+  fixer: Rule.RuleFixer;
+  sourceCode: SourceCode;
+}
+
 /** Where a group of comments starts and ends, for the report. */
 export function groupLocation(group: Comment[]): Location {
   return { start: group[0].loc!.start, end: group.at(-1)!.loc!.end };
@@ -51,7 +57,7 @@ export function groupLocation(group: Comment[]): Location {
  * Keeps only the comments of a run of line comments for which `keep` is true, deleting the lines of the others, or
  * deletes the whole run when the kept comments hold no text.
  */
-export function keepInRun(fixer: Rule.RuleFixer, sourceCode: SourceCode, run: Comment[], keep: (comment: Comment, index: number) => boolean): Rule.Fix {
+export function keepInRun({ fixer, sourceCode }: CommentEdit, run: Comment[], keep: (comment: Comment, index: number) => boolean): Rule.Fix {
   const kept = run.filter(keep);
   if (kept.every((comment) => comment.value.trim() === "")) return removeGroup(fixer, sourceCode, run);
   const range = wholeLinesRange(sourceCode.text, run[0].range![0], run.at(-1)!.range![1])!;
@@ -98,7 +104,7 @@ export function withoutLines(comment: Comment, lines: CommentLine[], drop: Set<n
 }
 
 /** Replaces the comment's text with `value`, or deletes the comment when `value` holds no text. `null` when unsafe. */
-export function replaceCommentText(fixer: Rule.RuleFixer, sourceCode: SourceCode, comment: Comment, value: string): Rule.Fix | null {
+export function replaceCommentText({ fixer, sourceCode }: CommentEdit, comment: Comment, value: string): Rule.Fix | null {
   const lines = commentLines({ ...comment, value } as Comment);
   if (holdsNoText(lines)) return removeComment(fixer, sourceCode, comment);
   const text = rewrittenComment(comment, value);

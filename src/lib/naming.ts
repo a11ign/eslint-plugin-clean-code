@@ -192,8 +192,8 @@ export function usesEval(scope: ScopeT): boolean {
 }
 
 /** Replaces the name at each identifier, once per position. */
-export function renameAll(fixer: Rule.RuleFixer, identifiers: Node[], oldName: string, newName: string): Rule.Fix[] {
-  return firstAtEachPosition(identifiers).map((identifier) => fixer.replaceTextRange(nameRange(identifier, oldName), newName));
+export function renameAll(fixer: Rule.RuleFixer, identifiers: Node[], { from, to }: { from: string; to: string }): Rule.Fix[] {
+  return firstAtEachPosition(identifiers).map((identifier) => fixer.replaceTextRange(nameRange(identifier, from), to));
 }
 
 /** The identifiers without the later ones that start where an earlier one does. */
@@ -215,7 +215,7 @@ export function variableIdentifiers(variable: VariableT): Node[] {
 /** The name a function is known by, including a `#private` method's name and a key written as a string. */
 export function predicateCandidateName(node: FunctionNode): string | null {
   const parent = node.parent;
-  if (parent?.type === "MethodDefinition" || parent?.type === "PropertyDefinition" || parent?.type === "Property") return keyName(parent.key, parent.computed);
+  if (parent?.type === "MethodDefinition" || parent?.type === "PropertyDefinition" || parent?.type === "Property") return keyName(parent.key, { computed: parent.computed });
   if (node.id) return node.id.name;
   if (parent?.type === "VariableDeclarator" && parent.id.type === "Identifier") return parent.id.name;
   if (parent?.type === "AssignmentExpression" && parent.left.type === "Identifier") return parent.left.name;
@@ -223,7 +223,7 @@ export function predicateCandidateName(node: FunctionNode): string | null {
 }
 
 /** The name a key spells, when it is not computed: an identifier, a `#private` name or a string. */
-export function keyName(key: Node, computed: boolean): string | null {
+export function keyName(key: Node, { computed }: { computed: boolean }): string | null {
   if (computed) return null;
   if (key.type === "PrivateIdentifier" || key.type === "Identifier") return key.name;
   return key.type === "Literal" && typeof key.value === "string" ? key.value : null;

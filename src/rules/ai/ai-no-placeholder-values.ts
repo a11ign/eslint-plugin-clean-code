@@ -55,7 +55,7 @@ export default defineAiRule<[Options]>({
     harm: "a placeholder looks like a working value, so the code runs and fails later, at the call that sends it, instead of at startup.",
   },
   messages: {
-    placeholder: {
+    placeholderValue: {
       problem: "\"{{text}}\" is a placeholder, not a value.",
       refactor: "read the value from configuration or the environment and fail at startup when it is missing; a sample value belongs in a doc file or an `.env.example`.",
     },
@@ -73,7 +73,7 @@ export default defineAiRule<[Options]>({
     const patterns = [...DEFAULT_PATTERNS, ...extra].map((pattern) => new RegExp(pattern, "iu"));
     const isPlaceholder = (text: string) => patterns.some((pattern) => pattern.test(text));
     return stringVisitors((node, text) => {
-      if (!isName(node) && isPlaceholder(text)) context.report({ node: node as never, messageId: "placeholder", data: { text: shortQuote(text) } });
+      if (!isName(node) && isPlaceholder(text)) context.report({ node: node as never, messageId: "placeholderValue", data: { text: shortQuote(text) } });
     });
   },
 });

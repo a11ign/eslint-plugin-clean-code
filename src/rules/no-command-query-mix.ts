@@ -2,7 +2,7 @@ import type { Rule, Scope, SourceCode } from "eslint";
 import type * as ts from "typescript";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs, isFunction, type FunctionNode, type Node, type TSESTree } from "../lib/ast.ts";
-import { findMethod, returnedValues, thisOwner, unwrapTs, walk } from "../lib/classes.ts";
+import { findMethod, returnedValues, thisOwner, unwrapTs, walkIntoFunctions } from "../lib/classes.ts";
 
 const COMPARISON = new Set(["==", "!=", "===", "!==", "<", ">", "<=", ">=", "instanceof", "in"]);
 
@@ -118,13 +118,12 @@ function isBooleanAnswer(value: TSESTree.Expression | null): boolean {
 /** The first write in `fn` (including the functions nested in it) to state outside `fn`. */
 function outerWrite(sourceCode: SourceCode, fn: FunctionNode): Node | null {
   let found: Node | null = null;
-  walk(
+  walkIntoFunctions(
     fn,
     (node) => {
       const target = found ? null : writeTarget(node);
       if (target && changesOuterState(sourceCode, target, fn)) found = target;
     },
-    true,
   );
   return found;
 }

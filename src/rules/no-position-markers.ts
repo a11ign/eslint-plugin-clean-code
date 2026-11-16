@@ -32,7 +32,7 @@ function reportBanner(context: Rule.RuleContext, comment: Comment, length: numbe
     loc: comment.loc!,
     messageId: "banner",
     data: describeFirstRun(banner),
-    fix: (fixer) => replaceCommentText(fixer, context.sourceCode, comment, withoutBanner(banner)),
+    fix: (fixer) => replaceCommentText({ fixer, sourceCode: context.sourceCode }, comment, withoutBanner(banner)),
   });
 }
 

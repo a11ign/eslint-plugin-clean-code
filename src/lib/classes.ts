@@ -14,7 +14,7 @@ const SKIPPED_KEYS = new Set(["parent", "loc", "range", "start", "end", "type", 
 export function thisMemberName(expression: TSESTree.Node | null | undefined): string | null {
   const member = expression ? unwrapTs(expression) : null;
   if (member?.type !== "MemberExpression" || !isThis(member.object)) return null;
-  return keyName(member.property, member.computed);
+  return keyName(member.property, { computed: member.computed });
 }
 
 /** Whether an expression is `this`, also behind `as`, `satisfies`, `!` or an angle-bracket assertion (`return this as this`). */
@@ -23,7 +23,7 @@ export function isThis(expression: TSESTree.Node | null | undefined): boolean {
 }
 
 /** The name of a non-computed member key: `x`, `"x"`, or `#x` for a private name. */
-export function keyName(key: TSESTree.Node, computed: boolean): string | null {
+export function keyName(key: TSESTree.Node, { computed }: { computed: boolean }): string | null {
   if (key.type === "PrivateIdentifier") return `#${key.name}`;
   if (computed) return key.type === "Literal" && typeof key.value === "string" ? key.value : null;
   if (key.type === "Identifier") return key.name;
@@ -98,13 +98,21 @@ export function returnStatements(fn: FunctionNode): TSESTree.ReturnStatement[] {
 }
 
 /**
- * Calls `visit` on every node under `root`. Nested functions and classes are entered only when `intoFunctions` is set,
- * so by default the walk sees exactly the code that runs when `root` runs.
+ * Calls `visit` on every node under `root` that runs when `root` runs: nested functions and classes are visited but not
+ * entered. `walkIntoFunctions` enters them too.
  */
-export function walk(root: Node, visit: (node: Node) => void, intoFunctions = false): void {
+export function walk(root: Node, visit: (node: Node) => void): void {
   for (const child of childNodes(root)) {
     visit(child);
-    if (intoFunctions || !opensScope(child)) walk(child, visit, intoFunctions);
+    if (!opensScope(child)) walk(child, visit);
+  }
+}
+
+/** Calls `visit` on every node under `root`, entering nested functions and classes. */
+export function walkIntoFunctions(root: Node, visit: (node: Node) => void): void {
+  for (const child of childNodes(root)) {
+    visit(child);
+    walkIntoFunctions(child, visit);
   }
 }
 
@@ -199,7 +207,7 @@ export function memberFunction(member: ClassMember): FunctionNode | null {
 /** A field or method's name, when it has a static, non-computed one. */
 export function memberName(member: ClassMember): string | null {
   if (member.type === "StaticBlock" || member.type === "TSIndexSignature") return null;
-  return keyName(member.key, member.computed);
+  return keyName(member.key, { computed: member.computed });
 }
 
 /** Removes the wrappers that do not change which value an expression has: `x!`, `x as T`, `<T>x`, `x satisfies T`. */

@@ -49,7 +49,7 @@ function reportPropertyNoise(context: Rule.RuleContext, property: Property | TSE
 }
 
 function propertyName(node: Property | TSESTree.Property): string | null {
-  return keyName(node.key, node.computed);
+  return keyName(node.key, { computed: node.computed });
 }
 
 function reportNoise(context: Rule.RuleContext, node: Node, noise: Noise | null): void {

@@ -1,7 +1,7 @@
 import type { Rule } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs, type Node, type TSESTree } from "../lib/ast.ts";
-import { className, classOfBody, keyName, type ClassMember, type ClassNode, memberFunction, memberName, thisOwner, unwrapTs, walk } from "../lib/classes.ts";
+import { className, classOfBody, keyName, type ClassMember, type ClassNode, memberFunction, memberName, thisOwner, unwrapTs, walkIntoFunctions } from "../lib/classes.ts";
 
 type Body = TSESTree.ClassBody;
 
@@ -40,7 +40,7 @@ function staticTarget(target: Node, body: Body, name: string | null): string | n
   const expression = unwrapTs(target);
   if (expression.type !== "MemberExpression") return null;
   const object = unwrapTs(expression.object);
-  const member = keyName(expression.property, expression.computed);
+  const member = keyName(expression.property, { computed: expression.computed });
   if (object.type === "Identifier" && object.name === name) return member;
   if (object.type !== "ThisExpression") return null;
   const owner = thisOwner(object);
@@ -50,13 +50,12 @@ function staticTarget(target: Node, body: Body, name: string | null): string | n
 /** The node each write in `root` assigns to: assignments, `++`/`--`, and `delete`. */
 function writeTargets(root: Node): Node[] {
   const targets: Node[] = [];
-  walk(
+  walkIntoFunctions(
     root,
     (node) => {
       if (node.type === "AssignmentExpression" || node.type === "UpdateExpression") targets.push(node.type === "AssignmentExpression" ? node.left : node.argument);
       else if (node.type === "UnaryExpression" && node.operator === "delete") targets.push(node.argument);
     },
-    true,
   );
   return targets;
 }

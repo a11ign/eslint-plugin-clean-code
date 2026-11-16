@@ -62,7 +62,7 @@ function paramsFix(sourceCode: SourceCode, { comment, parts, words }: Documented
     const drop = new Set(parts.redundantParams.flatMap((param) => param.lines));
     const value = remainingText(comment, parts.lines, drop);
     if (onlyRestatesName(docParts({ ...comment, value } as Comment), words)) return removeComment(fixer, sourceCode, comment);
-    return replaceCommentText(fixer, sourceCode, comment, value);
+    return replaceCommentText({ fixer, sourceCode }, comment, value);
   };
 }
 

@@ -64,7 +64,7 @@ export default defineAiRule({
     harm: "a stub compiles, passes review at a glance and fails only when it is called, often in production.",
   },
   messages: {
-    placeholder: {
+    stubImplementation: {
       problem: "This function's body is only a placeholder.",
       refactor: "implement it, or remove it and its callers until it is needed; a stand-in for tests belongs in a test file or a class named `…Stub`, `…Fake` or `…Mock`.",
     },
@@ -76,7 +76,7 @@ export default defineAiRule({
       if (fn.body?.type !== "BlockStatement" || fn.body.body.length !== 1) return;
       const [statement] = fn.body.body;
       const placeholder = isPlaceholderThrow(statement) || (returnsStubValue(statement) && hasStubMarker(sourceCode, fn.body));
-      if (placeholder && !isInStandInClass(fn)) context.report({ node: node as never, messageId: "placeholder" });
+      if (placeholder && !isInStandInClass(fn)) context.report({ node: node as never, messageId: "stubImplementation" });
     }
     return { FunctionDeclaration: check, FunctionExpression: check, ArrowFunctionExpression: check };
   },
