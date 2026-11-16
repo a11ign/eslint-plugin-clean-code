@@ -45,6 +45,7 @@
   },
   "peerDependencies": {
     "eslint": ">=10.0.0",
+    "eslint-plugin-jsdoc": ">=65.0.0",
     "eslint-plugin-n": ">=17.0.0",
     "eslint-plugin-promise": ">=7.2.0",
     "eslint-plugin-react": ">=7.37.0",
@@ -54,6 +55,9 @@
   },
   "peerDependenciesMeta": {
     "eslint": {
+      "optional": true
+    },
+    "eslint-plugin-jsdoc": {
       "optional": true
     },
     "eslint-plugin-n": {
@@ -86,6 +90,7 @@
     "@typescript-eslint/parser": "8.72.1",
     "@typescript-eslint/types": "8.72.1",
     "eslint": "10.14.0",
+    "eslint-plugin-jsdoc": "65.4.2",
     "eslint-plugin-n": "18.5.0",
     "eslint-plugin-promise": "7.3.0",
     "eslint-plugin-react": "7.37.5",

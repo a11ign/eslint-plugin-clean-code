@@ -57,6 +57,7 @@ const ALL_CONFIGS = [
   "node-extended",
   "react",
   "react-extended",
+  "jsdoc",
 ];
 
 const OXLINT_EXTENDED_ALONE = 'import { typescriptExtended } from "eslint-plugin-clean-code-book/oxlint";\n\nexport default { extends: [typescriptExtended] };\n';
@@ -75,7 +76,7 @@ interface WithoutOptionalPlugins {
 function withoutOptionalPlugins(): WithoutOptionalPlugins {
   const script = `
 import { registerHooks } from "node:module";
-const OPTIONAL = new Set(["eslint-plugin-promise", "eslint-plugin-n", "eslint-plugin-react", "eslint-plugin-react-hooks"]);
+const OPTIONAL = new Set(["eslint-plugin-promise", "eslint-plugin-n", "eslint-plugin-react", "eslint-plugin-react-hooks", "eslint-plugin-jsdoc"]);
 registerHooks({
   resolve(specifier, context, next) {
     if (OPTIONAL.has(specifier)) throw Object.assign(new Error("Cannot find module '" + specifier + "'"), { code: "MODULE_NOT_FOUND" });

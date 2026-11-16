@@ -36,6 +36,10 @@ A `react` rule is named `react-<name>`, lives in `src/rules/react/`, is built wi
 
 A `third-party` entry of the catalog is configuration: its rule goes in `REACT_HOOKS_RULES` (from `eslint-plugin-react-hooks`) or `REACT_JSX_RULES` (from `eslint-plugin-react`) in `src/configs.ts`, by its name without the plugin's prefix. Those lists build both ESLint's `react-extended` and Oxlint's `reactExtended`, whose native `react` plugin has every one of them as `react/<name>`. The hooks rules apply to `REACT_HOOK_FILES`, which adds the `use*.js` and `use*.ts` files of custom hooks; the `react/` rules to `REACT_FILES` only. Both plugins are optional peer dependencies, loaded only when `react-extended` is read.
 
+## A rule for `jsdoc`
+
+The opt-in `jsdoc` config has no rule of its own. Its entries, in [`docs/catalog-jsdoc.md`](docs/catalog-jsdoc.md), are all `third-party`: rules of `eslint-plugin-jsdoc`, grounded in *Clean Code*'s warning that document comments can mislead like any other comment. A rule for every file goes in `JSDOC_RULES` in `src/configs.ts`, one for TypeScript files only in `JSDOC_TS_RULES`, by its name without `jsdoc/`, and in the README's "In `jsdoc`" table. When Oxlint's native `jsdoc` plugin has it, it also goes in `OXLINT_JSDOC_RULES`, which builds Oxlint's `jsdoc`; when it does not, the catalog and the README say it is ESLint only. `eslint-plugin-jsdoc` is an optional peer dependency, loaded only when `jsdoc` is read.
+
 ## Setup
 
 ```sh

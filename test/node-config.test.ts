@@ -112,7 +112,7 @@ describe("the node config", () => {
   it("ESLint: without eslint-plugin-n, every config can be listed and recommended lints, and linting with node-extended says to install it", () => {
     const result = withoutEslintPluginN();
     assert.deepEqual(Object.keys(result.lengths), [
-      "recommended", "recommended-type-checked", "ai", "typescript", "typescript-extended", "typescript-extended-type-checked", "node", "node-extended", "react", "react-extended",
+      "recommended", "recommended-type-checked", "ai", "typescript", "typescript-extended", "typescript-extended-type-checked", "node", "node-extended", "react", "react-extended", "jsdoc",
     ]);
     assert.ok(Object.values(result.lengths).every((length) => length > 0), JSON.stringify(result.lengths));
     assert.equal(result.recommendedLint, "ok");

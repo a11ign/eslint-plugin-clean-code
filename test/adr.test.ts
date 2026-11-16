@@ -43,7 +43,7 @@ describe("the ADRs", () => {
     const cited = (pattern: RegExp) => texts.filter(({ text }) => pattern.test(text)).map(({ path }) => path.slice(ROOT.length));
     assert.deepEqual(cited(/ADR 0001/), []);
     for (const file of ["docs/catalog-ai.md", "CONTRIBUTING.md", "src/configs.ts", "src/index.ts", "src/lib/define-rule.ts"]) assert.ok(cited(/ADR 0003/).includes(file), file);
-    for (const file of ["docs/catalog-typescript.md", "docs/catalog-node.md", "docs/catalog-react.md"]) assert.ok(cited(/ADR 0004/).includes(file), file);
+    for (const file of ["docs/catalog-typescript.md", "docs/catalog-node.md", "docs/catalog-react.md", "docs/catalog-jsdoc.md"]) assert.ok(cited(/ADR 0004/).includes(file), file);
   });
 
   it("every link to an ADR resolves", () => {

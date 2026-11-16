@@ -27,6 +27,10 @@ describe("the published package", () => {
     assertOptionalPeerDependency("eslint-plugin-n");
   });
 
+  it("lists eslint-plugin-jsdoc as an optional peer dependency, and tests with it as a dev dependency", () => {
+    assertOptionalPeerDependency("eslint-plugin-jsdoc");
+  });
+
   it("lists eslint-plugin-promise as an optional peer dependency, tests with it as a dev dependency, and keeps typescript-eslint optional", () => {
     assert.equal(pkg.peerDependencies["eslint-plugin-promise"], ">=7.2.0", "7.2.0 is the first version with prefer-catch");
     assert.deepEqual(pkg.peerDependenciesMeta["eslint-plugin-promise"], { optional: true });

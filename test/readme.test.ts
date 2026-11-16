@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import plugin from "../src/index.ts";
-import { AI_RULES, NODE_EXTENDED_RULES, NODE_RULES, PLUGIN_PREFIX, REACT_RULES, SYNTAX_RULES, TEST_FILE_RULES, TYPE_CHECKED_RULES, TYPESCRIPT_RULES } from "../src/configs.ts";
+import { AI_RULES, JSDOC_RULES, JSDOC_TS_RULES, NODE_EXTENDED_RULES, NODE_RULES, PLUGIN_PREFIX, REACT_RULES, SYNTAX_RULES, TEST_FILE_RULES, TYPE_CHECKED_RULES, TYPESCRIPT_RULES } from "../src/configs.ts";
 import { docPath, readme, rules, rulesOf, tableCells } from "./plugin-support.ts";
 import { ROOT } from "./support.ts";
 
@@ -57,6 +57,12 @@ describe("the README", () => {
 
   it("lists exactly the rules node-extended turns on", () => {
     assert.deepEqual(readmeTable("In `node-extended`").map((row) => row.name), Object.keys(NODE_EXTENDED_RULES));
+  });
+
+  it("lists exactly the rules jsdoc turns on", () => {
+    const listed = readmeTable("In `jsdoc`").map((row) => row.name);
+    assert.deepEqual(listed, [...JSDOC_RULES, ...JSDOC_TS_RULES].map((name) => `jsdoc/${name}`));
+    assert.deepEqual([...listed].sort(), Object.keys(rulesOf(plugin.configs.jsdoc)).sort());
   });
 
   it("lists exactly the rules react-extended turns on", () => {

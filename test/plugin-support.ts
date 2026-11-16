@@ -14,6 +14,7 @@ export const aiCatalog = readFileSync(join(ROOT, "docs", "catalog-ai.md"), "utf8
 export const typescriptCatalog = readFileSync(join(ROOT, "docs", "catalog-typescript.md"), "utf8");
 export const nodeCatalog = readFileSync(join(ROOT, "docs", "catalog-node.md"), "utf8");
 export const reactCatalog = readFileSync(join(ROOT, "docs", "catalog-react.md"), "utf8");
+export const jsdocCatalog = readFileSync(join(ROOT, "docs", "catalog-jsdoc.md"), "utf8");
 export const readme = readFileSync(join(ROOT, "README.md"), "utf8");
 export const rules = plugin.rules as unknown as Record<string, { meta: { fixable?: string; messages: Record<string, string>; docs: { url: string; requiresTypeChecking: boolean; source?: { entry: string; passage: string } } } }>;
 export const isAiRule = (name: string) => name.startsWith(AI_RULE_PREFIX);
