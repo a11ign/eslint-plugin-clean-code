@@ -17,7 +17,10 @@ interface StrangerCall {
   result: ts.Type;
 }
 
-/** The call as a method call on a stranger, or `null` when its receiver is a friend, a data structure or a library type. */
+/**
+ * `call` as a method call on a stranger, judged by the types `services` gives, or `null` when its receiver is a friend, a
+ * data structure or a library type.
+ */
 function strangerCall(services: TypeServices, call: TSESTree.CallExpression): StrangerCall | null {
   const inner = innerMethodCall(call);
   if (!inner) return null;
@@ -46,9 +49,9 @@ function isObjectResult(services: TypeServices, type: ts.Type): boolean {
 }
 
 /**
- * An *object* in the book's sense: an instance of a class declared in the project, with at least one method and at
- * least one `private`, `protected` or `#private` field. Interfaces, type aliases and classes with only public fields are
- * data structures, and library types are left out.
+ * Whether `type` is an *object* in the book's sense: an instance of a class declared in the project (which `services`
+ * knows), with at least one method and at least one `private`, `protected` or `#private` field. Interfaces, type
+ * aliases and classes with only public fields are data structures, and library types are left out.
  */
 function isBookObject(services: TypeServices, type: ts.Type): boolean {
   const owner = classOrInterfaceOf(services.checker, type);
@@ -61,7 +64,10 @@ function declarationsOf(property: ts.Symbol): ts.Declaration[] {
   return property.getDeclarations() ?? [];
 }
 
-/** A fluent call (`builder.limit(10).build()`) or a static factory (`Complex.from(1).add(z)`): the result is the receiver's own type. */
+/**
+ * Whether `inner` is a fluent call (`builder.limit(10).build()`) or a static factory (`Complex.from(1).add(z)`): its
+ * `result` is the receiver's own type, as `services` types the receiver.
+ */
 function isFluent(services: TypeServices, inner: InnerCall, result: ts.Type): boolean {
   const own = receiverClasses(services, inner.member.object);
   return unionMembers(result).every((member) => {
@@ -70,7 +76,10 @@ function isFluent(services: TypeServices, inner: InnerCall, result: ts.Type): bo
   });
 }
 
-/** The class a receiver is an instance of, or, for a class reference (`Complex.from(…)`), the class it constructs. */
+/**
+ * The class `receiver` is an instance of, or, for a class reference (`Complex.from(…)`), the class it constructs, as
+ * `services` types it.
+ */
 function receiverClasses(services: TypeServices, receiver: Node): Set<ts.Symbol> {
   const type = nonNullableTypeAt(services, receiver);
   const constructed = type.getConstructSignatures().map((signature) => services.checker.getReturnTypeOfSignature(signature));
@@ -78,8 +87,9 @@ function receiverClasses(services: TypeServices, receiver: Node): Set<ts.Symbol>
 }
 
 /**
- * A method of a library or `node_modules` type (`this.buckets.get(key)`, `items.find(…)`): the element comes out of a
- * standard container, which is how a class holds its objects in its fields.
+ * Whether `inner` calls a method of a library or `node_modules` type (`this.buckets.get(key)`, `items.find(…)`), which
+ * `services` tells apart from the project's own: the element comes out of a standard container, which is how a class
+ * holds its objects in its fields.
  */
 function isLibraryMethod(services: TypeServices, inner: InnerCall): boolean {
   const receiver = nonNullableTypeAt(services, inner.member.object);
@@ -87,7 +97,7 @@ function isLibraryMethod(services: TypeServices, inner: InnerCall): boolean {
   return declarations.length > 0 && declarations.every((declaration) => !isProjectDeclaration(services.program, declaration));
 }
 
-/** Where a type's symbol is declared; none for a type with no symbol. */
+/** Where the symbol of `type` is declared; none for a type with no symbol. */
 function typeDeclarations(type: ts.Type): ts.Declaration[] {
   const symbol = type.getSymbol();
   return symbol ? declarationsOf(symbol) : [];

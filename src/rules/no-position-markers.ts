@@ -36,7 +36,7 @@ function reportBanner(context: Rule.RuleContext, comment: Comment, length: numbe
   });
 }
 
-/** The comment's banner runs, or null when it has none. */
+/** The banner runs of `comment` at least `length` long, or null when it has none. */
 function findBanner(comment: Comment, length: number): Banner | null {
   const { lines, movedStar } = linesOf(comment);
   const doc = isDocComment(comment);
@@ -45,8 +45,9 @@ function findBanner(comment: Comment, length: number): Banner | null {
 }
 
 /**
- * The banner runs on one line. In a doc comment, a Markdown rule is not a banner, and neither is a run inside a Markdown
- * code span (`` `/****** Section ******\/` ``): that quotes code, as a doc comment about banners does.
+ * The banner runs at least `length` long on line `index` of `lines`. In a doc comment (`doc`), a Markdown rule is not a
+ * banner, and neither is a run inside a Markdown code span (`` `/****** Section ******\/` ``): that quotes code, as a doc
+ * comment about banners does.
  */
 function bannerRunsOnLine(lines: CommentLine[], index: number, { doc, length }: { doc: boolean; length: number }): Run[] {
   if (!doc) return runsIn(lines[index].content, length);
@@ -56,7 +57,7 @@ function bannerRunsOnLine(lines: CommentLine[], index: number, { doc, length }: 
   return runsIn(text, length).filter((run) => !spans.some((span) => span.start < run.start && run.end <= span.end));
 }
 
-/** The Markdown code spans of a line: from each opening backtick to its closing one. An unclosed backtick opens none. */
+/** The Markdown code spans of the line `text`: from each opening backtick to its closing one. An unclosed backtick opens none. */
 function codeSpans(text: string): Run[] {
   const ticks = [...text.matchAll(/`/g)].map((match) => match.index);
   const spans: Run[] = [];
@@ -64,14 +65,17 @@ function codeSpans(text: string): Run[] {
   return spans;
 }
 
-/** The length and the character of the first banner run, for the message. */
+/** The length and the character of the first banner run in `runs`, read from `lines`, for the message. */
 function describeFirstRun({ lines, runs }: Banner): { count: string; character: string } {
   const index = runs.findIndex((found) => found.length > 0);
   const first = runs[index][0];
   return { count: String(first.end - first.start), character: lines[index].content[first.start] };
 }
 
-/** The comment's text with its banner runs removed, and the lines that held only runs deleted. */
+/**
+ * The text of `comment` with the banner `runs` removed from its `lines`, and the lines that held only runs deleted. When
+ * `movedStar`, the opening `*` that `linesOf` moved into the decoration goes with its run.
+ */
 function withoutBanner({ comment, lines, runs, movedStar }: Banner): string {
   const rewritten = lines.map((line, index) => {
     const place = { first: index === 0, last: index === lines.length - 1, block: comment.type === "Block", movedStar };
@@ -97,7 +101,10 @@ function characterRuns(text: string): Run[] {
   return runs;
 }
 
-/** Where the run that starts at `start` ends: after the last repeat of a punctuation character, or after any other character. */
+/**
+ * Where the run in `text` that starts at `start` ends: after the last repeat of a punctuation character, or after any
+ * other character.
+ */
 function runEnd(text: string, start: number): number {
   let end = start + 1;
   if (RUN_CHARACTERS.has(text[start])) while (text[end] === text[start]) end += 1;
@@ -109,8 +116,9 @@ function isBannerRun(text: string, run: Run, length: number): boolean {
 }
 
 /**
- * Whether a run is not a banner: an arrow (`----->`, `<-----`), the edge of a diagram box (`+-----+`, `|=====|`), or
- * part of a longer token such as a URL or base64 (`eyJ2/////ZXJz`), with other characters right on both sides of it.
+ * Whether the run from `start` to `end` of `text` is not a banner: an arrow (`----->`, `<-----`), the edge of a diagram
+ * box (`+-----+`, `|=====|`), or part of a longer token such as a URL or base64 (`eyJ2/////ZXJz`), with other characters
+ * right on both sides of it.
  */
 function isNotBanner(text: string, start: number, end: number): boolean {
   const before = text[start - 1];
@@ -123,18 +131,21 @@ function isArrowOrBoxEdge(before: string, after: string): boolean {
   return isArrowHead(before, after) || DIAGRAM_EDGE.has(before) || DIAGRAM_EDGE.has(after);
 }
 
-/** Whether the run is the shaft of an arrow: `>` right after it, or `<` right before it. */
+/** Whether the run is the shaft of an arrow: the character `after` it is `>`, or the one `before` it is `<`. */
 function isArrowHead(before: string, after: string): boolean {
   return after === ">" || before === "<";
 }
 
-/** Whether the line is part of an ASCII or box-drawing diagram: it starts or ends with `+` or `|`, or draws boxes. */
+/** Whether the line `text` is part of an ASCII or box-drawing diagram: it starts or ends with `+` or `|`, or draws boxes. */
 function isDiagramLine(text: string): boolean {
   const trimmed = text.trim();
   return BOX_DRAWING.test(trimmed) || DIAGRAM_EDGE.has(trimmed[0]) || DIAGRAM_EDGE.has(trimmed.at(-1)!);
 }
 
-/** A doc comment line that is only a run under a line of text (a Markdown heading underline), or a Markdown table rule. */
+/**
+ * Whether line `index` of `lines`, in a doc comment (`doc`), is only a run under a line of text (a Markdown heading
+ * underline), or a Markdown table rule.
+ */
 function isMarkdownRule(lines: CommentLine[], index: number, { doc }: { doc: boolean }): boolean {
   const text = lines[index].content.trim();
   const above = index > 0 ? lines[index - 1].content.trim() : "";
@@ -143,7 +154,7 @@ function isMarkdownRule(lines: CommentLine[], index: number, { doc }: { doc: boo
 }
 
 /**
- * The comment's lines. In a block comment opening with `/**` that is not a doc comment (`/*******`), the first `*` is
+ * The lines of `comment`. In a block comment opening with `/**` that is not a doc comment (`/*******`), the first `*` is
  * moved into the decoration, so JSDoc's opening never counts towards a run.
  */
 function linesOf(comment: Comment): { lines: CommentLine[]; movedStar: boolean } {
@@ -162,8 +173,8 @@ interface LinePlace {
 }
 
 /**
- * One line with its runs removed. Text that a run kept apart from the comment's delimiters stays one space away from
- * them, so `/****** Section ******\/` becomes `/* Section *\/` and `//===== Section` becomes `// Section`.
+ * `line` with its `runs` removed. Text that a run kept apart from the comment's delimiters, which `place` locates, stays
+ * one space away from them, so `/****** Section ******\/` becomes `/* Section *\/` and `//===== Section` becomes `// Section`.
  */
 function rewriteLine(line: CommentLine, runs: Run[], place: LinePlace): CommentLine {
   const content = withoutRuns(line.content, runs);
@@ -173,7 +184,7 @@ function rewriteLine(line: CommentLine, runs: Run[], place: LinePlace): CommentL
   return { prefix, content: runsToClose ? withTrailingSpace(content) : content };
 }
 
-/** The opening delimiter, without the `*` moved into the decoration, and one space after it. */
+/** The opening delimiter in `prefix`, without the `*` that `place` says was moved into the decoration, and one space after it. */
 function openingPrefix(prefix: string, place: LinePlace): string {
   const opening = place.movedStar ? prefix.slice(0, -1) : prefix;
   return withTrailingSpace(opening);
@@ -183,7 +194,7 @@ function withTrailingSpace(text: string): string {
   return /[ \t]$/.test(text) ? text : `${text} `;
 }
 
-/** `content` with each run and the blank space around it removed, keeping one space between text on both sides. */
+/** `content` with each of `runs` and the blank space around it removed, keeping one space between text on both sides. */
 function withoutRuns(content: string, runs: Run[]): string {
   return runs.reduceRight((text, run) => {
     let left = run.start;

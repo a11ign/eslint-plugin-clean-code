@@ -17,8 +17,8 @@ import {
 type Body = TSESTree.ClassBody;
 
 /**
- * Instance field declarations that anyone can write: not `private`, `#`, `protected`, `readonly` or a function, and not
- * `declare`, which only types a field and creates nothing at run time.
+ * The instance field declarations in class `body` that anyone can write: not `private`, `#`, `protected`, `readonly` or
+ * a function, and not `declare`, which only types a field and creates nothing at run time.
  */
 function declaredPublicFields(body: Body): string[] {
   const fields = body.body.filter(isPublicDataField).map((member) => memberName(member));
@@ -34,12 +34,12 @@ function isMutableInstanceField(member: TSESTree.PropertyDefinition): boolean {
   return !member.static && !member.readonly && !member.declare;
 }
 
-/** Not hidden (`private`, `#`, `protected`), and holding data rather than a function. */
+/** Whether `member` is not hidden (`private`, `#`, `protected`), and holds data rather than a function. */
 function isPublicData(member: TSESTree.PropertyDefinition): boolean {
   return !isHidden(member) && !isFunction(member.value);
 }
 
-/** Fields the constructor creates with `this.x = …` without declaring them. */
+/** Fields the constructor of class `body` creates with `this.x = …` without declaring them. */
 function undeclaredConstructorFields(body: Body): string[] {
   const constructor = constructorOf(body);
   if (!constructor) return [];
@@ -52,7 +52,7 @@ function undeclaredConstructorFields(body: Body): string[] {
   return [...names];
 }
 
-/** The first instance method with behaviour: not the constructor, an accessor, or a method whose every `return` returns `this`. */
+/** The first instance method in class `body` with behaviour: not the constructor, an accessor, or a method whose every `return` returns `this`. */
 function behaviourMethod(body: Body): string | null {
   const method = body.body.find(isBehaviourMethod);
   return method ? (memberName(method) ?? "(computed)") : null;

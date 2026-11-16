@@ -25,7 +25,10 @@ function typeServices(sourceCode: SourceCode): TypeServices | null {
   return services?.program && services.esTreeNodeToTSNodeMap && services.tsNodeToESTreeNodeMap ? (services as TypeServices) : null;
 }
 
-/** Reports a condition that calls a function of this file which answers a boolean and also writes outer state. */
+/**
+ * Reports in `context` a condition that calls a function of this file which answers a boolean and also writes outer state.
+ * `services`, when present, resolve `obj.method` calls.
+ */
 function conditionChecker(context: Rule.RuleContext, services: TypeServices | null): ConditionCheck {
   const sourceCode = context.sourceCode;
   const commandWrite = commandWriteFinder(sourceCode);
@@ -37,7 +40,7 @@ function conditionChecker(context: Rule.RuleContext, services: TypeServices | nu
   };
 }
 
-/** The call a condition makes, through `!`, `?.` and type assertions. */
+/** The call the condition `test` makes, through `!`, `?.` and type assertions. */
 function conditionCall(test: Node): TSESTree.CallExpression | null {
   let current = unwrapTs(test);
   while (current.type === "UnaryExpression" && current.operator === "!") current = unwrapTs(current.argument);
@@ -53,7 +56,7 @@ function resolveCallee(sourceCode: SourceCode, services: TypeServices | null, ca
   return services ? typedMethod(services, callee) : null;
 }
 
-/** The function a variable names in this file: a function declaration, or a variable initialised with a function. */
+/** The function `variable` names in this file: a function declaration, or a variable initialised with a function. */
 function declaredFunction(variable: Scope.Variable | null): FunctionNode | null {
   const definition = variable?.defs[0];
   if (!definition) return null;
@@ -63,14 +66,14 @@ function declaredFunction(variable: Scope.Variable | null): FunctionNode | null 
   return null;
 }
 
-/** `this.method`, resolved to the method of the class or object `this` is. */
+/** `callee`, a `this.method`, resolved to the method of the class or object `this` is. */
 function thisMethod(callee: TSESTree.MemberExpression): FunctionNode | null {
   const owner = thisOwner(callee);
   const name = callee.computed || callee.property.type !== "Identifier" ? null : callee.property.name;
   return owner && name ? findMethod(owner, name) : null;
 }
 
-/** `obj.method` resolved through the type of `obj`, when the method is declared in the file being linted. */
+/** `callee`, an `obj.method`, resolved through the type of `obj` from `services`, when the method is declared in the file being linted. */
 function typedMethod(services: TypeServices, callee: TSESTree.MemberExpression): FunctionNode | null {
   if (callee.computed || callee.property.type !== "Identifier") return null;
   const object = services.esTreeNodeToTSNodeMap.get(callee.object);
@@ -83,13 +86,13 @@ function typedMethod(services: TypeServices, callee: TSESTree.MemberExpression):
   return null;
 }
 
-/** The declarations of property `name` on the apparent type of `object`. */
+/** The declarations of property `name` on the apparent type of `object`, as `checker` sees it. */
 function propertyDeclarations(checker: ts.TypeChecker, object: ts.Node, name: string): ts.Declaration[] {
   const type = checker.getApparentType(checker.getTypeAtLocation(object));
   return checker.getPropertyOfType(type, name)?.getDeclarations() ?? [];
 }
 
-/** The function an ESTree node for a declaration runs: the node itself, or a method's or property's value. */
+/** The function that `node`, the ESTree node for a declaration, runs: `node` itself, or a method's or property's value. */
 function functionOfDeclaration(node: Node | undefined): FunctionNode | null {
   if (!node) return null;
   if (isFunction(node)) return node;
@@ -99,7 +102,7 @@ function functionOfDeclaration(node: Node | undefined): FunctionNode | null {
   return null;
 }
 
-/** The outer write of a function that answers a boolean, or null; each function's verdict is worked out once. */
+/** The outer write of a function that answers a boolean, or null, judged by the scopes of `sourceCode`; each verdict is worked out once. */
 function commandWriteFinder(sourceCode: SourceCode): CommandWriteFinder {
   const verdicts = new WeakMap<FunctionNode, Node | null>();
   return (fn) => {
@@ -115,7 +118,7 @@ function isBooleanAnswer(value: TSESTree.Expression | null): boolean {
   return expression.type === "BinaryExpression" && COMPARISON.has(expression.operator);
 }
 
-/** The first write in `fn` (including the functions nested in it) to state outside `fn`. */
+/** The first write in `fn` (including the functions nested in it) to state outside `fn`, judged through the scopes of `sourceCode`. */
 function outerWrite(sourceCode: SourceCode, fn: FunctionNode): Node | null {
   let found: Node | null = null;
   walkIntoFunctions(
@@ -128,15 +131,16 @@ function outerWrite(sourceCode: SourceCode, fn: FunctionNode): Node | null {
   return found;
 }
 
-/** What an assignment or an update (`++`, `--`) writes to. */
+/** What `node`, when an assignment or an update (`++`, `--`), writes to. */
 function writeTarget(node: Node): Node | null {
   if (node.type === "AssignmentExpression") return node.left;
   return node.type === "UpdateExpression" ? node.argument : null;
 }
 
 /**
- * Whether writing to `target` from inside `fn` changes state outside `fn`: a member of `this`, of a parameter or of an
- * outer variable, or an outer variable itself. Writing to a local variable, or to a member of a local, does not.
+ * Whether writing to `target` from inside `fn` changes state outside `fn`, by the scopes of `sourceCode`: a member of `this`,
+ * of a parameter or of an outer variable, or an outer variable itself. Writing to a local variable, or to a member of a local,
+ * does not.
  */
 function changesOuterState(sourceCode: SourceCode, target: Node, fn: FunctionNode): boolean {
   const unwrapped = unwrapTs(target);
@@ -164,7 +168,7 @@ function isInside(node: Node | { range?: [number, number] }, fn: FunctionNode): 
   return Boolean(range) && range![0] >= fn.range[0] && range![1] <= fn.range[1];
 }
 
-/** The identifier or `this` a member chain such as `a.b[c].d` starts from. */
+/** The identifier or `this` that `expression`, a member chain such as `a.b[c].d`, starts from. */
 function rootOf(expression: Node): Node {
   let current = unwrapTs(expression);
   while (current.type === "MemberExpression") current = unwrapTs(current.object);

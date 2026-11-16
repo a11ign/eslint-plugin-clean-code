@@ -60,7 +60,7 @@ function privateFields(body: Body): string[] {
   return names.filter((name): name is string => name !== null);
 }
 
-/** The fields the class's instance members return through trivial getters, or null when it has any other method. */
+/** The fields the instance members in the class `body` return through trivial getters, or null when it has any other method. */
 function gettersOnly(body: Body): Set<string> | null {
   const returned = new Set<string>();
   for (const member of body.body.filter(isInstanceMember)) {
@@ -71,19 +71,19 @@ function gettersOnly(body: Body): Set<string> | null {
   return returned;
 }
 
-/** Whether a member belongs to the class's instances and is not its constructor. */
+/** Whether `member` belongs to the class's instances and is not its constructor. */
 function isInstanceMember(member: ClassMember): boolean {
   if (member.type === "StaticBlock" || member.type === "TSIndexSignature" || member.static) return false;
   return !(member.type === "MethodDefinition" && member.kind === "constructor");
 }
 
-/** Whether a member is a method, or a function-valued field, that is not a trivial setter: behaviour beyond the data. */
+/** Whether `member` is a method, or a function-valued field, that is not a trivial setter: behaviour beyond the data. */
 function isOtherMethod(member: ClassMember): boolean {
   const isMethod = member.type === "MethodDefinition" || memberFunction(member) !== null;
   return isMethod && !isTrivialSetter(member);
 }
 
-/** Whether a member is a trivial setter: a `set` accessor, or a one-parameter method, whose body is `this.x = parameter;`. */
+/** Whether `member` is a trivial setter: a `set` accessor, or a one-parameter method, whose body is `this.x = parameter;`. */
 function isTrivialSetter(member: ClassMember): boolean {
   if (!isMethodOrAccessor(member, "set")) return false;
   const fn = member.value;
@@ -95,17 +95,17 @@ function isTrivialSetter(member: ClassMember): boolean {
   return assignment.operator === "=" && thisMemberName(assignment.left) !== null && assignment.right.type === "Identifier" && assignment.right.name === param.name;
 }
 
-/** Whether a member is a plain method, or an accessor of the kind `accessor`. */
+/** Whether `member` is a plain method, or an accessor of the kind `accessor`. */
 function isMethodOrAccessor(member: ClassMember, accessor: "get" | "set"): member is TSESTree.MethodDefinition {
   return member.type === "MethodDefinition" && [accessor, "method"].includes(member.kind);
 }
 
-/** The only statement of a function's block body. */
+/** The only statement of the block body of `fn`. */
 function onlyStatement(fn: FunctionNode): TSESTree.Statement | null {
   return fn.body?.type === "BlockStatement" && fn.body.body.length === 1 ? fn.body.body[0] : null;
 }
 
-/** The field a trivial getter returns: a `get` accessor, or a method with no parameters, whose body is `return this.x;`. */
+/** The field `member` returns as a trivial getter: a `get` accessor, or a method with no parameters, whose body is `return this.x;`. */
 function trivialGetterField(member: ClassMember): string | null {
   if (!isMethodOrAccessor(member, "get")) return null;
   const fn = member.value;

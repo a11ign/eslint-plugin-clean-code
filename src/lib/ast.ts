@@ -8,7 +8,7 @@ import type { Rule, SourceCode, AST } from "eslint";
 export type Node = TSESTree.Node;
 export type { TSESTree };
 
-/** ESLint's listener types use ESTree's nodes, which have no TS members; rules read them as typescript-eslint's. */
+/** ESLint's listener types use ESTree's nodes, which have no TS members; rules read each such `node` as typescript-eslint's. */
 export function asTs<T extends Node = Node>(node: unknown): T {
   return node as T;
 }
@@ -24,7 +24,7 @@ export function isFunction(node: Node | null | undefined): node is FunctionNode 
   return node?.type === "FunctionDeclaration" || node?.type === "FunctionExpression" || node?.type === "ArrowFunctionExpression";
 }
 
-/** The name a function is known by: its own id, or the variable, property or method it is assigned to. */
+/** The name the function `node` is known by: its own id, or the variable, property or method it is assigned to. */
 export function functionName(node: FunctionNode): string | null {
   if (node.id) return node.id.name;
   const parent = node.parent;
@@ -33,16 +33,17 @@ export function functionName(node: FunctionNode): string | null {
   return null;
 }
 
-/** Whether a node is a class method, an object property or a class field: a member with a key a function can be named by. */
+/** Whether `node` is a class method, an object property or a class field: a member with a key a function can be named by. */
 function isKeyedMember(node: Node | undefined): node is TSESTree.MethodDefinition | TSESTree.Property | TSESTree.PropertyDefinition {
   return node?.type === "MethodDefinition" || node?.type === "Property" || node?.type === "PropertyDefinition";
 }
 
 /**
- * Whether the file is an ES module by its configuration AND by its syntax: parsed with `sourceType: "module"` and holding an
- * `import` or `export`. A file with neither may be a classic script, and TypeScript treats it as one whose top-level names are
- * global, so a fix that removes, renames or re-signs a top-level function there could break another file. ESLint parses every
- * `.js` file as a module by default and Oxlint does not, so reading the syntax also makes both linters decide the same way.
+ * Whether the file of `sourceCode` is an ES module by its configuration AND by its syntax: parsed with `sourceType: "module"`
+ * and holding an `import` or `export`. A file with neither may be a classic script, and TypeScript treats it as one whose
+ * top-level names are global, so a fix that removes, renames or re-signs a top-level function there could break another
+ * file. ESLint parses every `.js` file as a module by default and Oxlint does not, so reading the syntax also makes both
+ * linters decide the same way.
  */
 export function isModule(sourceCode: SourceCode): boolean {
   const program = sourceCode.ast as unknown as TSESTree.Program;
@@ -50,7 +51,7 @@ export function isModule(sourceCode: SourceCode): boolean {
   return program.body.some((statement) => /^(Import|Export|TSImportEquals|TSExportAssignment)/.test(statement.type));
 }
 
-/** Whether a body's directive prologue holds `"use strict"`, which makes the code it opens strict-mode code. */
+/** Whether the directive prologue of `body` holds `"use strict"`, which makes the code it opens strict-mode code. */
 export function hasUseStrictDirective(body: readonly Node[]): boolean {
   return body.some((statement) => statement.type === "ExpressionStatement" && statement.directive === "use strict");
 }

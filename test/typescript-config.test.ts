@@ -18,7 +18,10 @@ const FIXTURES = join(ROOT, "test", "fixtures", "typescript");
  */
 const TYPESCRIPT_RELATED = /^(clean-code-book\/ts-|eqeqeq$|@typescript-eslint\/|promise\/|no-unused-vars$)/;
 
-/** `typescript-extended` adds the type assertion, the `lib` directive, and the `.then()` with a rejection callback in a `.js` file. */
+/**
+ * What `typescript-extended` reports, with HRM-01's rule named `unusedVars`: `typescript`'s reports, plus the type assertion,
+ * the `lib` directive, and the `.then()` with a rejection callback in a `.js` file.
+ */
 function extendedExpected(unusedVars: string): Record<string, string[]> {
   return {
     ...typescriptExpected(unusedVars),
@@ -28,7 +31,7 @@ function extendedExpected(unusedVars: string): Record<string, string[]> {
   };
 }
 
-/** What `recommended` and `typescript` report in each fixture file, under either linter, with HRM-01's rule by its name there. */
+/** What `recommended` and `typescript` report in each fixture file, under either linter, with HRM-01's rule by its name there, `unusedVars`. */
 function typescriptExpected(unusedVars: string): Record<string, string[]> {
   return {
     "src/account.ts": ["clean-code-book/ts-no-definite-assignment-assertion"],

@@ -5,14 +5,15 @@ import { isDirectiveComment } from "../lib/safe-fix.ts";
 import { disablingNode, readTestCall, type TestCall } from "../lib/test-calls.ts";
 
 /**
- * Whether a comment directly before the call gives a reason. The comments that touch the call, each on the line after
- * the one before it (no blank line between), are read from the call upwards; a directive among them is skipped.
+ * Whether a comment directly before `call` gives a reason. The comments that touch the call, each on the line after
+ * the one before it (no blank line between), are read through `sourceCode` from the call upwards; a directive among them
+ * is skipped.
  */
 function hasReasonComment(sourceCode: SourceCode, call: TSESTree.CallExpression): boolean {
   return touchingComments(sourceCode, commentedNode(call)).some(givesReason);
 }
 
-/** The node a reason comment sits above: the statement the call is, through an `await`, or the call itself. */
+/** The node a reason comment sits above: the statement `call` is, through an `await`, or `call` itself. */
 function commentedNode(call: TSESTree.CallExpression): TSESTree.Node {
   let node: TSESTree.Node = call;
   while (node.parent && isStatementOrAwaitOf(node.parent, node)) node = node.parent;
@@ -24,7 +25,7 @@ function isStatementOrAwaitOf(parent: TSESTree.Node, node: TSESTree.Node): boole
   return parent.type === "ExpressionStatement" && parent.expression === node;
 }
 
-/** The comments that touch `node`, nearest first: the run of comments above it with no blank line between. */
+/** The comments that touch `node`, nearest first: the run of comments in `sourceCode` above it with no blank line between. */
 function touchingComments(sourceCode: SourceCode, node: TSESTree.Node): Comment[] {
   const nearestFirst = (sourceCode.getCommentsBefore(node as never) as Comment[]).slice().reverse();
   const startLineBelow = [node.loc.start.line, ...nearestFirst.map((comment) => comment.loc!.start.line)];
@@ -32,7 +33,7 @@ function touchingComments(sourceCode: SourceCode, node: TSESTree.Node): Comment[
   return gap === -1 ? nearestFirst : nearestFirst.slice(0, gap);
 }
 
-/** Whether a comment says something: it is not a tool directive and has words in it. */
+/** Whether `comment` says something: it is not a tool directive and has words in it. */
 function givesReason(comment: Comment): boolean {
   return !isDirectiveComment(comment) && /\p{L}{2,}/u.test(comment.value);
 }
@@ -45,7 +46,7 @@ function reportDisabled(context: Rule.RuleContext, test: TestCall, disabling: TS
   });
 }
 
-/** How the report names what turned the test off. */
+/** How the report names the `disabling` node that turned `test` off: `xit`, `skip: true` or `it.skip`. */
 function formOf(test: TestCall, disabling: TSESTree.Node): string {
   if (disabling === test.base) return test.base.name;
   if (disabling.type === "Property") return "skip: true";

@@ -7,7 +7,7 @@ import { methodName } from "./node-calls.ts";
 const MATCHING_METHODS = new Set(["startsWith", "endsWith", "includes", "indexOf", "match", "search"]);
 const EQUALITY_OPERATORS = new Set(["===", "!==", "==", "!="]);
 
-/** Reports each `.message` of the error parameter of `owner` that is tested against text. */
+/** Reports in `context` each `.message` of the error parameter of `owner` that is tested against text. */
 function reportMessageMatches(context: Rule.RuleContext, owner: TSESTree.CatchClause | FunctionNode): void {
   const param = errorParameter(owner);
   if (!param) return;
@@ -16,19 +16,19 @@ function reportMessageMatches(context: Rule.RuleContext, owner: TSESTree.CatchCl
   }
 }
 
-/** The `<param>.message` expressions, among the references to the error parameter, that are tested against text. */
+/** The `<param>.message` expressions, among the references in `sourceCode` to `param` (the error parameter of `owner`), tested against text. */
 function textTestedMessages(sourceCode: SourceCode, owner: TSESTree.CatchClause | FunctionNode, param: TSESTree.Identifier): TSESTree.MemberExpression[] {
   const variable = sourceCode.getDeclaredVariables(owner as never).find((declared) => declared.name === param.name);
   return (variable?.references ?? []).flatMap((reference) => textTestedMessage(asTs<TSESTree.Identifier>(reference.identifier)) ?? []);
 }
 
-/** The `<identifier>.message` that the identifier is the object of, when it is tested against text; `null` otherwise. */
+/** The `<identifier>.message` that `identifier` is the object of, when it is tested against text; `null` otherwise. */
 function textTestedMessage(identifier: TSESTree.Identifier): TSESTree.MemberExpression | null {
   const message = identifier.parent;
   return isMessageOf(message, identifier) && isTextTest(message) ? message : null;
 }
 
-/** Whether `node` is `<error>.message`, written without brackets. */
+/** Whether `node` reads the `message` of `error`, written without brackets. */
 function isMessageOf(node: Node | null | undefined, error: TSESTree.Identifier): node is TSESTree.MemberExpression {
   return node?.type === "MemberExpression" && node.object === error && !node.computed && node.property.type === "Identifier" && node.property.name === "message";
 }
@@ -51,7 +51,7 @@ function isRegExp(node: Node): boolean {
   return (node.type === "NewExpression" || node.type === "CallExpression") && node.callee.type === "Identifier" && node.callee.name === "RegExp";
 }
 
-/** The error parameter of a `catch` clause, or of a function passed to `.catch(…)`, when it is a plain identifier. */
+/** The error parameter of `owner`, a `catch` clause or a function passed to `.catch(…)`, when it is a plain identifier. */
 function errorParameter(owner: TSESTree.CatchClause | FunctionNode): TSESTree.Identifier | null {
   const param = owner.type === "CatchClause" ? owner.param : owner.params[0];
   return param?.type === "Identifier" ? param : null;

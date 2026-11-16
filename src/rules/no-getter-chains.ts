@@ -43,7 +43,7 @@ function previousGetter(call: TSESTree.CallExpression): TSESTree.CallExpression 
   return getterName(object) ? (object as TSESTree.CallExpression) : null;
 }
 
-/** The getter name of a call such as `x.getOptions()` with no arguments, or null when the call is not a getter call. */
+/** The getter name of `node` when it is a call such as `x.getOptions()` with no arguments, or null when the call is not a getter call. */
 function getterName(node: Node): string | null {
   if (node.type !== "CallExpression" || node.arguments.length > 0) return null;
   const callee = node.callee;

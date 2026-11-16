@@ -23,7 +23,7 @@ interface Line {
   content: string;
 }
 
-/** Reports a comment group that is a change log of at least `threshold` entries. */
+/** Reports through `context` the comment `group` when it is a change log of at least `threshold` entries. */
 function reportJournal(context: Rule.RuleContext, group: Comment[], threshold: number): void {
   if (isDirectiveComment(group[0])) return;
   const journal = journalEntries(groupLines(group));
@@ -42,7 +42,7 @@ function groupLines(group: Comment[]): Line[] {
 }
 
 /**
- * The entries of a change log in the comment: each dated line whose entry reads as a change, with the lines that
+ * The entries of a change log in the comment's `lines`: each dated line whose entry reads as a change, with the lines that
  * continue the entry (the lines right after it that are indented further than its date and are not dated). None when
  * the text line above the first dated line is a header that names something other than a change log.
  */
@@ -52,7 +52,7 @@ function journalEntries(lines: Line[]): number[][] {
   return entries.filter((entry) => recordsChange(lines, entry));
 }
 
-/** Each dated line, with the lines that continue its entry. */
+/** Each dated line of `lines`, with the lines that continue its entry. */
 function datedEntries(lines: Line[]): number[][] {
   const collector = new EntryCollector();
   lines.forEach((line, index) => collector.add(line, index));
@@ -77,7 +77,10 @@ class EntryCollector {
   }
 }
 
-/** True when there is no text line above the first dated line, or that line is a header that names a change log. */
+/**
+ * True when there is no text line of `lines` above the first dated line, at index `firstDated`, or that line is a header
+ * that names a change log.
+ */
 function isUnderJournalHeader(lines: Line[], firstDated: number): boolean {
   const header = lines.slice(0, firstDated).map((line) => line.content.trim()).filter(Boolean).at(-1);
   return header === undefined || JOURNAL_HEADER.test(header);
@@ -88,7 +91,7 @@ function recordsChange(lines: Line[], entry: number[]): boolean {
   return CHANGE_WORD.test(text) || AUTHOR.test(text);
 }
 
-/** A block comment's lines, each with the column its text starts at, so that entries and their continuations compare. */
+/** The lines of the block `comment`, each with the column its text starts at, so that entries and their continuations compare. */
 function blockLines(comment: Comment) {
   const opening = comment.loc!.start.column + 2;
   return commentLines(comment).map((line, index) => ({
@@ -97,12 +100,15 @@ function blockLines(comment: Comment) {
   }));
 }
 
-/** A run of line comments, each with the column its text starts at. */
+/** The lines of `run`, a run of line comments, each with the column its text starts at. */
 function runLines(run: Comment[]) {
   return run.map((comment) => ({ indent: comment.loc!.start.column + 2 + indentation(comment.value), content: comment.value }));
 }
 
-/** Deletes the entries' lines from the block comment, or the entries' comments from the run of line comments. */
+/**
+ * Deletes the lines at `entries` from the block comment of `group`, or those comments from `group` when it is a run of line
+ * comments, in `sourceCode`.
+ */
 function journalFix(sourceCode: SourceCode, group: Comment[], entries: Set<number>): Rule.ReportFixer {
   if (group[0].type !== "Block") return (fixer) => keepInRun({ fixer, sourceCode }, group, (_, index) => !entries.has(index));
   const comment = group[0];

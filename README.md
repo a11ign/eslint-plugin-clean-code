@@ -288,7 +288,7 @@ Turning on Oxlint's `react` plugin also turns on that plugin's rules in Oxlint's
 
 ## The `jsdoc` config
 
-`jsdoc` is an opt-in config that checks doc comments are well-formed. The book asks for good document comments on a public API, and warns that "Document comments can be just as misleading, nonlocal, and dishonest as any other kind of comment"; [`docs/catalog-jsdoc.md`](docs/catalog-jsdoc.md) gives each rule's reason. It turns on four rules of `eslint-plugin-jsdoc`, each an `error` with its default options, listed one by one rather than using the plugin's presets: `jsdoc/check-param-names` (a `@param` for a parameter the function does not have), `jsdoc/check-tag-names` (a misspelled tag such as `@retrun`) and `jsdoc/empty-tags` (content on a tag that takes none) on JavaScript and TypeScript files, and `jsdoc/no-types` (a `{type}` that repeats the signature) on TypeScript files only, since in JavaScript the comment's type is the only one the code has. It is not in `recommended`, which uses only ESLint core's rules and this plugin's own.
+`jsdoc` is an opt-in config that checks doc comments are well-formed. The book asks for good document comments on a public API, and warns that "Document comments can be just as misleading, nonlocal, and dishonest as any other kind of comment"; [`docs/catalog-jsdoc.md`](docs/catalog-jsdoc.md) gives each rule's reason. It turns on four rules of `eslint-plugin-jsdoc`, each an `error` with its default options, listed one by one rather than using the plugin's presets: `jsdoc/check-param-names` (a `@param` for a parameter the function does not have), `jsdoc/check-tag-names` (a misspelled tag such as `@retrun`) and `jsdoc/empty-tags` (content on a tag that takes none) on JavaScript and TypeScript files, and `jsdoc/no-types` (a `{type}` that repeats the signature) on TypeScript files only, since in JavaScript the comment's type is the only one the code has. It also turns on this plugin's own `jsdoc-names-every-parameter` on JavaScript and TypeScript files: a doc comment names each parameter, in its description as a code span such as `` `first` ``, or with an `@param` tag that describes it. It is not in `recommended`, which uses only ESLint core's rules and this plugin's own.
 
 With ESLint, install `eslint-plugin-jsdoc`, an optional peer dependency that only `jsdoc` needs:
 
@@ -305,7 +305,7 @@ import cleanCode from "eslint-plugin-clean-code-book";
 export default [...cleanCode.configs.recommended, ...cleanCode.configs.jsdoc];
 ```
 
-Oxlint runs `jsdoc/check-tag-names` and `jsdoc/empty-tags` natively, in its `jsdoc` plugin, so nothing more is installed. It has no `check-param-names` or `no-types`, so those two rules are ESLint only:
+Oxlint runs `jsdoc/check-tag-names` and `jsdoc/empty-tags` natively, in its `jsdoc` plugin, so nothing more is installed, and runs `jsdoc-names-every-parameter` through this plugin's `jsPlugins` entry. It has no `check-param-names` or `no-types`, so those two rules are ESLint only:
 
 <!-- setup: oxlint-jsdoc -->
 ```ts
@@ -486,6 +486,12 @@ Everything in `typescript-extended`, and, under ESLint only:
 | `react/no-array-index-key` | `.jsx`, `.tsx` | `react/no-array-index-key` | RCT-04 |
 
 ### In `jsdoc`
+
+| Rule | What it checks | Fix |
+| --- | --- | --- |
+| [`jsdoc-names-every-parameter`](docs/rules/jsdoc/jsdoc-names-every-parameter.md) | A doc comment names every parameter: in its description as a code span, or with an `@param` tag that describes it. | no |
+
+`jsdoc` also turns on these rules of `eslint-plugin-jsdoc`:
 
 | Rule | Files | Oxlint | Catalog entry |
 | --- | --- | --- | --- |

@@ -2,8 +2,8 @@ import { runRuleTests, type InvalidCase } from "../testing/run-rule-tests.ts";
 import rule from "./no-flag-argument.ts";
 
 /**
- * Every invalid case is an ES module with an `export`, which the fix requires (`isModule`), so that each no-fix case
- * tests its own condition. The cases that test the module condition itself are left as they are.
+ * Makes `testCase` an ES module with an `export`, which the fix requires (`isModule`), so that each no-fix case tests
+ * its own condition. The cases that test the module condition itself are left as they are.
  */
 function inModule(testCase: InvalidCase): InvalidCase {
   if (testCase.sourceType === "script" || testCase.name?.includes("no `import` or `export`")) return testCase;

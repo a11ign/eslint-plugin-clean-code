@@ -48,20 +48,23 @@ function returnTypeOf(services: TypeServices, fn: FunctionNode): ts.Type | null 
   return signature ? services.checker.getReturnTypeOfSignature(signature) : null;
 }
 
-/** A setter's name is the property's, not a question the function answers. */
+/** Whether `node` is a setter: a setter's name is the property's, not a question the function answers. */
 function isSetter(node: FunctionNode): boolean {
   const parent = node.parent;
   return (parent?.type === "MethodDefinition" || parent?.type === "Property") && parent.kind === "set";
 }
 
-/** `boolean`, `true`, `false`, a type predicate, or a promise of one of them. `any` is left alone: it says nothing. */
+/**
+ * Whether `returnType` is `boolean`, `true`, `false`, a type predicate, or a promise of one of them, as `checker` sees it.
+ * `any` is left alone: it says nothing.
+ */
 function isBooleanResult(checker: ts.TypeChecker, returnType: ts.Type): boolean {
   const awaited = checker.getAwaitedType(returnType) ?? returnType;
   if (isTopType(checker, awaited)) return true;
   return checker.isTypeAssignableTo(awaited, checker.getBooleanType());
 }
 
-/** Where to report: the function's name, wherever it is written. */
+/** Where to report: the name of `node`, wherever it is written. */
 function nameNode(node: FunctionNode): Node {
   if (node.id) return node.id;
   const parent = node.parent;

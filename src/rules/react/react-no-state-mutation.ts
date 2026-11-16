@@ -6,7 +6,7 @@ import { hookCalled } from "./react-hooks.ts";
 const STATE_HOOKS = new Set(["useState", "useReducer"]);
 const MUTATING_METHODS = new Set(["push", "pop", "shift", "unshift", "splice", "sort", "reverse", "fill", "copyWithin"]);
 
-/** The state value of `const [state, setState] = useState(…)` or `useReducer(…)`: the identifier it is bound to. */
+/** The state value `declarator` binds, when it is `const [state, setState] = useState(…)` or `useReducer(…)`: the identifier it is bound to. */
 function stateBinding(declarator: TSESTree.VariableDeclarator): TSESTree.Identifier | null {
   if (declarator.parent.type !== "VariableDeclaration" || declarator.parent.kind !== "const") return null;
   if (declarator.id.type !== "ArrayPattern" || !hookCalled(declarator.init, STATE_HOOKS)) return null;
@@ -14,7 +14,7 @@ function stateBinding(declarator: TSESTree.VariableDeclarator): TSESTree.Identif
   return state?.type === "Identifier" ? state : null;
 }
 
-/** Reports each write through `state`, the state value `declarator` binds. */
+/** Reports in `context` each write through `state`, the state value `declarator` binds. */
 function reportMutations(context: Rule.RuleContext, declarator: Rule.Node, state: TSESTree.Identifier): void {
   const variable = context.sourceCode.getDeclaredVariables(declarator).find((declared) => declared.name === state.name);
   for (const reference of variable?.references ?? []) {
@@ -23,7 +23,7 @@ function reportMutations(context: Rule.RuleContext, declarator: Rule.Node, state
   }
 }
 
-/** The member of the state a reference writes through, and how, or `null` when the reference only reads the state. */
+/** The member of the state `reference` writes through, and how, or `null` when it only reads the state. */
 function writtenMember(reference: Scope.Reference): { member: TSESTree.MemberExpression; mutation: string } | null {
   const member = outermostMember(asTs(reference.identifier));
   const mutation = member ? mutationOf(member) : null;

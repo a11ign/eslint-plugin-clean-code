@@ -40,12 +40,12 @@ function reactReports(reports: Report[]): Record<string, string[]> {
   return relatedReports(reports, REACT_RELATED);
 }
 
-/** Every rule, react-related or not, reported in `file`. */
+/** Every rule, react-related or not, that `reports` show in `file`. */
 function rulesIn(reports: Report[], file: string): string[] {
   return reports.find((report) => report.file === file)?.rules ?? [];
 }
 
-/** The react-related reports that are warnings rather than errors. */
+/** The react-related rules in `reports` that are warnings rather than errors. */
 function reactWarnings(reports: Report[]): string[] {
   return reports.flatMap((report) => report.warnings.filter((rule) => REACT_RELATED.test(rule)));
 }

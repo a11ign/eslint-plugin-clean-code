@@ -1,7 +1,7 @@
 /**
  * One shape for every rule in this plugin, so each report reads the same way to an agent: the problem, the passage of
  * *Clean Code, 2nd Edition* it breaks (or, for a rule of the opt-in `ai` config, the AI pattern and its harm; for one of the opt-in
- * `typescript`, `node` or `react` config, the passage of its TypeScript, Node or React book), and the refactor. Rules are written against the rule API ESLint
+ * `typescript`, `node` or `react` config, the passage of its TypeScript, Node or React book; for one of the `jsdoc` config, its passage of *Clean Code* in the same form), and the refactor. Rules are written against the rule API ESLint
  * and Oxlint share (ADR 0002), so `create` sees only `context.sourceCode`, `context.options`, `context.report` and the
  * visitor object.
  */
@@ -20,6 +20,9 @@ export const NODE_RULE_PREFIX = "node-";
 
 /** The rules of the opt-in `react` config are named `react-<name>`, and their doc pages are under `docs/rules/react/`. */
 export const REACT_RULE_PREFIX = "react-";
+
+/** The rules of the opt-in `jsdoc` config are named `jsdoc-<name>`, and their doc pages are under `docs/rules/jsdoc/`. */
+export const JSDOC_RULE_PREFIX = "jsdoc-";
 
 /** The passage a rule enforces: the chapter and section, and the quote copied from the catalog entry. */
 export interface BookSource {
@@ -121,12 +124,12 @@ export function defineRule<Options extends unknown[]>(spec: RuleSpec<Options>): 
   return buildRule(spec, docs, (message) => bookMessage(message, spec.book));
 }
 
-/** The text of one message: the problem, then the book passage, then the refactor. */
+/** The text of `message`: its problem, then the passage of `book`, then its refactor. */
 export function bookMessage(message: MessageSpec, book: BookSource): string {
   return `${message.problem} Clean Code, ${book.chapter}: "${book.passage}" Refactor: ${message.refactor}`;
 }
 
-/** Where a rule's doc page is served from: the published package's own `docs/rules/`, so the link moves with the package. */
+/** Where the doc page of rule `ruleName` is served from: the published package's own `docs/rules/`, so the link moves with the package. */
 export function docsUrl(ruleName: string): string {
   return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/${ruleName}.md`;
 }
@@ -136,12 +139,12 @@ export function defineAiRule<Options extends unknown[]>(spec: AiRuleSpec<Options
   return buildRule(spec, docs, (message) => aiMessage(message, spec.pattern));
 }
 
-/** The text of one `ai` message: the problem, then the AI pattern and its harm, then the refactor. */
+/** The text of the `ai` rule's `message`: its problem, then the AI `pattern` and its harm, then its refactor. */
 export function aiMessage(message: MessageSpec, pattern: AiPattern): string {
   return `${message.problem} AI pattern ${pattern.entry}, ${pattern.name}: ${pattern.harm} Refactor: ${message.refactor}`;
 }
 
-/** Where an `ai` rule's doc page is served from. */
+/** Where the doc page of the `ai` rule `ruleName` is served from. */
 export function aiDocsUrl(ruleName: string): string {
   return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/ai/${ruleName}.md`;
 }
@@ -150,7 +153,7 @@ export function defineTypescriptRule<Options extends unknown[]>(spec: LanguageRu
   return defineLanguageRule(spec, typescriptDocsUrl(spec.name));
 }
 
-/** Where a `typescript` rule's doc page is served from. */
+/** Where the doc page of the `typescript` rule `ruleName` is served from. */
 export function typescriptDocsUrl(ruleName: string): string {
   return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/typescript/${ruleName}.md`;
 }
@@ -159,7 +162,7 @@ export function defineNodeRule<Options extends unknown[]>(spec: LanguageRuleSpec
   return defineLanguageRule(spec, nodeDocsUrl(spec.name));
 }
 
-/** Where a `node` rule's doc page is served from. */
+/** Where the doc page of the `node` rule `ruleName` is served from. */
 export function nodeDocsUrl(ruleName: string): string {
   return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/node/${ruleName}.md`;
 }
@@ -168,9 +171,22 @@ export function defineReactRule<Options extends unknown[]>(spec: LanguageRuleSpe
   return defineLanguageRule(spec, reactDocsUrl(spec.name));
 }
 
-/** Where a `react` rule's doc page is served from. */
+/** Where the doc page of the `react` rule `ruleName` is served from. */
 export function reactDocsUrl(ruleName: string): string {
   return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/react/${ruleName}.md`;
+}
+
+/**
+ * The `jsdoc` rule `spec` describes. It names its passage of *Clean Code* the way a language rule names its book's: as
+ * `Clean Code, 2nd Edition`, its section and a short verbatim passage.
+ */
+export function defineJsdocRule<Options extends unknown[]>(spec: LanguageRuleSpec<Options>): CleanCodeRule {
+  return defineLanguageRule(spec, jsdocDocsUrl(spec.name));
+}
+
+/** Where the doc page of the `jsdoc` rule `ruleName` is served from. */
+export function jsdocDocsUrl(ruleName: string): string {
+  return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/jsdoc/${ruleName}.md`;
 }
 
 function defineLanguageRule<Options extends unknown[]>(spec: LanguageRuleSpec<Options>, url: string): CleanCodeRule {
@@ -178,7 +194,7 @@ function defineLanguageRule<Options extends unknown[]>(spec: LanguageRuleSpec<Op
   return buildRule(spec, docs, (message) => languageMessage(message, spec.source));
 }
 
-/** The text of one `typescript`, `node` or `react` message: the problem, then the language book's passage, then the refactor. */
+/** The text of a `typescript`, `node`, `react` or `jsdoc` rule's `message`: its problem, then the passage from `source`, then its refactor. */
 export function languageMessage(message: MessageSpec, source: LanguageSource): string {
   return `${message.problem} ${source.book}, ${source.section}: "${source.passage}" Refactor: ${message.refactor}`;
 }
@@ -191,7 +207,7 @@ function buildRule<Options extends unknown[]>(spec: SpecBase<Options>, docs: Cle
   };
 }
 
-/** The `fixable` and `defaultOptions` of a rule's meta, each only when the spec gives it. */
+/** The `fixable` and `defaultOptions` of a rule's meta, each only when `spec` gives it. */
 function optionalMeta<Options extends unknown[]>(spec: SpecBase<Options>): Pick<SpecBase<Options>, "fixable" | "defaultOptions"> {
   return {
     ...(spec.fixable ? { fixable: spec.fixable } : {}),

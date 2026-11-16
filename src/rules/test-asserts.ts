@@ -71,20 +71,29 @@ function startWalk(context: Rule.RuleContext): TestWalk {
   return { extra: (options.assertFunctionNames ?? []).map(namePattern), imported: new Set(), open: [] };
 }
 
-/** Marks every test being walked as asserted when `call` is an assertion, and starts walking `call` when it is a test that runs. */
+/**
+ * Marks every test open in `walk` as asserted when `call` is an assertion, resolving its names through `sourceCode`, and
+ * starts walking `call` when it is a test that runs.
+ */
 function enterCall(sourceCode: SourceCode, walk: TestWalk, call: TSESTree.CallExpression): void {
   if (walk.open.length > 0 && isAssertionCall(sourceCode, walk, call)) for (const test of walk.open) test.asserted = true;
   if (isRunningTest(call)) walk.open.push({ call, asserted: false });
 }
 
-/** Whether `call` asserts: by the names in its callee, or through an assertion the file imports. */
+/**
+ * Whether `call` asserts: by the names in its callee, built in or matching the option patterns in `walk`, or through an
+ * assertion the file imports, resolved through `sourceCode`.
+ */
 function isAssertionCall(sourceCode: SourceCode, walk: TestWalk, call: TSESTree.CallExpression): boolean {
   const path = calleePath(call.callee);
   if (path && isAssertion(path, walk.extra)) return true;
   return isImportedAssertion(sourceCode, walk.imported, call);
 }
 
-/** Whether the callee's root is an assertion imported or required in this file, and not shadowed where it is called. */
+/**
+ * Whether the callee root of `call` is one of the `imported` assertions (imported or required in this file), and not
+ * shadowed where it is called, as the scopes of `sourceCode` resolve it.
+ */
 function isImportedAssertion(sourceCode: SourceCode, imported: Set<Scope.Variable>, call: TSESTree.CallExpression): boolean {
   const root = calleeRoot(call.callee);
   if (!root || imported.size === 0) return false;
@@ -99,7 +108,7 @@ function isRunningTest(call: TSESTree.CallExpression): boolean {
   return !isTodo(test) && !isSkipped(test);
 }
 
-/** Stops walking a test when its call ends, and reports it when nothing in it asserted. */
+/** Stops walking a test of `walk` when its `call` ends, and reports it through `context` when nothing in it asserted. */
 function exitCall(context: Rule.RuleContext, walk: TestWalk, call: TSESTree.CallExpression): void {
   const current = walk.open.at(-1);
   if (current?.call !== call) return;
@@ -108,7 +117,7 @@ function exitCall(context: Rule.RuleContext, walk: TestWalk, call: TSESTree.Call
 }
 
 /**
- * The callee as a list of names, through member accesses and calls: `assert.equal` is `["assert", "equal"]`,
+ * `callee` as a list of names, through member accesses and calls: `assert.equal` is `["assert", "equal"]`,
  * `request(app).get("/").expect` is `["request", "get", "expect"]`. `null` when any part is computed or not a name.
  */
 function calleePath(callee: TSESTree.Node): string[] | null {
@@ -131,7 +140,10 @@ const ASSERTION_EXPORTS = new Map([
   ["@jest/globals", new Set(["expect"])],
 ]);
 
-/** The variables, at the top of the file, that hold an assertion module or function, through `import` or `require`. */
+/**
+ * The variables, at the top of `program`, that hold an assertion module or function, through `import` or `require`, as
+ * `sourceCode` declares them.
+ */
 function assertionBindings(sourceCode: SourceCode, program: TSESTree.Program): Set<Scope.Variable> {
   return new Set(
     program.body.flatMap((statement) => {
@@ -156,7 +168,10 @@ function requiredModule(node: TSESTree.Expression | null): unknown {
   return argument?.type === "Literal" ? argument.value : null;
 }
 
-/** The local names a `require` binds that are assertions: all of `const a = require(m)`, or the matching keys of `const { k: a } = require(m)`. */
+/**
+ * The local names that `id`, the target of a `require` of the module `source`, binds that are assertions: all of
+ * `const a = require(m)`, or the matching keys of `const { k: a } = require(m)`.
+ */
 function requiredAssertionNames(id: TSESTree.Node, source: unknown): string[] {
   if (id.type === "Identifier") return isAssertionExport(source, null) ? [id.name] : [];
   if (id.type !== "ObjectPattern") return [];
@@ -185,7 +200,7 @@ function importedName(specifier: TSESTree.ImportClause): string | null {
   return specifier.imported.type === "Identifier" ? specifier.imported.name : String(specifier.imported.value);
 }
 
-/** The identifier at the root of a callee: `equal` in `equal(…)`, `strict` in `strict.equal(…)`, `a` in `a.ok(…)`. */
+/** The identifier at the root of `callee`: `equal` in `equal(…)`, `strict` in `strict.equal(…)`, `a` in `a.ok(…)`. */
 function calleeRoot(callee: TSESTree.Node): TSESTree.Identifier | null {
   if (callee.type === "Identifier") return callee;
   if (callee.type === "MemberExpression") return calleeRoot(callee.object);
@@ -205,12 +220,12 @@ function resolve(scope: Scope.Scope, name: string): Scope.Variable | null {
 
 type NamePattern = Array<RegExp | "**">;
 
-/** Reads `request.**.expect` or `verify*` into one matcher per name: `*` matches within one name, `**` any number of names. */
+/** Reads `name` (`request.**.expect`, `verify*`) into one matcher per name: `*` matches within one name, `**` any number of names. */
 function namePattern(name: string): NamePattern {
   return name.split(".").map((part) => (part === "**" ? "**" : wildcard(part)));
 }
 
-/** A name with `*` wildcards as a pattern for one name: `verify*` matches `verifyTotals`. */
+/** `part`, a name with `*` wildcards, as a pattern for one name: `verify*` matches `verifyTotals`. */
 function wildcard(part: string): RegExp {
   const literal = part.split("*").map((text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   return new RegExp(`^${literal.join(".*")}$`);

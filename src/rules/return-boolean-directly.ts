@@ -46,7 +46,7 @@ function checkIf(context: Rule.RuleContext, statement: TSESTree.IfStatement): vo
 }
 
 /**
- * When the `if` returns a boolean literal and the code it falls to otherwise (its `else`, or the statement after it)
+ * When the `if` `statement` returns a boolean literal and the code it falls to otherwise (its `else`, or the statement after it)
  * returns the other one, that code.
  */
 function oppositeBranch(statement: TSESTree.IfStatement): Statement | null {
@@ -57,7 +57,7 @@ function oppositeBranch(statement: TSESTree.IfStatement): Statement | null {
   return whenFalse === null || whenFalse === whenTrue ? null : otherwise;
 }
 
-/** The boolean literal a branch returns: `return true;`, or a block holding only that. */
+/** The boolean literal that the branch `statement` returns: `return true;`, or a block holding only that. */
 function returnedBoolean(statement: Statement | null | undefined): boolean | null {
   const only = statement?.type === "BlockStatement" && statement.body.length === 1 ? statement.body[0] : statement;
   if (only?.type !== "ReturnStatement" || only.argument?.type !== "Literal") return null;
@@ -79,7 +79,10 @@ function isBooleanBySyntax(expression: Expression): boolean {
   return false;
 }
 
-/** The comments inside the replaced statements, each on its own line above the new `return`. */
+/**
+ * The comments of `sourceCode` inside `range`, the replaced statements, each on its own line above the new `return`,
+ * indented by `indent`.
+ */
 function keptComments(sourceCode: SourceCode, range: [number, number], indent: string): string {
   const inside = sourceCode.getAllComments().filter((comment) => comment.range![0] >= range[0] && comment.range![1] <= range[1]);
   return inside.map((comment) => `${sourceCode.getText(comment as never)}\n${indent}`).join("");

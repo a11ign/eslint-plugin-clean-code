@@ -19,7 +19,7 @@ const TERMS = new Set([
 
 const VERSIONED_TERM = /^(es|ecma|es20)\d+$/;
 
-/** Reports each name of each number series among the bindings of one scope. */
+/** Reports through `context` each name of each number series among `scopeVariables`, the bindings of one scope. */
 function reportSeriesIn(context: Rule.RuleContext, scopeVariables: VariableT[]): void {
   const variables = scopeVariables.filter((variable) => variable.defs.length > 0);
   const names = new Set(variables.map((variable) => variable.name));
@@ -29,7 +29,7 @@ function reportSeriesIn(context: Rule.RuleContext, scopeVariables: VariableT[]):
   }
 }
 
-/** Reports each numbered name, listing the other names of its series. */
+/** Reports through `context` each name of `numbered`, listing the other names of its `series`. */
 function reportSeries(context: Rule.RuleContext, numbered: VariableT[], series: string[]): void {
   for (const variable of numbered) {
     const others = series.filter((name) => name !== variable.name).map((name) => `\`${name}\``).join(", ");
@@ -37,7 +37,7 @@ function reportSeries(context: Rule.RuleContext, numbered: VariableT[], series: 
   }
 }
 
-/** The series in one scope: each stem with the numbered names, and the bare stem if it is declared too. */
+/** The series among `variables`, the bindings of one scope: each stem with the numbered names, and the bare stem if it is declared too. */
 function seriesIn(variables: VariableT[]): Map<string, VariableT[]> {
   const byStem = new Map<string, VariableT[]>();
   for (const variable of variables) {
@@ -51,7 +51,7 @@ function seriesIn(variables: VariableT[]): Map<string, VariableT[]> {
   return byStem;
 }
 
-/** The stem of a number-series name (`list` for `list1` and `list_2`), or `null` when the digits are part of a term. */
+/** The stem of the number-series `name` (`list` for `list1` and `list_2`), or `null` when the digits are part of a term. */
 function seriesStem(name: string): string | null {
   const match = NUMBERED.exec(name);
   if (!match) return null;

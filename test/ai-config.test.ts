@@ -25,7 +25,7 @@ const EXPECTED: Record<string, string[]> = {
   "src/values.ts": ["clean-code-book/ai-no-placeholder-values"],
 };
 
-/** The `ai-` rules each file got, sorted, leaving out the files that got none. */
+/** The `ai-` rules each file in `reports` got, sorted, leaving out the files that got none. */
 function aiReports(reports: Report[]): Record<string, string[]> {
   const byFile = reports.map((report) => [report.file, report.rules.filter((rule) => rule.startsWith(AI_PREFIX)).sort()] as const);
   return Object.fromEntries(byFile.filter(([, rules]) => rules.length > 0).sort(([a], [b]) => a.localeCompare(b)));

@@ -38,7 +38,7 @@ function leadingSemicolons(text: string): number {
   return text.split("\n").filter((line) => line.trimStart().startsWith(";")).length;
 }
 
-/** Runs the module text with its `export`s dropped, then `expression`, and returns the JSON of the result. */
+/** Runs the module text `code` with its `export`s dropped, then `expression`, and returns the JSON of the result. */
 function evaluate(code: string, expression: string): string {
   const script = code.replace(/^export\s+/gm, "");
   return JSON.stringify(vm.runInNewContext(`${script}\n;(${expression})`, {}));

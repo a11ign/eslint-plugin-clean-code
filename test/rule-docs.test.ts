@@ -83,7 +83,7 @@ describe("the rule docs and messages", () => {
   }
 });
 
-/** The tests of a language rule's doc page, its messages and its passage. */
+/** The tests of the language rule `rule` named `name`: its doc page under the config of `language`, its messages and its passage. */
 function testLanguageRule({ language, name, rule }: LanguageRule): void {
   it(`${name} has its doc page under docs/rules/${language.config}/, quoting its ${language.config} book`, () => {
     const path = join(ROOT, docPath(name));

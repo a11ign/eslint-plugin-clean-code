@@ -33,7 +33,7 @@ export default defineRule({
   },
 });
 
-/** Checks each target `write` assigns to, `left` being its write target. */
+/** Checks each target `write` assigns to, `left` being its write target, and reports through `context`. */
 function checkWrites(context: Rule.RuleContext, write: Node, left: Node | null): void {
   for (const target of writeTargets(left)) checkWrite(context, write, target);
 }
@@ -44,14 +44,17 @@ function checkWrite(context: Rule.RuleContext, write: Node, target: Node): void 
   context.report({ node: write as never, messageId: "sideEffect", data: { name: predicateName(predicate) as string, target: context.sourceCode.getText(target as never) } });
 }
 
-/** The predicate a write to `target` has a side effect on: through `this` or `super`, or through a variable declared outside it. */
+/**
+ * The predicate that `write`, assigning to `target`, has a side effect on: through `this` or `super`, or through a variable
+ * declared outside it, looked up in the scopes of `sourceCode`.
+ */
 function predicateWrittenBy(sourceCode: SourceCode, write: Node, target: Node): FunctionNode | null {
   const root = target.type === "MemberExpression" ? chainRoot(target) : target;
   if (root.type === "ThisExpression" || root.type === "Super") return predicateOwningThis(write);
   if (root.type !== "Identifier") return null;
   return predicateAffectedBy(root, lookUp(sourceCode.getScope(root as never), root.name), { property: target !== root });
 }
-/** The identifiers and member expressions a write target (possibly a destructuring pattern) assigns to. */
+/** The identifiers and member expressions the write `target` (possibly a destructuring pattern) assigns to. */
 function writeTargets(target: Node | null): Node[] {
   const node = unwrapTypeScript(target);
   if (!node) return [];
@@ -59,7 +62,7 @@ function writeTargets(target: Node | null): Node[] {
   return innerTargets(node).flatMap((inner) => writeTargets(inner));
 }
 
-/** The write targets inside a destructuring pattern or a default value. */
+/** The write targets inside `node`, when it is a destructuring pattern or a default value. */
 function innerTargets(node: Node): (Node | null)[] {
   if (node.type === "ArrayPattern") return node.elements;
   if (node.type === "ObjectPattern") return node.properties.map((property) => (property.type === "Property" ? property.value : property));
@@ -68,7 +71,7 @@ function innerTargets(node: Node): (Node | null)[] {
   return [];
 }
 
-/** The object at the start of a member chain: `this` in `this.a.b`, `p` in `p.x[0]`. */
+/** The object at the start of the member chain `member`: `this` in `this.a.b`, `p` in `p.x[0]`. */
 function chainRoot(member: TSESTree.MemberExpression): Node {
   let current: Node = member;
   while (current.type === "MemberExpression") current = unwrapTypeScript(current.object) as Node;
@@ -99,7 +102,10 @@ function predicateName(node: Node): string | null {
   return name && PREDICATE.test(name) ? name : null;
 }
 
-/** The predicate around `identifier` that a write to it (or to its property) has a side effect on. */
+/**
+ * The predicate around `identifier`, bound to `variable`, that a write to it (or, with `property`, to its property) has a
+ * side effect on.
+ */
 function predicateAffectedBy(identifier: TSESTree.Identifier, variable: VariableT | null, { property }: { property: boolean }): FunctionNode | null {
   for (let current: Node | undefined = identifier.parent; current; current = current.parent) {
     if (predicateName(current) && reachesOutside(variable, current as FunctionNode, { property })) return current as FunctionNode;

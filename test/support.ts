@@ -31,7 +31,10 @@ interface OxlintDiagnostic {
   severity: string;
 }
 
-/** Runs Oxlint with `config` (by default this package's `recommended`) on every source file in `dir`, and returns what it reported per file. */
+/**
+ * Runs Oxlint with `config` (by default this package's `recommended`) and any `extraArgs` on every source file in `dir`, and
+ * returns what it reported per file.
+ */
 export function runOxlint(dir: string, extraArgs: string[] = [], config = OXLINT_CONFIG): Report[] {
   writeFileSync(join(dir, "oxlint.config.ts"), config);
   const args = ["-c", "oxlint.config.ts", "--no-ignore", "--format", "json", ...extraArgs, ...oxlintSourceFiles(dir)];
@@ -79,7 +82,10 @@ export function readTree(dir: string): Record<string, string> {
   return files;
 }
 
-/** `eslint(max-params)` gives `max-params`, `clean-code-book(stepdown-order)` gives `clean-code-book/stepdown-order`. */
+/**
+ * The rule name in an Oxlint diagnostic's `code`: `eslint(max-params)` gives `max-params`, `clean-code-book(stepdown-order)`
+ * gives `clean-code-book/stepdown-order`.
+ */
 function oxlintRuleName(code: string): string {
   const match = /^([\w-]+)\((.+)\)$/.exec(code);
   if (!match) return code;
@@ -115,7 +121,7 @@ function toReports(dir: string, results: ESLint.LintResult[]): Report[] {
   });
 }
 
-/** The code block of README.md that follows `<!-- setup: <name> -->`: the setup a project copies, run as written. */
+/** The code block of README.md that follows `<!-- setup: <name> -->` with `name` filled in: the setup a project copies, run as written. */
 export function readmeBlock(name: string): string {
   const readme = readFileSync(join(ROOT, "README.md"), "utf8");
   const match = new RegExp(`<!-- setup: ${name} -->\\n\`\`\`\\w+\\n([\\s\\S]*?)\`\`\`\\n`).exec(readme);
@@ -147,7 +153,7 @@ function prepareFixtures(dir: string, { eslintConfig, prepare }: FixtureSetup): 
   prepare?.(dir);
 }
 
-/** A copy of a fixture directory under `test/work/`. */
+/** A copy of `fixtureDir` under `test/work/`, removed by `dispose`. */
 export function copyFixtures(fixtureDir: string): { dir: string; dispose: () => void } {
   const work = workDirectory({});
   cpSync(fixtureDir, work.dir, { recursive: true });
@@ -165,7 +171,7 @@ export function workDirectory(files: Record<string, string>): { dir: string; dis
   return { dir, dispose: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
-/** The rules matching `related` that each file got, sorted, leaving out the files that got none. */
+/** The rules matching `related` that each file in `reports` got, sorted, leaving out the files that got none. */
 export function relatedReports(reports: Report[], related: RegExp): Record<string, string[]> {
   const byFile = reports.map((report) => [report.file, report.rules.filter((rule) => related.test(rule)).sort()] as const);
   return Object.fromEntries(byFile.filter(([, rules]) => rules.length > 0).sort(([a], [b]) => a.localeCompare(b)));

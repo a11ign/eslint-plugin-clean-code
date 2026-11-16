@@ -22,7 +22,7 @@ class SyncCalls {
   readonly #handlers = new Set<FunctionNode>();
   readonly #syncCalls: TSESTree.CallExpression[] = [];
 
-  /** Notes a call: it may be a blocking `…Sync()` call, and it may pass event handlers. */
+  /** Notes `call`: it may be a blocking `…Sync()` call, and it may pass event handlers, which `sourceCode` resolves when named. */
   noteCall(sourceCode: SourceCode, call: TSESTree.CallExpression): void {
     if (SYNC_NAME.test(methodName(call) ?? "")) this.#syncCalls.push(call);
     if (!takesHandlers(call)) return;

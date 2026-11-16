@@ -11,8 +11,8 @@ export type ScopeT = Scope.Scope;
 export type VariableT = Scope.Variable;
 
 /**
- * The bindings this file declares: every variable with a declaration. The global scope's implicit and library variables
- * (ESLint's parser adds the `lib` names, Oxlint adds none) have no declaration, so both linters see the same list.
+ * The bindings the file of `sourceCode` declares: every variable with a declaration. The global scope's implicit and
+ * library variables (ESLint's parser adds the `lib` names, Oxlint adds none) have no declaration, so both linters see the same list.
  */
 export function declaredVariables(sourceCode: SourceCode): VariableT[] {
   return allScopes(sourceCode).flatMap((scope) => scope.variables.filter((variable) => variable.defs.length > 0));
@@ -111,7 +111,7 @@ export function isAnonymousFunctionOrClass(node: Node | null | undefined): boole
   return (value.type === "FunctionExpression" || value.type === "ClassExpression") && !value.id;
 }
 
-/** Removes the TypeScript wrappers (`as`, `satisfies`, `!`, `<T>x`) that leave the run-time value unchanged. */
+/** Removes the TypeScript wrappers (`as`, `satisfies`, `!`, `<T>x`) around `node` that leave the run-time value unchanged. */
 export function unwrapTypeScript(node: Node | null | undefined): Node | null {
   return node ? unwrapTs(node) : null;
 }
@@ -127,7 +127,7 @@ export function isShorthand(identifier: Node): boolean {
   return parent?.type === "Property" && parent.shorthand && parent.value === child;
 }
 
-/** Whether `node` is inside an ambient context: a `declare` declaration, a `declare module`, `declare global` or `.d.ts` file. */
+/** Whether `node` is inside an ambient context: a `declare` declaration, a `declare module`, `declare global` or a `filename` ending in `.d.ts`. */
 export function isAmbient(node: Node, filename: string): boolean {
   if (/\.d\.[cm]?ts$/.test(filename)) return true;
   for (let current: Node | undefined = node; current; current = current.parent) {
@@ -191,28 +191,28 @@ export function usesEval(scope: ScopeT): boolean {
   return scopeAndDescendants(scope).some((current) => current.references.some((reference) => reference.identifier.name === "eval"));
 }
 
-/** Replaces the name at each identifier, once per position. */
+/** Replaces the name `from` with `to` at each of `identifiers`, once per position, through `fixer`. */
 export function renameAll(fixer: Rule.RuleFixer, identifiers: Node[], { from, to }: { from: string; to: string }): Rule.Fix[] {
   return firstAtEachPosition(identifiers).map((identifier) => fixer.replaceTextRange(nameRange(identifier, from), to));
 }
 
-/** The identifiers without the later ones that start where an earlier one does. */
+/** `identifiers` without the later ones that start where an earlier one does. */
 function firstAtEachPosition(identifiers: Node[]): Node[] {
   return identifiers.filter((identifier, index) => identifiers.findIndex((other) => other.range[0] === identifier.range[0]) === index);
 }
 
-/** The text range of an identifier's name alone, without the type annotation typescript-eslint includes in its range. */
+/** The text range of the `name` of `identifier` alone, without the type annotation typescript-eslint includes in its range. */
 export function nameRange(identifier: Node, name: string): [number, number] {
   const start = identifier.range[0];
   return [start, start + name.length];
 }
 
-/** The identifier nodes of a variable: its declarations and its references. */
+/** The identifier nodes of `variable`: its declarations and its references. */
 export function variableIdentifiers(variable: VariableT): Node[] {
   return [...variable.defs.map((def) => asTs(def.name)), ...variable.references.map((reference) => asTs(reference.identifier))];
 }
 
-/** The name a function is known by, including a `#private` method's name and a key written as a string. */
+/** The name the function `node` is known by, including a `#private` method's name and a key written as a string. */
 export function predicateCandidateName(node: FunctionNode): string | null {
   const parent = node.parent;
   if (parent?.type === "MethodDefinition" || parent?.type === "PropertyDefinition" || parent?.type === "Property") return keyName(parent.key, { computed: parent.computed });
@@ -222,14 +222,14 @@ export function predicateCandidateName(node: FunctionNode): string | null {
   return null;
 }
 
-/** The name a key spells, when it is not computed: an identifier, a `#private` name or a string. */
+/** The name `key` spells, when it is not `computed`: an identifier, a `#private` name or a string. */
 export function keyName(key: Node, { computed }: { computed: boolean }): string | null {
   if (computed) return null;
   if (key.type === "PrivateIdentifier" || key.type === "Identifier") return key.name;
   return key.type === "Literal" && typeof key.value === "string" ? key.value : null;
 }
 
-/** The number of lines a node spans. */
+/** The number of lines `node` spans. */
 export function lineSpan(node: Node): number {
   return node.loc.end.line - node.loc.start.line + 1;
 }

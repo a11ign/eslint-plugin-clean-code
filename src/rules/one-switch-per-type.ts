@@ -34,7 +34,10 @@ export default defineRule({
 /** For each class body, the first `switch` on each of its type codes, keyed by the code's name (with `static ` before a static one). */
 type FirstSwitches = Map<TSESTree.ClassBody, Map<string, TSESTree.SwitchStatement>>;
 
-/** Records the first `switch` on a class's type code, and reports every later one. */
+/**
+ * Records `statement` in `firstSwitches` when it is the first `switch` on a class's type code, and reports it through
+ * `context` when it is a later one.
+ */
 function checkSwitch(context: Rule.RuleContext, firstSwitches: FirstSwitches, statement: TSESTree.SwitchStatement): void {
   const member = typeCodeSwitchedOn(statement);
   if (!member) return;
@@ -47,7 +50,7 @@ function checkSwitch(context: Rule.RuleContext, firstSwitches: FirstSwitches, st
   else context.report({ node: statement as never, messageId: "secondSwitch", data: { className: className(classOfBody(owner.body)), member, firstLine: String(first.loc.start.line) } });
 }
 
-/** The `this` member a `switch` tests, when it holds a type code. */
+/** The `this` member that the `switch` `statement` tests, when it holds a type code. */
 function typeCodeSwitchedOn(statement: TSESTree.SwitchStatement): string | null {
   const member = thisMemberName(unwrapTs(statement.discriminant));
   return member && TYPE_CODE.test(member) ? member : null;

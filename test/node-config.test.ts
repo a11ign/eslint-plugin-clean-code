@@ -23,7 +23,7 @@ const NODE_EXPECTED: Record<string, string[]> = {
   "src/tick.ts": ["clean-code-book/node-no-recursive-next-tick"],
 };
 
-/** `node-extended` adds the two callbacks that never check their error; the one that does is not reported. */
+/** `node-extended` adds the two callbacks that never check their error, reported by `callbackRule`; the one that does is not reported. */
 function extendedExpected(callbackRule: string): Record<string, string[]> {
   return { "src/callback.ts": [callbackRule, callbackRule], ...NODE_EXPECTED };
 }

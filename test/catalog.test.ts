@@ -5,15 +5,15 @@
  * - every `ai-` rule is in `docs/catalog-ai.md`'s rule table, with an entry that names its pattern, harm and Language basis;
  * - every `ts-`, `node-` and `react-` rule is in its language catalog's rule table, a syntax rule in its config with no fix,
  *   and each catalog's `third-party` rows are the rules of its extended configs;
- * - the `jsdoc` catalog's `third-party` rows are exactly the rules of the `jsdoc` config;
+ * - the `jsdoc` catalog's `third-party` rows and its `syntax` row are exactly the rules of the `jsdoc` config;
  * - the book's catalog names no rule of the other catalogs.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import plugin from "../src/index.ts";
-import { BUILT_IN_RULES, JSDOC_RULES, JSDOC_TS_RULES, NODE_EXTENDED_RULES, PLUGIN_PREFIX, TYPESCRIPT_RULES } from "../src/configs.ts";
+import { BUILT_IN_RULES, JSDOC_RULES, JSDOC_SYNTAX_RULES, JSDOC_TS_RULES, NODE_EXTENDED_RULES, PLUGIN_PREFIX, TYPESCRIPT_RULES } from "../src/configs.ts";
 import {
-  aiCatalog, catalog, isAiRule, isLanguageRule, isNodeRule, isReactRule, isTypescriptRule, jsdocCatalog, nodeCatalog, reactCatalog, rules, rulesOf, tableCells, typescriptCatalog,
+  aiCatalog, catalog, isAiRule, isJsdocRule, isLanguageRule, isNodeRule, isReactRule, isTypescriptRule, jsdocCatalog, nodeCatalog, reactCatalog, rules, rulesOf, tableCells, typescriptCatalog,
 } from "./plugin-support.ts";
 
 const bookRuleNames = Object.keys(rules).filter((name) => !isAiRule(name) && !isLanguageRule(name));
@@ -44,7 +44,7 @@ function aiTable(): Array<{ name: string; entry: string; fix: string }> {
   });
 }
 
-/** The rows of a language catalog's "The rule set at a glance" table that name a rule. */
+/** The rows of the "The rule set at a glance" table in `languageCatalog` that name a rule. */
 function languageTable(languageCatalog: string): Array<{ name: string; entry: string; config: string; ruleClass: string; fix: string }> {
   const section = languageCatalog.slice(languageCatalog.indexOf("## The rule set at a glance"), languageCatalog.indexOf("## Entries"));
   return section.split("\n").filter((line) => /^\| `/.test(line)).map((line) => {
@@ -168,11 +168,24 @@ describe("the react catalog", () => {
 describe("the jsdoc catalog", () => {
   const table = languageTable(jsdocCatalog);
 
-  it("every row is a third-party rule in jsdoc, and jsdoc has exactly the rules the table names", () => {
-    assert.deepEqual([...new Set(table.map((row) => [row.config, row.ruleClass].join(" ")))], ["jsdoc third-party"]);
-    assert.deepEqual(table.map((row) => row.entry), ["DOC-01", "DOC-02", "DOC-03", "DOC-04"]);
-    assert.deepEqual(Object.keys(rulesOf(plugin.configs.jsdoc)).sort(), table.map((row) => row.name).sort());
-    assert.deepEqual([...JSDOC_RULES, ...JSDOC_TS_RULES].map((name) => `jsdoc/${name}`).sort(), table.map((row) => row.name).sort());
+  it("every row is a rule in jsdoc, third-party or syntax, and jsdoc has exactly the rules the table names", () => {
+    assert.deepEqual([...new Set(table.map((row) => [row.config, row.ruleClass].join(" ")))], ["jsdoc third-party", "jsdoc syntax"]);
+    assert.deepEqual(table.map((row) => row.entry), ["DOC-01", "DOC-02", "DOC-03", "DOC-04", "DOC-05"]);
+    const thirdParty = table.filter((row) => row.ruleClass === "third-party").map((row) => row.name);
+    assert.deepEqual([...JSDOC_RULES, ...JSDOC_TS_RULES].map((name) => `jsdoc/${name}`).sort(), [...thirdParty].sort());
+    const configured = [...thirdParty, ...JSDOC_SYNTAX_RULES.map((name) => `${PLUGIN_PREFIX}/${name}`)];
+    assert.deepEqual(Object.keys(rulesOf(plugin.configs.jsdoc)).sort(), configured.sort());
+  });
+
+  it("lists exactly the registered jsdoc- rules as syntax rows, each in jsdoc with no fix", () => {
+    const syntaxRows = table.filter((row) => row.ruleClass === "syntax");
+    assert.deepEqual(syntaxRows.map((row) => row.name).sort(), Object.keys(rules).filter(isJsdocRule).sort());
+    assert.deepEqual(syntaxRows.map((row) => row.name).sort(), [...JSDOC_SYNTAX_RULES].sort());
+    for (const row of syntaxRows) assertSyntaxRuleWithoutFix(row, "jsdoc");
+  });
+
+  it("leaves the book's catalog alone: it names no jsdoc- rule", () => {
+    assert.doesNotMatch(catalog, /`jsdoc-/);
   });
 
   it("quotes the book's passage on document comments, and cites ADR 0004 for why jsdoc is not in recommended", () => {
@@ -201,7 +214,7 @@ function assertFixAsTheCellSays(name: string, fix: string): void {
   else if (fix.includes("fix")) assert.equal(rules[name].meta.fixable, "code", `${name} should have a fix`);
 }
 
-/** The ai catalog has an entry for the row's rule, naming its AI pattern, its harm and its Language basis. */
+/** The ai catalog has an `entry` for the row's rule `name`, naming its AI pattern, its harm and its Language basis. */
 function assertAiEntry({ name, entry }: { name: string; entry: string }): void {
   const start = aiCatalog.indexOf(`\n#### ${entry} · `);
   assert.notEqual(start, -1, `docs/catalog-ai.md has no entry ${entry} for ${name}`);
@@ -212,14 +225,14 @@ function assertAiEntry({ name, entry }: { name: string; entry: string }): void {
   assert.match(body, /\n- \*\*Language basis:\*\* (universal|JS\/TS-specific)\. \S/, `${entry} has a Language basis line`);
 }
 
-/** The row's rule is in `config`, with no fix, and needs no type information. */
+/** The rule of `row` is in `config`, with no fix, and needs no type information. */
 function assertSyntaxRuleWithoutFix(row: { name: string; config: string; fix: string }, config: string): void {
   assert.equal(row.config, config, row.name);
   assertNoFix(row);
   assert.equal(rules[row.name].meta.docs.requiresTypeChecking, false, `${row.name} should need no type information`);
 }
 
-/** The row says "no fix", and the rule has none. */
+/** `row` says "no fix", and its rule has none. */
 function assertNoFix(row: { name: string; fix: string }): void {
   assert.equal(row.fix, "no fix", row.name);
   assert.equal(rules[row.name].meta.fixable, undefined, `${row.name} should have no fix`);

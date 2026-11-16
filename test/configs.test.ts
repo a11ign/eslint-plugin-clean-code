@@ -4,7 +4,8 @@
  * - the `ai`, `typescript`, `node` and `react` configs turn on exactly their own rules, which are in no other config of either
  *   linter; their `-extended` companions turn on the third-party rules, and Oxlint runs the same rules, natively where it can;
  * - `typescript-extended-type-checked` has no Oxlint export;
- * - `jsdoc` turns on `eslint-plugin-jsdoc`'s rules one by one, which no other config has, and Oxlint runs the two it has natively.
+ * - `jsdoc` turns on `eslint-plugin-jsdoc`'s rules one by one and its own `jsdoc-` rule, which no other config has; Oxlint runs the
+ *   two third-party rules it has natively, and the `jsdoc-` rule through `jsPlugins`.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -15,11 +16,11 @@ import oxlintConfigs, {
   typescript as oxlintTypescript, typescriptExtended as oxlintTypescriptExtended,
 } from "../src/oxlint.ts";
 import * as oxlintModule from "../src/oxlint.ts";
-import { AI_RULES, JSDOC_RULES, JSDOC_TS_RULES, NODE_RULES, PLUGIN_PREFIX, REACT_RULES, SYNTAX_RULES, TEST_FILE_RULES, TYPE_CHECKED_RULES, TYPESCRIPT_RULES } from "../src/configs.ts";
-import { AI_RULE_PREFIX, NODE_RULE_PREFIX, PACKAGE_NAME, REACT_RULE_PREFIX, TYPESCRIPT_RULE_PREFIX } from "../src/lib/define-rule.ts";
+import { AI_RULES, JSDOC_RULES, JSDOC_SYNTAX_RULES, JSDOC_TS_RULES, NODE_RULES, PLUGIN_PREFIX, REACT_RULES, SYNTAX_RULES, TEST_FILE_RULES, TYPE_CHECKED_RULES, TYPESCRIPT_RULES } from "../src/configs.ts";
+import { AI_RULE_PREFIX, JSDOC_RULE_PREFIX, NODE_RULE_PREFIX, PACKAGE_NAME, REACT_RULE_PREFIX, TYPESCRIPT_RULE_PREFIX } from "../src/lib/define-rule.ts";
 import { isAiRule, isNodeRule, isReactRule, isTypescriptRule, rules, rulesOf } from "./plugin-support.ts";
 
-/** Every rule an Oxlint config turns on, at its top level and in its `overrides`. */
+/** Every rule the Oxlint `config` turns on, at its top level and in its `overrides`. */
 function oxlintRulesOf(config: { rules?: Record<string, unknown>; overrides?: Array<{ rules: Record<string, unknown> }> }): Record<string, unknown> {
   return Object.assign({}, config.rules ?? {}, ...(config.overrides ?? []).map((override) => override.rules));
 }
@@ -235,19 +236,21 @@ describe("the configs", () => {
     });
   });
 
-  it("jsdoc turns on check-param-names, check-tag-names and empty-tags on every file, and no-types on TypeScript files only", () => {
+  it("jsdoc turns on check-param-names, check-tag-names, empty-tags and jsdoc-names-every-parameter on every file, and no-types on TypeScript files only", () => {
     const byFiles = plugin.configs.jsdoc.map((entry) => [entry.files, entry.rules]);
     assert.deepEqual(byFiles, [
-      [["**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}"], { "jsdoc/check-param-names": "error", "jsdoc/check-tag-names": "error", "jsdoc/empty-tags": "error" }],
+      [["**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}"], {
+        "jsdoc/check-param-names": "error", "jsdoc/check-tag-names": "error", "jsdoc/empty-tags": "error", "clean-code-book/jsdoc-names-every-parameter": "error",
+      }],
       [["**/*.{ts,mts,cts,tsx}"], { "jsdoc/no-types": "error" }],
     ]);
-    assert.deepEqual(plugin.configs.jsdoc.flatMap((entry) => Object.keys(entry.plugins ?? {})), ["jsdoc"]);
+    assert.deepEqual(plugin.configs.jsdoc.flatMap((entry) => Object.keys(entry.plugins ?? {})), ["jsdoc", PLUGIN_PREFIX]);
     assert.equal(plugin.configs.jsdoc[1].languageOptions?.parser, plugin.configs.typescript[1].languageOptions?.parser, "TypeScript files get typescript-eslint's parser");
     assert.equal(plugin.configs.jsdoc, plugin.configs.jsdoc, "jsdoc is built once, like the other configs");
   });
 
   it("jsdoc's rules are in no other config of either linter, and it overrides no rule of recommended", () => {
-    const jsdocRules = [...JSDOC_RULES, ...JSDOC_TS_RULES].map((name) => `jsdoc/${name}`);
+    const jsdocRules = [...[...JSDOC_RULES, ...JSDOC_TS_RULES].map((name) => `jsdoc/${name}`), ...JSDOC_SYNTAX_RULES.map((name) => `${PLUGIN_PREFIX}/${name}`)];
     assert.deepEqual(Object.keys(rulesOf(plugin.configs.jsdoc)).sort(), [...jsdocRules].sort());
     const others = [
       "recommended", "recommended-type-checked", "ai", "typescript", "typescript-extended", "typescript-extended-type-checked", "node", "node-extended", "react", "react-extended",
@@ -257,12 +260,16 @@ describe("the configs", () => {
       oxlintNodeExtended.rules, oxlintRulesOf(oxlintReact), oxlintRulesOf(oxlintReactExtended),
     ];
     for (const configured of [...others.map((name) => rulesOf(plugin.configs[name])), ...oxlintOthers]) {
-      assert.deepEqual(Object.keys(configured).filter((name) => name.startsWith("jsdoc/")), []);
+      assert.deepEqual(Object.keys(configured).filter((name) => name.startsWith("jsdoc/") || name.includes(`/${JSDOC_RULE_PREFIX}`)), []);
     }
   });
 
-  it("the Oxlint jsdoc config runs check-tag-names and empty-tags natively, and loads no JS plugin", () => {
-    assert.deepEqual(oxlintJsdoc, { plugins: ["jsdoc"], rules: { "jsdoc/check-tag-names": "error", "jsdoc/empty-tags": "error" } });
+  it("the Oxlint jsdoc config runs check-tag-names and empty-tags natively, and jsdoc-names-every-parameter through this plugin's jsPlugins entry", () => {
+    assert.deepEqual(oxlintJsdoc, {
+      plugins: ["jsdoc"],
+      jsPlugins: [{ name: PLUGIN_PREFIX, specifier: `${PACKAGE_NAME}/plugin` }],
+      rules: { "jsdoc/check-tag-names": "error", "jsdoc/empty-tags": "error", "clean-code-book/jsdoc-names-every-parameter": "error" },
+    });
   });
 
   it("the Oxlint config has the same custom rules as ESLint's recommended", () => {
