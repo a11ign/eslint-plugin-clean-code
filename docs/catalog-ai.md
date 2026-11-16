@@ -29,7 +29,7 @@ Every rule in `ai` is set to `error`. The config stands alone: use it after `rec
 #### AI-01 · Narrating comments
 
 - **Rule:** `ai-no-inline-comments`
-- **AI pattern:** a `//` or `/* */` comment above or beside each step, saying what the next line does (`// Loop through the users`, `// Return the result`).
+- **AI pattern:** a `//` or `/* */` comment above or beside each step, saying what the next line does (`// Loop through the users`, `// Return the result`). Or the same comment written as `/** */` to pass for documentation: a doc comment counts only on a declaration outside any function body, or as the file's overview before the first statement. Documentation lives on declarations, nothing inside a function body.
 - **Harm:** the comment repeats the code, so it is one more thing to read and to keep in step with the code. When the code changes and the comment does not, it misleads. A comment that explains a step also hides that the step wants a name of its own.
 - **Book:** chapter 5 Comments § Comments Do Not Make Up for Bad Code (bookCTX chunk 9): "Clear and expressive code with few comments is far superior to cluttered and complex code with lots of comments." The book's CMT-01 entry rules out a comment-density rule as a *book* rule; this rule is not a density rule, and it is not a book rule.
 - **Language basis:** universal. Every language lets a name or a function say what a comment says.

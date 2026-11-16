@@ -241,6 +241,10 @@ function argumentFix(fixer: Rule.RuleFixer, argument: TSESTree.Expression | unde
   return [fixer.insertTextBefore(argument as never, `{ ${name}: ${sequence ? "(" : ""}`), fixer.insertTextAfter(argument as never, `${sequence ? ")" : ""} }`)];
 }
 
+/**
+ * Flags are collected as functions are seen and reported at the end of the file, once it is known whether a direct `eval`
+ * appears anywhere: such an `eval` can read `arguments` or call the function, so no fix is offered then.
+ */
 export default defineRule({
   name: "no-flag-argument",
   type: "suggestion",
@@ -261,7 +265,6 @@ export default defineRule({
   create(context) {
     const sourceCode = context.sourceCode;
     const flagged: FlaggedParameter[] = [];
-    /** A direct `eval` anywhere can read `arguments` or call the function, so flags are reported at the end, once the whole file is known. */
     let hasDirectEval = false;
     return {
       ...trackFunctionUsage((fn, usage) => flagged.push(...flaggedParameters(sourceCode, fn, usage))),

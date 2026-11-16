@@ -391,7 +391,7 @@ Each book rule's page quotes the passage it comes from, each `ai` rule's page na
 | --- | --- | --- |
 | [`ai-no-ceremonial-catch`](docs/rules/ai/ai-no-ceremonial-catch.md) | Don't catch an error only to log it and rethrow it, or only to log it and carry on. | no |
 | [`ai-no-emoji`](docs/rules/ai/ai-no-emoji.md) | Keep emoji out of comments, strings and log messages. | no |
-| [`ai-no-inline-comments`](docs/rules/ai/ai-no-inline-comments.md) | Say it in the code, not in a `//` or `/* */` comment: only `/** */` doc comments and tool directives stay. | no |
+| [`ai-no-inline-comments`](docs/rules/ai/ai-no-inline-comments.md) | Say it in the code, not in a comment: only `/** */` doc comments on declarations, a file overview and tool directives stay. | no |
 | [`ai-no-placeholder-implementation`](docs/rules/ai/ai-no-placeholder-implementation.md) | Don't ship a function whose body is only a placeholder: `throw new Error("Not implemented")` or a stub return. | no |
 | [`ai-no-placeholder-values`](docs/rules/ai/ai-no-placeholder-values.md) | Don't leave placeholder strings such as `"YOUR_API_KEY"` or `"<insert token>"` in the code. | no |
 
