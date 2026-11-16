@@ -23,13 +23,16 @@
  *   Stack it after `recommended`. It needs nothing that `recommended` does not, and it keeps `recommended`'s 12-line functions.
  * - `react-extended`: opt-in, `eslint-plugin-react-hooks`' and `eslint-plugin-react`'s rules that `docs/catalog-react.md` grounds,
  *   listed one by one. Stack it after `react`. Both plugins are optional peer dependencies, loaded only when this config is read.
+ * - `jsdoc`: opt-in, `eslint-plugin-jsdoc`'s rules that `docs/catalog-jsdoc.md` grounds, which check that a doc comment is
+ *   well-formed, listed one by one, on JavaScript and TypeScript files, with `no-types` on TypeScript files only. Stack it after
+ *   `recommended`. `eslint-plugin-jsdoc` is an optional peer dependency, loaded only when this config is read.
  */
 import { createRequire } from "node:module";
 import type { ESLint, Linter, Rule } from "eslint";
 import tseslint from "typescript-eslint";
 import plugin from "./plugin.ts";
 import {
-  AI_RULES, AI_TEST_FILE_OFF, ALL_FILES, BUILT_IN_RULES, JS_UNUSED_VARS, NODE_EXTENDED_RULES, NODE_RULES, PLUGIN_PREFIX, PROMISE_RULES, REACT_FILES, REACT_HOOKS_RULES,
+  AI_RULES, AI_TEST_FILE_OFF, ALL_FILES, BUILT_IN_RULES, JSDOC_RULES, JSDOC_TS_RULES, JS_UNUSED_VARS, NODE_EXTENDED_RULES, NODE_RULES, PLUGIN_PREFIX, PROMISE_RULES, REACT_FILES, REACT_HOOKS_RULES,
   REACT_HOOK_FILES, REACT_HOOK_TS_FILES, REACT_TS_FILES, REACT_JSX_RULES, REACT_RULES, SYNTAX_RULES, TEST_FILES, TEST_FILE_OFF, TEST_FILE_RULES, TS_FILES, TS_UNUSED_VARS, TYPE_CHECKED_OPTIONS,
   TYPE_CHECKED_RULES, TYPESCRIPT_BUILT_IN_RULES, TYPESCRIPT_ESLINT_RULES, TYPESCRIPT_EXTENDED_RULES, TYPESCRIPT_RULES, TYPESCRIPT_TYPE_CHECKED_RULES, pluginRules,
   pluginSettings, prefixed, prefixedOptions,
@@ -217,6 +220,29 @@ const reactExtended = builtOnce((): Linter.Config[] => [
   { name: `${PLUGIN_PREFIX}/react-extended/typescript`, files: REACT_HOOK_TS_FILES, languageOptions: { parser: tseslint.parser as Linter.Parser } },
 ]);
 
+/** DOC-01 to DOC-03 on every file, with `eslint-plugin-jsdoc` loaded for all four rules. */
+function jsdocAllFilesConfig(): Linter.Config {
+  return {
+    name: `${PLUGIN_PREFIX}/jsdoc`,
+    files: ALL_FILES,
+    plugins: { jsdoc: loadPeerPlugin("eslint-plugin-jsdoc", "jsdoc", [...JSDOC_RULES, ...JSDOC_TS_RULES]) },
+    rules: pluginRules("jsdoc", JSDOC_RULES),
+  };
+}
+
+/** DOC-04 on TypeScript files only, which typescript-eslint's parser reads. */
+function jsdocTypeScriptConfig(): Linter.Config {
+  return {
+    name: `${PLUGIN_PREFIX}/jsdoc/typescript`,
+    files: TS_FILES,
+    languageOptions: { parser: tseslint.parser as Linter.Parser },
+    rules: pluginRules("jsdoc", JSDOC_TS_RULES),
+  };
+}
+
+/** DOC-01 to DOC-03 on every file, and DOC-04 on TypeScript files only, from `eslint-plugin-jsdoc`. */
+const jsdoc = builtOnce((): Linter.Config[] => [jsdocAllFilesConfig(), jsdocTypeScriptConfig()]);
+
 type ConfigName =
   | "recommended"
   | "recommended-type-checked"
@@ -227,7 +253,8 @@ type ConfigName =
   | "node"
   | "node-extended"
   | "react"
-  | "react-extended";
+  | "react-extended"
+  | "jsdoc";
 
 const configs: Record<ConfigName, Linter.Config[]> = {
   recommended,
@@ -251,6 +278,10 @@ const configs: Record<ConfigName, Linter.Config[]> = {
   /** A getter, so `eslint-plugin-react-hooks` and `eslint-plugin-react` are loaded only by a project that reads `react-extended`. */
   get "react-extended"() {
     return reactExtended();
+  },
+  /** A getter, so `eslint-plugin-jsdoc` is loaded only by a project that reads `jsdoc`. */
+  get jsdoc() {
+    return jsdoc();
   },
 };
 

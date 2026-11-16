@@ -7,15 +7,20 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT } from "./support.ts";
 
-describe("the ADRs", () => {
-  const ADR_DIR = join(ROOT, "docs", "adr");
-  const adrFiles = readdirSync(ADR_DIR).sort();
-  /** Every file outside `docs/adr/` that may cite an ADR: the sources, the docs and the two top-level guides. */
-  const citing = [
+const ADR_DIR = join(ROOT, "docs", "adr");
+
+/** Every file outside `docs/adr/` that may cite an ADR: the sources, the docs and the two top-level guides. */
+function citingFiles(): string[] {
+  const sourcesAndDocs = [
     ...readdirSync(join(ROOT, "src"), { recursive: true, withFileTypes: true }),
     ...readdirSync(join(ROOT, "docs"), { recursive: true, withFileTypes: true }).filter((entry) => !entry.parentPath.startsWith(ADR_DIR)),
   ].filter((entry) => entry.isFile() && /\.(ts|md)$/.test(entry.name)).map((entry) => join(entry.parentPath, entry.name));
-  const texts = [...citing, join(ROOT, "README.md"), join(ROOT, "CONTRIBUTING.md")].map((path) => ({ path, text: readFileSync(path, "utf8") }));
+  return [...sourcesAndDocs, join(ROOT, "README.md"), join(ROOT, "CONTRIBUTING.md")];
+}
+
+describe("the ADRs", () => {
+  const adrFiles = readdirSync(ADR_DIR).sort();
+  const texts = citingFiles().map((path) => ({ path, text: readFileSync(path, "utf8") }));
 
   it("docs/adr/ holds ADRs 0001 to 0004, numbered by date", () => {
     assert.deepEqual(adrFiles, [
@@ -38,7 +43,7 @@ describe("the ADRs", () => {
     const cited = (pattern: RegExp) => texts.filter(({ text }) => pattern.test(text)).map(({ path }) => path.slice(ROOT.length));
     assert.deepEqual(cited(/ADR 0001/), []);
     for (const file of ["docs/catalog-ai.md", "CONTRIBUTING.md", "src/configs.ts", "src/index.ts", "src/lib/define-rule.ts"]) assert.ok(cited(/ADR 0003/).includes(file), file);
-    for (const file of ["docs/catalog-typescript.md", "docs/catalog-node.md", "docs/catalog-react.md"]) assert.ok(cited(/ADR 0004/).includes(file), file);
+    for (const file of ["docs/catalog-typescript.md", "docs/catalog-node.md", "docs/catalog-react.md", "docs/catalog-jsdoc.md"]) assert.ok(cited(/ADR 0004/).includes(file), file);
   });
 
   it("every link to an ADR resolves", () => {

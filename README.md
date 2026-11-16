@@ -11,6 +11,7 @@ Every rule of `recommended` comes from a passage of the book, and its doc page q
 - An opt-in `typescript` config, with three rules for the TypeScript type system and strict equality from the TypeScript books, and `typescript-extended` and `typescript-extended-type-checked` companions that add typescript-eslint's and `eslint-plugin-promise`'s rules for type assertions, `any`, directives and promises.
 - An opt-in `node` config, with four rules for Node's event loop and error model from the Node books, and a `node-extended` companion that adds `eslint-plugin-n`'s callback-error check.
 - An opt-in `react` config, with two rules for React state from the React books, on `.jsx` and `.tsx` files, and a `react-extended` companion that adds the rules of hooks and the list-key rules.
+- An opt-in `jsdoc` config, with `eslint-plugin-jsdoc`'s rules that check doc comments are well-formed, on JavaScript and TypeScript files.
 
 ## Requirements
 
@@ -21,6 +22,7 @@ Every rule of `recommended` comes from a passage of the book, and its doc page q
 - For `typescript-extended` and `typescript-extended-type-checked` with ESLint only: `eslint-plugin-promise` 7.2 or later. Nothing else needs it, and Oxlint runs the same rule natively. `typescript-extended-type-checked` also needs a `tsconfig.json`.
 - For `node-extended` with ESLint only: `eslint-plugin-n` 17 or later. Nothing else needs it, and Oxlint runs the same rule natively.
 - For `react-extended` with ESLint only: `eslint-plugin-react-hooks` 6 or later and `eslint-plugin-react` 7.37 or later. Nothing else needs them, and Oxlint runs the same rules natively.
+- For `jsdoc` with ESLint only: `eslint-plugin-jsdoc` 65 or later. Nothing else needs it, and Oxlint runs two of its four rules natively.
 
 ## Setup with ESLint
 
@@ -79,7 +81,7 @@ import { recommended } from "eslint-plugin-clean-code-book/oxlint";
 export default { extends: [recommended] };
 ```
 
-and run `oxlint -c oxlint.config.ts`. The Oxlint config has the same rules as ESLint's `recommended`, under Oxlint's names, and loads this plugin's rules through `jsPlugins`. The five type-aware rules are not in it.
+and run `oxlint -c oxlint.config.ts`. The Oxlint config has the same rules as ESLint's `recommended`, under Oxlint's names, and loads this plugin's rules through `jsPlugins`. The five type-aware rules are not in it, nor are `jsdoc`'s `check-param-names` and `no-types`, which Oxlint does not have.
 
 ## The `ai` config
 
@@ -284,6 +286,34 @@ export default { extends: [recommended, react, reactExtended] };
 
 Turning on Oxlint's `react` plugin also turns on that plugin's rules in Oxlint's `correctness` category, as warnings, unless your config sets `categories`. `react-extended` itself turns on only the four rules above.
 
+## The `jsdoc` config
+
+`jsdoc` is an opt-in config that checks doc comments are well-formed. The book asks for good document comments on a public API, and warns that "Document comments can be just as misleading, nonlocal, and dishonest as any other kind of comment"; [`docs/catalog-jsdoc.md`](docs/catalog-jsdoc.md) gives each rule's reason. It turns on four rules of `eslint-plugin-jsdoc`, each an `error` with its default options, listed one by one rather than using the plugin's presets: `jsdoc/check-param-names` (a `@param` for a parameter the function does not have), `jsdoc/check-tag-names` (a misspelled tag such as `@retrun`) and `jsdoc/empty-tags` (content on a tag that takes none) on JavaScript and TypeScript files, and `jsdoc/no-types` (a `{type}` that repeats the signature) on TypeScript files only, since in JavaScript the comment's type is the only one the code has. It is not in `recommended`, which uses only ESLint core's rules and this plugin's own.
+
+With ESLint, install `eslint-plugin-jsdoc`, an optional peer dependency that only `jsdoc` needs:
+
+```sh
+npm install --save-dev eslint-plugin-jsdoc
+```
+
+and add `jsdoc` after `recommended`:
+
+<!-- setup: eslint-jsdoc -->
+```js
+import cleanCode from "eslint-plugin-clean-code-book";
+
+export default [...cleanCode.configs.recommended, ...cleanCode.configs.jsdoc];
+```
+
+Oxlint runs `jsdoc/check-tag-names` and `jsdoc/empty-tags` natively, in its `jsdoc` plugin, so nothing more is installed. It has no `check-param-names` or `no-types`, so those two rules are ESLint only:
+
+<!-- setup: oxlint-jsdoc -->
+```ts
+import { jsdoc, recommended } from "eslint-plugin-clean-code-book/oxlint";
+
+export default { extends: [recommended, jsdoc] };
+```
+
 ## Changing a rule
 
 Every rule is an `error`, and every threshold is the book's value, or a value the [catalog](docs/catalog.md#thresholds-the-book-does-not-state) gives a reason for. To change one, add your own settings after `recommended`. A setting added this way applies to every file. In ESLint that includes test files, where `recommended` turns `max-lines-per-function` off, so to change that rule, give the entry a `files` or `ignores` of its own.
@@ -391,7 +421,7 @@ Each book rule's page quotes the passage it comes from, each `ai` rule's page na
 | --- | --- | --- |
 | [`ai-no-ceremonial-catch`](docs/rules/ai/ai-no-ceremonial-catch.md) | Don't catch an error only to log it and rethrow it, or only to log it and carry on. | no |
 | [`ai-no-emoji`](docs/rules/ai/ai-no-emoji.md) | Keep emoji out of comments, strings and log messages. | no |
-| [`ai-no-inline-comments`](docs/rules/ai/ai-no-inline-comments.md) | Say it in the code, not in a `//` or `/* */` comment: only `/** */` doc comments and tool directives stay. | no |
+| [`ai-no-inline-comments`](docs/rules/ai/ai-no-inline-comments.md) | Say it in the code, not in a comment: only `/** */` doc comments on declarations, a file overview and tool directives stay. | no |
 | [`ai-no-placeholder-implementation`](docs/rules/ai/ai-no-placeholder-implementation.md) | Don't ship a function whose body is only a placeholder: `throw new Error("Not implemented")` or a stub return. | no |
 | [`ai-no-placeholder-values`](docs/rules/ai/ai-no-placeholder-values.md) | Don't leave placeholder strings such as `"YOUR_API_KEY"` or `"<insert token>"` in the code. | no |
 
@@ -455,6 +485,15 @@ Everything in `typescript-extended`, and, under ESLint only:
 | `react/jsx-key` | `.jsx`, `.tsx` | `react/jsx-key` | RCT-04 |
 | `react/no-array-index-key` | `.jsx`, `.tsx` | `react/no-array-index-key` | RCT-04 |
 
+### In `jsdoc`
+
+| Rule | Files | Oxlint | Catalog entry |
+| --- | --- | --- | --- |
+| `jsdoc/check-param-names` | every file | none: ESLint only | DOC-01 |
+| `jsdoc/check-tag-names` | every file | `jsdoc/check-tag-names` | DOC-02 |
+| `jsdoc/empty-tags` | every file | `jsdoc/empty-tags` | DOC-03 |
+| `jsdoc/no-types` | TypeScript | none: ESLint only | DOC-04 |
+
 ### Built-in rules
 
 `recommended` also turns on these built-in rules, under ESLint and under Oxlint. A threshold is the book's value, or one the catalog gives a reason for (`complexity` is one):
@@ -481,7 +520,7 @@ Everything in `typescript-extended`, and, under ESLint only:
 
 ## The catalog
 
-[`docs/catalog.md`](docs/catalog.md) is the record of how the book became these rules. It lists every rule, heuristic and smell in the book with the passage it comes from, and says whether it is checked from syntax, needs type information, is covered by a built-in rule, or cannot be linted, and why. Rules that cannot be linted, such as "one level of abstraction per function", are not in this plugin. The `ai` config's rules have a catalog of their own, [`docs/catalog-ai.md`](docs/catalog-ai.md), and so do the `typescript` config's, [`docs/catalog-typescript.md`](docs/catalog-typescript.md), the `node` config's, [`docs/catalog-node.md`](docs/catalog-node.md), and the `react` config's, [`docs/catalog-react.md`](docs/catalog-react.md).
+[`docs/catalog.md`](docs/catalog.md) is the record of how the book became these rules. It lists every rule, heuristic and smell in the book with the passage it comes from, and says whether it is checked from syntax, needs type information, is covered by a built-in rule, or cannot be linted, and why. Rules that cannot be linted, such as "one level of abstraction per function", are not in this plugin. The `ai` config's rules have a catalog of their own, [`docs/catalog-ai.md`](docs/catalog-ai.md), and so do the `typescript` config's, [`docs/catalog-typescript.md`](docs/catalog-typescript.md), the `node` config's, [`docs/catalog-node.md`](docs/catalog-node.md), the `react` config's, [`docs/catalog-react.md`](docs/catalog-react.md), and the `jsdoc` config's, [`docs/catalog-jsdoc.md`](docs/catalog-jsdoc.md).
 
 The decisions behind the plugin's shape, such as why `ai` and the language configs are separate from `recommended`, are recorded in [`docs/adr/`](docs/adr/).
 

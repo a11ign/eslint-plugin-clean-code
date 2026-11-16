@@ -5,14 +5,15 @@
  * - every `ai-` rule is in `docs/catalog-ai.md`'s rule table, with an entry that names its pattern, harm and Language basis;
  * - every `ts-`, `node-` and `react-` rule is in its language catalog's rule table, a syntax rule in its config with no fix,
  *   and each catalog's `third-party` rows are the rules of its extended configs;
+ * - the `jsdoc` catalog's `third-party` rows are exactly the rules of the `jsdoc` config;
  * - the book's catalog names no rule of the other catalogs.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import plugin from "../src/index.ts";
-import { BUILT_IN_RULES, NODE_EXTENDED_RULES, PLUGIN_PREFIX, TYPESCRIPT_RULES } from "../src/configs.ts";
+import { BUILT_IN_RULES, JSDOC_RULES, JSDOC_TS_RULES, NODE_EXTENDED_RULES, PLUGIN_PREFIX, TYPESCRIPT_RULES } from "../src/configs.ts";
 import {
-  aiCatalog, catalog, isAiRule, isLanguageRule, isNodeRule, isReactRule, isTypescriptRule, nodeCatalog, reactCatalog, rules, rulesOf, tableCells, typescriptCatalog,
+  aiCatalog, catalog, isAiRule, isLanguageRule, isNodeRule, isReactRule, isTypescriptRule, jsdocCatalog, nodeCatalog, reactCatalog, rules, rulesOf, tableCells, typescriptCatalog,
 } from "./plugin-support.ts";
 
 const bookRuleNames = Object.keys(rules).filter((name) => !isAiRule(name) && !isLanguageRule(name));
@@ -161,6 +162,22 @@ describe("the react catalog", () => {
 
   it("leaves the book's catalog alone: it names no react- rule", () => {
     assert.doesNotMatch(catalog, /`react-/);
+  });
+});
+
+describe("the jsdoc catalog", () => {
+  const table = languageTable(jsdocCatalog);
+
+  it("every row is a third-party rule in jsdoc, and jsdoc has exactly the rules the table names", () => {
+    assert.deepEqual([...new Set(table.map((row) => [row.config, row.ruleClass].join(" ")))], ["jsdoc third-party"]);
+    assert.deepEqual(table.map((row) => row.entry), ["DOC-01", "DOC-02", "DOC-03", "DOC-04"]);
+    assert.deepEqual(Object.keys(rulesOf(plugin.configs.jsdoc)).sort(), table.map((row) => row.name).sort());
+    assert.deepEqual([...JSDOC_RULES, ...JSDOC_TS_RULES].map((name) => `jsdoc/${name}`).sort(), table.map((row) => row.name).sort());
+  });
+
+  it("quotes the book's passage on document comments, and cites ADR 0004 for why jsdoc is not in recommended", () => {
+    assert.match(jsdocCatalog, /Document comments can be just as misleading, nonlocal, and dishonest as any other kind of comment\./);
+    assert.match(jsdocCatalog, /ADR 0004/);
   });
 });
 

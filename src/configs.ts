@@ -1,6 +1,6 @@
 /**
  * What `recommended`, `recommended-type-checked`, `ai`, `typescript`, `typescript-extended`, `typescript-extended-type-checked`,
- * `node`, `node-extended`, `react` and `react-extended` turn on, written once as data so the ESLint config and the Oxlint config
+ * `node`, `node-extended`, `react`, `react-extended` and `jsdoc` turn on, written once as data so the ESLint config and the Oxlint config
  * are built from the same list. Every rule is `"error"` (the catalog's decision). Thresholds the book states are its values; the
  * others are the values the catalog's owner sign-off approved. A custom rule's threshold is its own default.
  */
@@ -193,6 +193,24 @@ export const REACT_RULES = ["react-no-state-mutation", "react-no-untyped-empty-s
  */
 export const REACT_HOOKS_RULES = ["rules-of-hooks", "exhaustive-deps"] as const;
 export const REACT_JSX_RULES = ["jsx-key", "no-array-index-key"] as const;
+
+/**
+ * The opt-in `jsdoc` config: the `third-party` entries of `docs/catalog-jsdoc.md`, `eslint-plugin-jsdoc`'s rules that check a
+ * doc comment is well-formed, listed one by one, each `"error"` with its default options, by their names without the plugin's
+ * `jsdoc/` prefix. It uses none of the plugin's presets. `JSDOC_RULES` apply to `ALL_FILES`: DOC-01 (`check-param-names`),
+ * DOC-02 (`check-tag-names`) and DOC-03 (`empty-tags`). Oxlint's native `jsdoc` plugin runs DOC-02 and DOC-03 under the same
+ * names, and has no `check-param-names`.
+ */
+export const JSDOC_RULES = ["check-param-names", "check-tag-names", "empty-tags"] as const;
+
+/**
+ * DOC-04 (`no-types`), on `TS_FILES` only: in TypeScript a `{type}` in a doc comment repeats the signature, while in JavaScript
+ * it is the only type information. Oxlint has no `jsdoc/no-types`.
+ */
+export const JSDOC_TS_RULES = ["no-types"] as const;
+
+/** The `jsdoc` rules Oxlint's native `jsdoc` plugin runs, under the same names. */
+export const OXLINT_JSDOC_RULES = ["check-tag-names", "empty-tags"] as const;
 
 /** The files `react` and the `react/` rules of `react-extended` apply to. */
 export const REACT_FILES = ["**/*.{jsx,tsx}"];

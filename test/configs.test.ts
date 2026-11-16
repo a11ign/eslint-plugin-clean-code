@@ -3,18 +3,19 @@
  * - every rule is `"error"`, and the book's stated thresholds are used; type-aware rules are only in `recommended-type-checked`;
  * - the `ai`, `typescript`, `node` and `react` configs turn on exactly their own rules, which are in no other config of either
  *   linter; their `-extended` companions turn on the third-party rules, and Oxlint runs the same rules, natively where it can;
- * - `typescript-extended-type-checked` has no Oxlint export.
+ * - `typescript-extended-type-checked` has no Oxlint export;
+ * - `jsdoc` turns on `eslint-plugin-jsdoc`'s rules one by one, which no other config has, and Oxlint runs the two it has natively.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { Linter } from "eslint";
 import plugin from "../src/index.ts";
 import oxlintConfigs, {
-  ai as oxlintAi, node as oxlintNode, nodeExtended as oxlintNodeExtended, react as oxlintReact, reactExtended as oxlintReactExtended, recommended as oxlintRecommended,
+  ai as oxlintAi, jsdoc as oxlintJsdoc, node as oxlintNode, nodeExtended as oxlintNodeExtended, react as oxlintReact, reactExtended as oxlintReactExtended, recommended as oxlintRecommended,
   typescript as oxlintTypescript, typescriptExtended as oxlintTypescriptExtended,
 } from "../src/oxlint.ts";
 import * as oxlintModule from "../src/oxlint.ts";
-import { AI_RULES, NODE_RULES, PLUGIN_PREFIX, REACT_RULES, SYNTAX_RULES, TEST_FILE_RULES, TYPE_CHECKED_RULES, TYPESCRIPT_RULES } from "../src/configs.ts";
+import { AI_RULES, JSDOC_RULES, JSDOC_TS_RULES, NODE_RULES, PLUGIN_PREFIX, REACT_RULES, SYNTAX_RULES, TEST_FILE_RULES, TYPE_CHECKED_RULES, TYPESCRIPT_RULES } from "../src/configs.ts";
 import { AI_RULE_PREFIX, NODE_RULE_PREFIX, PACKAGE_NAME, REACT_RULE_PREFIX, TYPESCRIPT_RULE_PREFIX } from "../src/lib/define-rule.ts";
 import { isAiRule, isNodeRule, isReactRule, isTypescriptRule, rules, rulesOf } from "./plugin-support.ts";
 
@@ -63,14 +64,14 @@ describe("the configs", () => {
     assert.deepEqual(ai.sort(), AI_RULES.map((name) => `${PLUGIN_PREFIX}/${name}`).sort());
     assert.deepEqual(Object.keys(rules).filter(isAiRule).sort(), [...AI_RULES].sort());
     const others = [
-      "recommended", "recommended-type-checked", "typescript", "typescript-extended", "typescript-extended-type-checked", "node", "node-extended", "react", "react-extended",
+      "recommended", "recommended-type-checked", "typescript", "typescript-extended", "typescript-extended-type-checked", "node", "node-extended", "react", "react-extended", "jsdoc",
     ] as const;
     for (const config of others.map((name) => plugin.configs[name])) {
       assert.deepEqual(Object.keys(rulesOf(config)).filter((name) => name.includes(`/${AI_RULE_PREFIX}`)), []);
     }
     const oxlint = {
       ...oxlintRecommended.rules, ...oxlintRecommended.overrides[0].rules, ...oxlintTypescript.rules, ...oxlintRulesOf(oxlintTypescriptExtended), ...oxlintNode.rules,
-      ...oxlintNodeExtended.rules, ...oxlintRulesOf(oxlintReact), ...oxlintRulesOf(oxlintReactExtended),
+      ...oxlintNodeExtended.rules, ...oxlintRulesOf(oxlintReact), ...oxlintRulesOf(oxlintReactExtended), ...oxlintJsdoc.rules,
     };
     assert.deepEqual(Object.keys(oxlint).filter((name) => name.includes(`/${AI_RULE_PREFIX}`)), []);
   });
@@ -86,8 +87,8 @@ describe("the configs", () => {
     assert.deepEqual(configured.map((entry) => entry.files), [["**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}"]]);
     assert.deepEqual(rulesOf(plugin.configs.typescript), { eqeqeq: ["error", "always"], ...Object.fromEntries(TYPESCRIPT_RULES.map((name) => [`${PLUGIN_PREFIX}/${name}`, "error"])) });
     assert.deepEqual(Object.keys(rules).filter(isTypescriptRule).sort(), [...TYPESCRIPT_RULES].sort());
-    const others = [plugin.configs.recommended, plugin.configs["recommended-type-checked"], plugin.configs.ai, plugin.configs.node, plugin.configs["node-extended"], plugin.configs.react, plugin.configs["react-extended"]].map(rulesOf);
-    const oxlintOthers = [{ ...oxlintRecommended.rules, ...oxlintRecommended.overrides[0].rules }, oxlintAi.rules, oxlintNode.rules, oxlintNodeExtended.rules, oxlintRulesOf(oxlintReact), oxlintRulesOf(oxlintReactExtended)];
+    const others = [plugin.configs.recommended, plugin.configs["recommended-type-checked"], plugin.configs.ai, plugin.configs.node, plugin.configs["node-extended"], plugin.configs.react, plugin.configs["react-extended"], plugin.configs.jsdoc].map(rulesOf);
+    const oxlintOthers = [{ ...oxlintRecommended.rules, ...oxlintRecommended.overrides[0].rules }, oxlintAi.rules, oxlintNode.rules, oxlintNodeExtended.rules, oxlintRulesOf(oxlintReact), oxlintRulesOf(oxlintReactExtended), oxlintJsdoc.rules];
     for (const configured of [...others, ...oxlintOthers]) {
       assert.deepEqual(Object.keys(configured).filter((name) => name.includes(`/${TYPESCRIPT_RULE_PREFIX}`) || name === "eqeqeq"), []);
     }
@@ -151,15 +152,15 @@ describe("the configs", () => {
   });
 
   it("Oxlint has no typescript-extended-type-checked export, as it has no recommended-type-checked one", () => {
-    assert.deepEqual(Object.keys(oxlintConfigs), ["recommended", "ai", "typescript", "typescript-extended", "node", "node-extended", "react", "react-extended"]);
+    assert.deepEqual(Object.keys(oxlintConfigs), ["recommended", "ai", "typescript", "typescript-extended", "node", "node-extended", "react", "react-extended", "jsdoc"]);
     assert.deepEqual(Object.keys(oxlintModule).filter((name) => /type.?checked/i.test(name)), []);
   });
 
   it("node turns on exactly the node- rules, and they are in no other config of either linter", () => {
     assert.deepEqual(Object.keys(rulesOf(plugin.configs.node)).sort(), NODE_RULES.map((name) => `${PLUGIN_PREFIX}/${name}`).sort());
     assert.deepEqual(Object.keys(rules).filter(isNodeRule).sort(), [...NODE_RULES].sort());
-    const others = [plugin.configs.recommended, plugin.configs["recommended-type-checked"], plugin.configs.ai, plugin.configs.typescript, plugin.configs["typescript-extended"], plugin.configs["typescript-extended-type-checked"], plugin.configs["node-extended"], plugin.configs.react, plugin.configs["react-extended"]].map(rulesOf);
-    const oxlintOthers = [{ ...oxlintRecommended.rules, ...oxlintRecommended.overrides[0].rules }, oxlintAi.rules, oxlintTypescript.rules, oxlintRulesOf(oxlintTypescriptExtended), oxlintNodeExtended.rules, oxlintRulesOf(oxlintReact), oxlintRulesOf(oxlintReactExtended)];
+    const others = [plugin.configs.recommended, plugin.configs["recommended-type-checked"], plugin.configs.ai, plugin.configs.typescript, plugin.configs["typescript-extended"], plugin.configs["typescript-extended-type-checked"], plugin.configs["node-extended"], plugin.configs.react, plugin.configs["react-extended"], plugin.configs.jsdoc].map(rulesOf);
+    const oxlintOthers = [{ ...oxlintRecommended.rules, ...oxlintRecommended.overrides[0].rules }, oxlintAi.rules, oxlintTypescript.rules, oxlintRulesOf(oxlintTypescriptExtended), oxlintNodeExtended.rules, oxlintRulesOf(oxlintReact), oxlintRulesOf(oxlintReactExtended), oxlintJsdoc.rules];
     for (const configured of [...others, ...oxlintOthers]) {
       assert.deepEqual(Object.keys(configured).filter((name) => name.includes(`/${NODE_RULE_PREFIX}`)), []);
     }
@@ -192,8 +193,8 @@ describe("the configs", () => {
     assert.deepEqual(configured.map((entry) => entry.files), [["**/*.{jsx,tsx}"]]);
     assert.deepEqual(Object.keys(rulesOf(plugin.configs.react)).sort(), REACT_RULES.map((name) => `${PLUGIN_PREFIX}/${name}`).sort());
     assert.deepEqual(Object.keys(rules).filter(isReactRule).sort(), [...REACT_RULES].sort());
-    const others = [plugin.configs.recommended, plugin.configs["recommended-type-checked"], plugin.configs.ai, plugin.configs.typescript, plugin.configs["typescript-extended"], plugin.configs["typescript-extended-type-checked"], plugin.configs.node, plugin.configs["node-extended"], plugin.configs["react-extended"]].map(rulesOf);
-    const oxlintOthers = [{ ...oxlintRecommended.rules, ...oxlintRecommended.overrides[0].rules }, oxlintAi.rules, oxlintTypescript.rules, oxlintRulesOf(oxlintTypescriptExtended), oxlintNode.rules, oxlintNodeExtended.rules, oxlintRulesOf(oxlintReactExtended)];
+    const others = [plugin.configs.recommended, plugin.configs["recommended-type-checked"], plugin.configs.ai, plugin.configs.typescript, plugin.configs["typescript-extended"], plugin.configs["typescript-extended-type-checked"], plugin.configs.node, plugin.configs["node-extended"], plugin.configs["react-extended"], plugin.configs.jsdoc].map(rulesOf);
+    const oxlintOthers = [{ ...oxlintRecommended.rules, ...oxlintRecommended.overrides[0].rules }, oxlintAi.rules, oxlintTypescript.rules, oxlintRulesOf(oxlintTypescriptExtended), oxlintNode.rules, oxlintNodeExtended.rules, oxlintRulesOf(oxlintReactExtended), oxlintJsdoc.rules];
     for (const rulesConfigured of [...others, ...oxlintOthers]) {
       assert.deepEqual(Object.keys(rulesConfigured).filter((name) => name.includes(`/${REACT_RULE_PREFIX}`)), []);
     }
@@ -232,6 +233,36 @@ describe("the configs", () => {
         { files: ["**/*.{jsx,tsx}"], plugins: ["react"], rules: { "react/jsx-key": "error", "react/no-array-index-key": "error" } },
       ],
     });
+  });
+
+  it("jsdoc turns on check-param-names, check-tag-names and empty-tags on every file, and no-types on TypeScript files only", () => {
+    const byFiles = plugin.configs.jsdoc.map((entry) => [entry.files, entry.rules]);
+    assert.deepEqual(byFiles, [
+      [["**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}"], { "jsdoc/check-param-names": "error", "jsdoc/check-tag-names": "error", "jsdoc/empty-tags": "error" }],
+      [["**/*.{ts,mts,cts,tsx}"], { "jsdoc/no-types": "error" }],
+    ]);
+    assert.deepEqual(plugin.configs.jsdoc.flatMap((entry) => Object.keys(entry.plugins ?? {})), ["jsdoc"]);
+    assert.equal(plugin.configs.jsdoc[1].languageOptions?.parser, plugin.configs.typescript[1].languageOptions?.parser, "TypeScript files get typescript-eslint's parser");
+    assert.equal(plugin.configs.jsdoc, plugin.configs.jsdoc, "jsdoc is built once, like the other configs");
+  });
+
+  it("jsdoc's rules are in no other config of either linter, and it overrides no rule of recommended", () => {
+    const jsdocRules = [...JSDOC_RULES, ...JSDOC_TS_RULES].map((name) => `jsdoc/${name}`);
+    assert.deepEqual(Object.keys(rulesOf(plugin.configs.jsdoc)).sort(), [...jsdocRules].sort());
+    const others = [
+      "recommended", "recommended-type-checked", "ai", "typescript", "typescript-extended", "typescript-extended-type-checked", "node", "node-extended", "react", "react-extended",
+    ] as const;
+    const oxlintOthers = [
+      { ...oxlintRecommended.rules, ...oxlintRecommended.overrides[0].rules }, oxlintAi.rules, oxlintTypescript.rules, oxlintRulesOf(oxlintTypescriptExtended), oxlintNode.rules,
+      oxlintNodeExtended.rules, oxlintRulesOf(oxlintReact), oxlintRulesOf(oxlintReactExtended),
+    ];
+    for (const configured of [...others.map((name) => rulesOf(plugin.configs[name])), ...oxlintOthers]) {
+      assert.deepEqual(Object.keys(configured).filter((name) => name.startsWith("jsdoc/")), []);
+    }
+  });
+
+  it("the Oxlint jsdoc config runs check-tag-names and empty-tags natively, and loads no JS plugin", () => {
+    assert.deepEqual(oxlintJsdoc, { plugins: ["jsdoc"], rules: { "jsdoc/check-tag-names": "error", "jsdoc/empty-tags": "error" } });
   });
 
   it("the Oxlint config has the same custom rules as ESLint's recommended", () => {

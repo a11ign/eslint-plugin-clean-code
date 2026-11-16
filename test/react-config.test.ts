@@ -145,7 +145,7 @@ describe("the react config", () => {
   it("ESLint: without the React plugins, every config can be listed and react lints, and linting with react-extended says to install them", () => {
     const result = withoutReactPlugins();
     assert.deepEqual(Object.keys(result.lengths), [
-      "recommended", "recommended-type-checked", "ai", "typescript", "typescript-extended", "typescript-extended-type-checked", "node", "node-extended", "react", "react-extended",
+      "recommended", "recommended-type-checked", "ai", "typescript", "typescript-extended", "typescript-extended-type-checked", "node", "node-extended", "react", "react-extended", "jsdoc",
     ]);
     assert.ok(Object.values(result.lengths).every((length) => length > 0), JSON.stringify(result.lengths));
     assert.equal(result.recommendedLint, "ok");

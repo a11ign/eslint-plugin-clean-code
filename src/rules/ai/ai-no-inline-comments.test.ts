@@ -14,6 +14,11 @@ runRuleTests("ai-no-inline-comments", rule, {
     { name: "a top-of-file licence header (CMT-02)", code: "/*\n * Copyright (c) 2024 Acme Corp. All rights reserved.\n * Licensed under the Apache License, Version 2.0.\n */\nexport const a = 1;" },
     { name: "an SPDX licence line comment at the top", code: "// SPDX-License-Identifier: Apache-2.0\nexport const a = 1;" },
     { name: "a licence header after a hashbang", code: "#!/usr/bin/env node\n// Copyright 2024 Acme Corp.\nrun();", filename: "file.js" },
+    { name: "a doc comment on a class, its field and its method", code: "/** An invoice. */\nexport class Invoice {\n  /** The total, in cents. */\n  total = 0;\n  /** Sends it. */\n  send() { return this.total; }\n}" },
+    { name: "a doc comment on an interface, its property and a type alias", code: "/** A user. */\ninterface User {\n  /** The login name. */\n  name: string;\n}\n/** A user's id. */\ntype Id = string;\nexport const u: User | Id = 'a';" },
+    { name: "a doc comment on an object literal's property at the top level", code: "export const limits = {\n  /** FN-01: a dozen lines or less. */\n  lines: 12,\n};" },
+    { name: "a doc comment on a top-level const", code: "/** The default threshold. */\nconst LIMIT = 5;\nexport default LIMIT;" },
+    { name: "the file's overview, before the first statement", code: "/**\n * The invoice helpers.\n */\nimport { a } from './a';\nexport const b = a;" },
     { name: "a comment the `allow` list matches", code: "// WHY: the vendor API returns cents as a string\nconst cents = Number(raw);", options: [{ allow: ["^ ?WHY:"] }] },
   ],
   invalid: [
@@ -31,6 +36,11 @@ runRuleTests("ai-no-inline-comments", rule, {
     { name: "a top-of-file comment that is not a licence", code: "// Helpers for the invoice page\nexport const a = 1;", output: null, errors: 1 },
     { name: "a comment the `allow` list does not match", code: "// because the vendor is slow\nrun();", options: [{ allow: ["^ ?WHY:"] }], output: null, errors: 1 },
     { name: "a regular-expression explanation is reported too: strict on purpose", code: "// Matches an email such as ada@example.com.\nconst email = /^[^@\\s]+@[^@\\s]+$/;", output: null, errors: 1 },
+    { name: "a doc comment on a statement is narrating", code: "export function send(users) {\n  /** loop through the users */\n  for (const user of users) notify(user);\n}", output: null, errors: [{ messageId: "comment", line: 2 }] },
+    { name: "a doc comment on a declaration inside a function body is narrating", code: "export function total(items) {\n  /** the sum before tax */\n  const net = sum(items);\n  return net * 1.2;\n}", output: null, errors: [{ messageId: "comment", line: 2 }] },
+    { name: "a doc comment on a nested function inside a function body is narrating", code: "export function outer() {\n  /** adds one */\n  function inner(n) { return n + 1; }\n  return inner(1);\n}", output: null, errors: 1 },
+    { name: "a doc comment with nothing after it", code: "export const a = 1;\n/** leftover */", output: null, errors: 1 },
+    { name: "a doc comment between top-level statements that are not declarations", code: "import { run } from './run';\n/** start the job */\nrun();", output: null, errors: 1 },
     {
       name: "a long comment is quoted cut short",
       code: `// ${"word ".repeat(20).trim()}\nrun();`,

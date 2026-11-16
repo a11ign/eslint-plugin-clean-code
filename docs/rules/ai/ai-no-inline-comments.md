@@ -1,6 +1,6 @@
 # clean-code-book/ai-no-inline-comments
 
-Say it in the code, not in a `//` or `/* */` comment: only `/** */` doc comments and tool directives stay.
+Say it in the code, not in a comment: only `/** */` doc comments on declarations, a file overview and tool directives stay.
 
 - **Config:** `ai`
 - **Fix:** no
@@ -16,11 +16,12 @@ Generated code narrates itself: a comment above each step says what the next lin
 
 ## What it reports
 
-Every `//` and `/* */` comment that is not a `/** */` doc comment. The rule is strict on purpose: it does not guess which comments narrate, so what it reports is predictable. The message quotes the comment and points to where its content belongs: a clearer name, an extracted function, a JSDoc on the declaration, or a doc file.
+Every `//` and `/* */` comment, and every `/** */` doc comment that documents nothing: one on a statement, one with nothing after it, and any inside a function body, even on a local declaration. A function's own doc comment is the place to explain what happens inside it; a step that needs explaining wants a name of its own. The rule is strict on purpose: it does not guess which comments narrate, so what it reports is predictable. The message quotes the comment and points to where its content belongs: a clearer name, an extracted function, a JSDoc on the declaration, or a doc file.
 
 It does not report:
 
-- `/** */` doc comments;
+- a `/** */` doc comment directly on a declaration outside any function body: a function, class, variable, export, interface, type alias, enum, namespace, method, field, accessor, property signature, enum member or object literal property;
+- a `/** */` doc comment before the file's first statement: the file's overview;
 - tool directives: `eslint-*`, `oxlint-*`, `@ts-*`, `/// <reference …>`, `prettier-ignore`, `istanbul` and `c8`, `webpack…:` magic comments, `@vite-ignore`, `#__PURE__` and `@__PURE__`, `global`, `/*! … */`, `@license`, `biome-ignore`, `#region` and the other comments tools read;
 - the hashbang (`#!/usr/bin/env node`);
 - a licence header: the first comment of the file, before any code, that names a copyright, a licence or an SPDX identifier;
