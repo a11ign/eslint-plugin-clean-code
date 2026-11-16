@@ -39,7 +39,10 @@ type Noise = NonNullable<ReturnType<typeof nameNoise>>;
 /** The node types whose key names a property, so their names are checked like a variable's. */
 const PROPERTY_TYPES = ["PropertyDefinition", "AccessorProperty", "TSAbstractPropertyDefinition", "TSAbstractAccessorProperty", "TSPropertySignature"];
 
-/** Checks an object literal's entry when it is written out as `key: value`: not shorthand, a method or an accessor. */
+/**
+ * Reports in `context` the noise in `property`, an object literal's entry, when it is written out as `key: value`: not
+ * shorthand, a method or an accessor.
+ */
 function reportObjectEntryNoise(context: Rule.RuleContext, property: TSESTree.Property): void {
   if (isWrittenOutEntry(property)) reportPropertyNoise(context, property);
 }
@@ -61,10 +64,10 @@ function noiseOf(name: string | null, annotated: Node): Noise | null {
 }
 
 /**
- * The noise in a variable, parameter or property name: the word `variable` added at the end of a name that already says what
- * the value is (`nameVariable`), or a suffix repeating its declared type. `variable` alone, or as a word inside a longer name
- * (`variableWord`, `VARIABLE_DEFS`), names the thing itself, which in code about code is a variable: Clean Code's "Use Solution
- * Domain Names" lets a CS term stand, and like `string: string` there is nothing to drop.
+ * The noise in `name`, a variable, parameter or property name: the word `variable` added at the end of a name that already
+ * says what the value is (`nameVariable`), or a suffix repeating the type declared on `annotated`. `variable` alone, or as a
+ * word inside a longer name (`variableWord`, `VARIABLE_DEFS`), names the thing itself, which in code about code is a variable:
+ * Clean Code's "Use Solution Domain Names" lets a CS term stand, and like `string: string` there is nothing to drop.
  */
 function nameNoise(name: string, annotated: Node): { messageId: string; data: Record<string, string> } | null {
   const parts = words(name);
@@ -76,7 +79,7 @@ function nameNoise(name: string, annotated: Node): { messageId: string; data: Re
   return repeats ? { messageId: "typeSuffix", data: { name, suffix: suffix.suffix } } : null;
 }
 
-/** Whether `variable` is the last word of a name that has another word before it. */
+/** Whether `variable` is the last of a name's word `parts`, with another word before it. */
 function endsInNoiseVariable(parts: string[]): boolean {
   return parts.length > 1 && parts[parts.length - 1] === "variable";
 }

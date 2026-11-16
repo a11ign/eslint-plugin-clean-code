@@ -4,7 +4,7 @@
  */
 import type { Node, TSESTree } from "../../lib/ast.ts";
 
-/** The hook a call makes, when its callee is `<hook>` or `React.<hook>` and `<hook>` is one of `hooks`; otherwise `null`. */
+/** The hook `node` calls, when its callee is `<hook>` or `React.<hook>` and `<hook>` is one of `hooks`; otherwise `null`. */
 export function hookCalled(node: Node | null | undefined, hooks: ReadonlySet<string>): string | null {
   if (node?.type !== "CallExpression") return null;
   const name = calleeName(node.callee);

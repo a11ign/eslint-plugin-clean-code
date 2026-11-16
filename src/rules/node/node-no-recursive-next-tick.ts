@@ -6,7 +6,7 @@ import { enclosingFunctions, functionNamed, isMemberNamed, isMethodCall } from "
 const PROCESS = new Set(["process"]);
 const NEXT_TICK = new Set(["nextTick"]);
 
-/** The name of the function a `process.nextTick(…)` call schedules from inside itself; `null` when the call is not that. */
+/** The name of the function that `call`, a `process.nextTick(…)`, schedules from inside itself (looked up in `sourceCode`); else `null`. */
 function recursiveName(sourceCode: SourceCode, call: TSESTree.CallExpression): string | null {
   const [argument] = call.arguments;
   if (!argument || !isMethodCall(call, PROCESS, NEXT_TICK)) return null;

@@ -13,13 +13,13 @@ function isCheckedOneLetterBinding(variable: VariableT): boolean {
   return ONE_LETTER.test(variable.name) && BINDING_DEFS.has(variable.defs[0].type) && !isAllowed(variable);
 }
 
-/** The book allows `e` for the error in a `catch`. */
+/** Whether `variable` is the `e` the book allows for the error in a `catch`. */
 function isAllowed(variable: VariableT): boolean {
   const def = variable.defs[0];
   return def.type === "CatchClause" && variable.name === "e";
 }
 
-/** Reports a one-letter name that is exported, at the top level, or in a scope longer than `maxLines`. */
+/** Reports through `context` the one-letter name of `variable` when it is exported, at the top level, or in a scope longer than `maxLines`. */
 function reportOneLetterName(context: Rule.RuleContext, variable: VariableT, maxLines: number): void {
   const node = asTs(variable.defs[0].name) as never;
   const data = { name: variable.name, max: String(maxLines) };

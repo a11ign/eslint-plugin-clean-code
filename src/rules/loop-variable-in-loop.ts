@@ -20,7 +20,10 @@ interface Candidate {
   variable: Scope.Variable;
 }
 
-/** The `let` declaration's variables that a later `for` loop among its siblings assigns, and that are not read after it. */
+/**
+ * The variables of the `let` `declaration` that a later `for` loop among its `siblings` assigns, and that are not read
+ * after it, as `sourceCode` declares them.
+ */
 function loopVariables(sourceCode: SourceCode, declaration: TSESTree.VariableDeclaration, siblings: readonly Node[]): Candidate[] {
   const later = siblings.slice(siblings.indexOf(declaration) + 1);
   const named = declaration.declarations.flatMap((declarator) => (declarator.id.type === "Identifier" ? [declarator as Declarator] : []));
@@ -32,24 +35,24 @@ function loopVariables(sourceCode: SourceCode, declaration: TSESTree.VariableDec
   });
 }
 
-/** The first `for` statement whose init assigns `name`. */
+/** The first `for` statement of `statements` whose init assigns `name`. */
 function loopAssigning(statements: readonly Node[], name: string): TSESTree.ForStatement | undefined {
   return statements.find((statement): statement is TSESTree.ForStatement => statement.type === "ForStatement" && initAssigns(statement, name));
 }
 
-/** Whether a `for` statement's init assigns `name`, on its own or in a comma-separated list. */
+/** Whether the init of `loop` assigns `name`, on its own or in a comma-separated list. */
 function initAssigns(loop: TSESTree.ForStatement, name: string): boolean {
   const init = loop.init;
   if (init?.type === "SequenceExpression") return init.expressions.some((expression) => assigns(expression, name));
   return assigns(init, name);
 }
 
-/** Whether `expression` is `name = …`. */
+/** Whether `expression` is a plain assignment to `name`: `name = …`. */
 function assigns(expression: Node | null | undefined, name: string): expression is TSESTree.AssignmentExpression {
   return expression?.type === "AssignmentExpression" && expression.operator === "=" && expression.left.type === "Identifier" && expression.left.name === name;
 }
 
-/** Whether the binding is read after the loop ends. */
+/** Whether `binding` is read after `loop` ends. */
 function isReadAfter(binding: Scope.Variable, loop: TSESTree.ForStatement): boolean {
   return binding.references.some((reference) => reference.isRead() && reference.identifier.range![0] >= loop.range[1]);
 }
@@ -64,10 +67,10 @@ function reportLoopVariable(context: Rule.RuleContext, candidate: Candidate, sib
 }
 
 /**
- * The catalog's conditions for moving the declaration into the loop header: every reference is in the loop and not in a
- * nested function or class, the declaration declares only the variable with no initializer and comes directly before the
- * loop, and the loop's init only assigns it. The value assigned must not read the variable either, because in
- * `for (let i = …)` that read is in the temporal dead zone.
+ * The catalog's conditions for moving the declaration of `candidate` into the loop header: every reference is in the loop
+ * and not in a nested function or class, the declaration declares only the variable with no initializer and comes
+ * directly before the loop among `siblings`, and the loop's init only assigns it. The value assigned must not read the
+ * variable either, because in `for (let i = …)` that read is in the temporal dead zone.
  */
 function canMove(candidate: Candidate, siblings: readonly Node[]): boolean {
   const { declaration, declarator, loop, variable } = candidate;
@@ -80,7 +83,10 @@ function canMove(candidate: Candidate, siblings: readonly Node[]): boolean {
   });
 }
 
-/** Whether a reference sits in a function or class nested in the loop, where a per-iteration `let` would change what it sees. */
+/**
+ * Whether `identifier`, a reference, sits in a function or class nested in `loop`, where a per-iteration `let` would
+ * change what it sees.
+ */
 function inNestedScope(identifier: Node, loop: Node): boolean {
   for (let current: Node | undefined = identifier.parent; current && current !== loop; current = current.parent) {
     if (isFunction(current) || current.type === "ClassBody") return true;
@@ -93,8 +99,8 @@ function within(node: Node, range: [number, number]): boolean {
 }
 
 /**
- * Moves the declaration into the loop header, keeping its type annotation. A definite-assignment `!` is left out: it is not
- * allowed on a declaration with an initializer (TS1263).
+ * Moves the declaration of `candidate` into the loop header, keeping its type annotation as `sourceCode` spells it. A
+ * definite-assignment `!` is left out: it is not allowed on a declaration with an initializer (TS1263).
  */
 function moveFix(sourceCode: SourceCode, candidate: Candidate): Rule.ReportFixer {
   const { declaration, declarator, loop } = candidate;

@@ -2,7 +2,7 @@ import type { Rule } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs, type TSESTree } from "../lib/ast.ts";
 
-/** Reports a class with two or more constructor signatures, at the second one. */
+/** Reports through `context` a class whose `body` has two or more constructor signatures, at the second one. */
 function reportOverloads(context: Rule.RuleContext, body: TSESTree.ClassBody): void {
   const signatures = body.body.filter(isConstructorSignature);
   if (signatures.length < 2) return;

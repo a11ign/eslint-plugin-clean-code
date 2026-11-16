@@ -57,21 +57,21 @@ function recordWrite(sourceCode: SourceCode, writes: Writes, node: Write): void 
   }
 }
 
-/** What a write assigns. A `for…in` or `for…of` that declares its binding assigns nothing declared outside it. */
+/** What the write `node` assigns. A `for…in` or `for…of` that declares its binding assigns nothing declared outside it. */
 function writeTarget(node: Write): TSESTree.Node | null {
   if (node.type === "AssignmentExpression") return node.left;
   if (node.type === "UpdateExpression") return node.argument;
   return node.left.type === "VariableDeclaration" ? null : node.left;
 }
 
-/** The variables a write target names: `x`, `[x, y]`, `{ a: x, ...rest }`, `x = fallback`. Member writes are not variables. */
+/** The variables the write `target` names: `x`, `[x, y]`, `{ a: x, ...rest }`, `x = fallback`. Member writes are not variables. */
 function targetIdentifiers(target: TSESTree.Node | null): TSESTree.Identifier[] {
   if (!target) return [];
   if (target.type === "Identifier") return [target];
   return innerTargets(target).flatMap((inner) => targetIdentifiers(inner));
 }
 
-/** The write targets inside a destructuring pattern, a default value, or a TypeScript wrapper such as `x!` or `x as T`. */
+/** The write targets inside `target` when it is a destructuring pattern, a default value, or a TypeScript wrapper such as `x!` or `x as T`. */
 function innerTargets(target: TSESTree.Node): (TSESTree.Node | null)[] {
   if (isTypeWrapper(target)) return [target.expression];
   if (target.type === "RestElement") return [target.argument];
@@ -87,7 +87,7 @@ function isTypeWrapper(node: TSESTree.Node): node is TSESTree.TSNonNullExpressio
   return TYPE_WRAPPERS.has(node.type);
 }
 
-/** The variable `identifier` refers to, found by name from the innermost scope outwards. */
+/** The variable `identifier` refers to, found by name from its innermost `scope` outwards. */
 function resolve(scope: Scope.Scope, identifier: TSESTree.Identifier): Scope.Variable | null {
   for (let current: Scope.Scope | null = scope; current; current = current.upper) {
     const variable = current.set.get(identifier.name);

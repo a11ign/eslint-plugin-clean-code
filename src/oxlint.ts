@@ -10,12 +10,13 @@
  * `react` and `reactExtended` are the opt-in configs `react` and `react-extended`, used with
  * `extends: [recommended, react, reactExtended]`, on the same files as in ESLint. `reactExtended` uses Oxlint's native `react`
  * plugin, which has the rules of both `eslint-plugin-react-hooks` and `eslint-plugin-react`, and loads no JS plugin.
- * `jsdoc` is the opt-in config `jsdoc`, used with `extends: [recommended, jsdoc]`. It uses Oxlint's native `jsdoc` plugin and
- * loads no JS plugin. That plugin has `check-tag-names` and `empty-tags` but no `check-param-names` or `no-types`, so those two
- * rules of ESLint's `jsdoc` (DOC-01 and DOC-04) have no Oxlint equivalent.
+ * `jsdoc` is the opt-in config `jsdoc`, used with `extends: [recommended, jsdoc]`. It uses Oxlint's native `jsdoc` plugin, and
+ * loads this plugin through `jsPlugins` for its own rule, `jsdoc-names-every-parameter` (DOC-05). The native plugin has
+ * `check-tag-names` and `empty-tags` but no `check-param-names` or `no-types`, so those two rules of ESLint's `jsdoc` (DOC-01 and
+ * DOC-04) have no Oxlint equivalent.
  */
 import {
-  AI_RULES, AI_TEST_FILE_OFF, BUILT_IN_RULES, CALLBACK_ERROR_PATTERN, NODE_RULES, OXLINT_JSDOC_RULES, PLUGIN_PREFIX, PROMISE_RULES, REACT_FILES, REACT_HOOKS_RULES, REACT_HOOK_FILES,
+  AI_RULES, AI_TEST_FILE_OFF, BUILT_IN_RULES, CALLBACK_ERROR_PATTERN, JSDOC_SYNTAX_RULES, NODE_RULES, OXLINT_JSDOC_RULES, PLUGIN_PREFIX, PROMISE_RULES, REACT_FILES, REACT_HOOKS_RULES, REACT_HOOK_FILES,
   REACT_JSX_RULES, REACT_RULES, SYNTAX_RULES, TEST_FILES, TEST_FILE_OFF, TEST_FILE_RULES, TS_FILES, TYPESCRIPT_BUILT_IN_RULES, TYPESCRIPT_EXTENDED_RULES, TYPESCRIPT_RULES,
   UNUSED_PARAMETER_OPTIONS, pluginRules, pluginSettings, prefixed,
 } from "./configs.ts";
@@ -84,10 +85,11 @@ export const reactExtended = {
   ],
 };
 
-/** DOC-02 and DOC-03 under Oxlint's native `jsdoc` plugin, on every file. DOC-01 and DOC-04 are ESLint only. */
+/** DOC-02 and DOC-03 under Oxlint's native `jsdoc` plugin, and DOC-05 through `jsPlugins`, on every file. DOC-01 and DOC-04 are ESLint only. */
 export const jsdoc = {
   plugins: ["jsdoc"],
-  rules: pluginRules("jsdoc", OXLINT_JSDOC_RULES),
+  jsPlugins: [{ name: PLUGIN_PREFIX, specifier: `${PACKAGE_NAME}/plugin` }],
+  rules: { ...pluginRules("jsdoc", OXLINT_JSDOC_RULES), ...prefixed(JSDOC_SYNTAX_RULES) },
 };
 
 export default { recommended, ai, typescript, "typescript-extended": typescriptExtended, node, "node-extended": nodeExtended, react, "react-extended": reactExtended, jsdoc };

@@ -212,6 +212,12 @@ export const JSDOC_TS_RULES = ["no-types"] as const;
 /** The `jsdoc` rules Oxlint's native `jsdoc` plugin runs, under the same names. */
 export const OXLINT_JSDOC_RULES = ["check-tag-names", "empty-tags"] as const;
 
+/**
+ * The `jsdoc` config's own rule, DOC-05 (`jsdoc-names-every-parameter`), a `syntax` rule of this plugin, on `ALL_FILES`. Oxlint
+ * loads it through `jsPlugins`, as it loads the `node` config's rules.
+ */
+export const JSDOC_SYNTAX_RULES = ["jsdoc-names-every-parameter"] as const;
+
 /** The files `react` and the `react/` rules of `react-extended` apply to. */
 export const REACT_FILES = ["**/*.{jsx,tsx}"];
 /** The files the hooks rules apply to: `REACT_FILES`, and a custom hook in a `.js` or `.ts` file such as `useChecked.ts`. */

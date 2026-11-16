@@ -14,7 +14,7 @@ interface MisplacedFields {
   moved: Field[];
 }
 
-/** The class's misplaced fields, or `null` when all its fields come before its first non-field member. */
+/** The misplaced fields of the class `body`, or `null` when all its fields come before its first non-field member. */
 function misplacedFields(body: TSESTree.ClassBody): MisplacedFields | null {
   const firstIndex = body.body.findIndex(isNonField);
   if (firstIndex === -1) return null;
@@ -22,7 +22,7 @@ function misplacedFields(body: TSESTree.ClassBody): MisplacedFields | null {
   return moved.length === 0 ? null : { body, first: body.body[firstIndex], moved };
 }
 
-/** Methods, accessors, constructors and `static {}` blocks; an index signature is neither a field nor one of these. */
+/** Whether `member` is a method, accessor, constructor or `static {}` block; an index signature is neither a field nor one of these. */
 function isNonField(member: Member): boolean {
   return member.type === "MethodDefinition" || member.type === "TSAbstractMethodDefinition" || member.type === "AccessorProperty" || member.type === "StaticBlock";
 }
@@ -55,7 +55,10 @@ function moveFix(sourceCode: SourceCode, misplaced: MisplacedFields): Rule.Repor
   return (fixer) => [fixer.insertTextBeforeRange([target.lines[0], target.lines[0]], inserted), ...mergeAdjacent(sourceCode, fieldBlocks).flatMap((run) => removeBlock(fixer, sourceCode, run))];
 }
 
-/** The fields' text as it goes in above `target`, with a `;` before the first when it would otherwise continue the statement above. */
+/**
+ * The text of `fieldBlocks` in `sourceCode` as it goes in above `target`, with a `;` before the first when it would otherwise
+ * continue the statement above.
+ */
 function movedText(sourceCode: SourceCode, fieldBlocks: Block[], target: Block): string {
   const previous = sourceCode.getTokenBefore({ range: [target.lines[0], target.lines[0]] } as never) as Token;
   const texts = fieldBlocks.map((block, index) => guardedBefore(sourceCode, block, fieldBlocks[index + 1]?.firstToken ?? target.firstToken));
@@ -67,7 +70,7 @@ function movedText(sourceCode: SourceCode, fieldBlocks: Block[], target: Block):
   return `${texts.join("\n")}\n${gap}`;
 }
 
-/** Whether a blank line is directly above the line at `lineStart`. */
+/** Whether a blank line of `text` is directly above the line at `lineStart`. */
 function blankAbove(text: string, lineStart: number): boolean {
   if (lineStart === 0) return false;
   const previousStart = text.lastIndexOf("\n", lineStart - 2) + 1;
@@ -75,8 +78,9 @@ function blankAbove(text: string, lineStart: number): boolean {
 }
 
 /**
- * Whether moving the fields keeps the order everything runs in. Computed keys of the moved fields, decorators, `static {}`
- * blocks and auto-accessors all run in source order, and so may initializers that refer to the class.
+ * Whether moving the `moved` fields within `body` keeps the order everything runs in, judged on the tokens of `sourceCode`.
+ * Computed keys of the moved fields, decorators, `static {}` blocks and auto-accessors all run in source order, and so may
+ * initializers that refer to the class.
  */
 function canMove(sourceCode: SourceCode, body: TSESTree.ClassBody, moved: Field[]): boolean {
   if (moved.some((field) => field.computed)) return false;
@@ -99,7 +103,7 @@ function className(body: TSESTree.ClassBody): string | null {
   return parent?.type === "VariableDeclarator" && parent.id.type === "Identifier" ? parent.id.name : null;
 }
 
-/** Whether a field's initializer names the class, or uses `this` where `this` is the class (a static field). */
+/** Whether the initializer of `field` in `sourceCode` names the class, `name`, or uses `this` where `this` is the class (a static field). */
 function refersToClass(sourceCode: SourceCode, field: Field, name: string | null): boolean {
   if (!field.value) return false;
   return (sourceCode.getTokens(field.value as never) as Token[]).some(

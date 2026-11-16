@@ -11,7 +11,7 @@ interface StaticWrite {
   method: string;
 }
 
-/** Reports each static field of the class at the first method that assigns it. */
+/** Reports, through `context`, each static field in the class `body` at the first method that assigns it. */
 function reportStaticWrites(context: Rule.RuleContext, body: Body): void {
   const owner = classOfBody(body);
   const fields = staticFields(body);
@@ -21,12 +21,12 @@ function reportStaticWrites(context: Rule.RuleContext, body: Body): void {
   }
 }
 
-/** Each write a method of the class makes to one of its static members, in member order. */
+/** Each write a method in the class `body` makes to one of its static members, in member order; the class is known by `name`. */
 function staticWrites(body: Body, name: string | null): StaticWrite[] {
   return body.body.flatMap((member) => memberStaticWrites(member, body, name));
 }
 
-/** The writes one member, when it is a method, makes to the class's static members. */
+/** The writes `member`, when it is a method, makes to the static members of the class `body`, known by `name`. */
 function memberStaticWrites(member: ClassMember, body: Body, name: string | null): StaticWrite[] {
   const fn = memberFunction(member);
   if (!fn) return [];
@@ -35,7 +35,10 @@ function memberStaticWrites(member: ClassMember, body: Body, name: string | null
   return fields.filter((field): field is string => Boolean(field)).map((field) => ({ field, method }));
 }
 
-/** The static field a write target names: `Class.x`, `Class.#x`, or `this.x` where `this` is the class (a static member). */
+/**
+ * The static field of the class `body`, known by `name`, that the write `target` names: `Class.x`, `Class.#x`, or `this.x`
+ * where `this` is the class (a static member).
+ */
 function staticTarget(target: Node, body: Body, name: string | null): string | null {
   const expression = unwrapTs(target);
   if (expression.type !== "MemberExpression") return null;
@@ -60,7 +63,7 @@ function writeTargets(root: Node): Node[] {
   return targets;
 }
 
-/** The static data fields of a class, by name. */
+/** The static data fields of the class `body`, by name. */
 function staticFields(body: Body): Map<string, TSESTree.PropertyDefinition> {
   const fields = new Map<string, TSESTree.PropertyDefinition>();
   for (const member of body.body.filter(isStaticDataField)) {
@@ -74,14 +77,14 @@ function isStaticDataField(member: ClassMember): member is TSESTree.PropertyDefi
   return member.type === "PropertyDefinition" && member.static && !memberFunction(member);
 }
 
-/** The class's own name, which its methods use to reach its static members: its id, or the variable it is assigned to. */
+/** The own name of the class `owner`, which its methods use to reach its static members: its id, or the variable it is assigned to. */
 function ownName(owner: ClassNode): string | null {
   if (owner.id) return owner.id.name;
   const parent = owner.parent;
   return parent?.type === "VariableDeclarator" && parent.id.type === "Identifier" ? parent.id.name : null;
 }
 
-/** The first write to each declared static field. */
+/** The first of `writes` to each static field declared in `fields`. */
 function firstWritePerField(writes: StaticWrite[], fields: Map<string, TSESTree.PropertyDefinition>): StaticWrite[] {
   const seen = new Set<string>();
   return writes.filter(({ field }) => {

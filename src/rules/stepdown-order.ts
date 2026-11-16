@@ -37,7 +37,7 @@ function checkClass(context: Rule.RuleContext, body: TSESTree.ClassBody, referen
   }
 }
 
-/** The method implementations of a class, keyed by `static:name`, with their index among its members. */
+/** The method implementations among a class's `members`, keyed by `static:name`, with their index among them. */
 function methodIndexes(members: ClassMember[]): Map<string, number> {
   const methods = new Map<string, number>();
   members.forEach((member, index) => {
@@ -47,7 +47,7 @@ function methodIndexes(members: ClassMember[]): Map<string, number> {
   return methods;
 }
 
-/** Which members call which methods, through the `this.x` and `ClassName.x` references inside them, as member indexes. */
+/** Which members of `body` call which of its `methods`, through the `this.x` and `ClassName.x` `references` inside them, as member indexes. */
 function methodCalls(body: TSESTree.ClassBody, references: TSESTree.MemberExpression[], methods: Map<string, number>): Map<number, Set<number>> {
   const edges = new Map<number, Set<number>>();
   for (const expression of references) {
@@ -57,7 +57,7 @@ function methodCalls(body: TSESTree.ClassBody, references: TSESTree.MemberExpres
   return edges;
 }
 
-/** The member a reference is in and the method of `methods` it names, as indexes among the class's members. */
+/** The member of `body` that `expression` is in and the method of `methods` it names, as indexes among the class's members. */
 function methodCall(body: TSESTree.ClassBody, expression: TSESTree.MemberExpression, methods: Map<string, number>): { caller: number; callee: number } | null {
   const found = enclosingMember(expression);
   const reference = found?.body === body ? methodReference(expression, found.member) : null;
@@ -110,13 +110,13 @@ function isBodyOfClass(node: Node, viaName: string | null): node is TSESTree.Cla
   return viaName === null || owner.id?.name === viaName;
 }
 
-/** Whether `node` is a `function` that is not a method, so `this` inside it is not the class's instance. */
+/** Whether `node` is a `function` that its `parent` does not make a method, so `this` inside it is not the class's instance. */
 function rebindsThis(node: Node, parent: Node): boolean {
   const isPlainFunction = node.type === "FunctionExpression" || node.type === "FunctionDeclaration";
   return isPlainFunction && parent.type !== "MethodDefinition" && parent.type !== "TSAbstractMethodDefinition";
 }
 
-/** The method a `this.x`, `this.#x` or `ClassName.x` inside a class member names: its name and whether it is static. */
+/** The method that `expression`, a `this.x`, `this.#x` or `ClassName.x` inside `member`, names: its name and whether it is static. */
 function methodReference(expression: TSESTree.MemberExpression, member: ClassMember): { name: string; isStatic: boolean } | null {
   if (expression.computed) return null;
   const name = expression.property.type === "PrivateIdentifier" ? `#${expression.property.name}` : expression.property.type === "Identifier" ? expression.property.name : null;
@@ -138,22 +138,22 @@ function addEdge(edges: Map<number, Set<number>>, caller: number, callee: number
   edges.get(caller)!.add(callee);
 }
 
-/** The first caller of `callee` in source order, ignoring recursion and mutual recursion. */
+/** The first caller of `callee` in the call graph `edges`, in source order, ignoring recursion and mutual recursion. */
 function firstCaller(edges: Map<number, Set<number>>, callee: number): number | null {
   return earliest(callersOf(edges, callee));
 }
 
-/** The functions that call `callee`, leaving out recursion and mutual recursion. */
+/** The functions that call `callee` in `edges`, leaving out recursion and mutual recursion. */
 function callersOf(edges: Map<number, Set<number>>, callee: number): number[] {
   return [...edges.keys()].filter((caller) => caller !== callee && edges.get(caller)!.has(callee) && !reaches(edges, callee, caller));
 }
 
-/** Cycles in the "calls" graph are recursion; `from` reaches `to` when following calls from `from` leads to `to`. */
+/** Cycles in the "calls" graph `edges` are recursion; `from` reaches `to` when following calls from `from` leads to `to`. */
 function reaches(edges: Map<number, Set<number>>, from: number, to: number): boolean {
   return reachableFrom(edges, from).has(to);
 }
 
-/** Every function that following calls from `from` leads to. */
+/** Every function that following the calls in `edges` from `from` leads to. */
 function reachableFrom(edges: Map<number, Set<number>>, from: number): Set<number> {
   const reached = new Set<number>();
   const queue = [from];
@@ -191,7 +191,7 @@ function statementsOf(container: StatementList): readonly Node[] {
   return container.type === "SwitchCase" ? container.consequent : container.body;
 }
 
-/** Whether a unit is a function declaration declared above its first caller. */
+/** Whether `unit` is a function declaration declared above its first caller in `list`. */
 function isAboveCaller(list: List, unit: Unit): boolean {
   const caller = unwrap(list.statements[unit.index]).type === "FunctionDeclaration" ? firstCaller(list.graph.edges, unit.index) : null;
   return caller !== null && caller > unit.index;
@@ -214,7 +214,7 @@ function reportFunctionAboveCaller(context: Rule.RuleContext, list: List, { unit
   });
 }
 
-/** The declaration a statement makes, with any `export` around it taken off. */
+/** The declaration `statement` makes, with any `export` around it taken off. */
 function unwrap(statement: Node): Node {
   if (!isExport(statement)) return statement;
   return (statement.declaration as Node | null) ?? statement;
@@ -224,7 +224,7 @@ function isExport(statement: Node): statement is TSESTree.ExportNamedDeclaration
   return statement.type === "ExportNamedDeclaration" || statement.type === "ExportDefaultDeclaration";
 }
 
-/** The list's statements as units: overload signatures belong to the implementation after them. */
+/** A list's `statements` as units: overload signatures belong to the implementation after them. */
 function unitsOf(statements: readonly Node[]): Unit[] {
   const units: Unit[] = [];
   statements.forEach((_statement, index) => {
@@ -235,7 +235,7 @@ function unitsOf(statements: readonly Node[]): Unit[] {
   return units;
 }
 
-/** Where the unit ending at `statements[index]` starts: at its first overload signature when it is a function implementation. */
+/** Where the unit ending at `index` of `statements` starts: at its first overload signature when it is a function implementation. */
 function unitStart(statements: readonly Node[], index: number): number {
   const name = declaredName(statements[index]);
   return unwrap(statements[index]).type === "FunctionDeclaration" && name ? overloadStart(statements, index, name) : index;
@@ -249,21 +249,24 @@ function declaredName(statement: Node): string | null {
   return null;
 }
 
-/** The overload signatures right above an implementation, which move with it. */
+/** Where the overload signatures of `name` right above the implementation at `index` of `statements` start; they move with it. */
 function overloadStart(statements: readonly Node[], index: number, name: string): number {
   let start = index;
   while (start > 0 && unwrap(statements[start - 1]).type === "TSDeclareFunction" && declaredName(statements[start - 1]) === name) start--;
   return start;
 }
 
-/** The block a function would move as, or `null` when it cannot move: a catalog condition fails, it shares a line, or it holds a region directive. */
+/**
+ * The block `unit` of `list` would move as, or `null` when it cannot move: a catalog condition fails, it shares a line, or it
+ * holds a region directive.
+ */
 function movableBlock(list: List, unit: Unit): Block | null {
   if (unwrap(list.statements[unit.index]).type !== "FunctionDeclaration" || !canMove(list, unit)) return null;
   const block = blockOf(list.sourceCode, list.statements[unit.start], list.statements[unit.index]);
   return block && !crossesDirective(list.sourceCode, [block], block.range[0]) ? block : null;
 }
 
-/** Whether the catalog's conditions for the move hold: strict code, directly in a body, no duplicate name, no decorator. */
+/** Whether the catalog's conditions for moving `unit` within `list` hold: strict code, directly in a body, no duplicate name, no decorator. */
 function canMove(list: List, unit: Unit): boolean {
   const { sourceCode, statements, container, graph } = list;
   const inBody = container.type === "Program" || (container.type === "BlockStatement" && isFunction(container.parent));
@@ -291,7 +294,7 @@ function makesStrict(node: Node): boolean {
   return isFunction(node) && node.body.type === "BlockStatement" && hasUseStrictDirective(node.body.body);
 }
 
-/** One fix for the whole list: every function that has to move goes below its first caller, so one pass settles the list. */
+/** One fix for the whole `list`: every one of its `units` that has to move goes below its first caller, so one pass settles the list. */
 function listFix(list: List, units: Unit[]): Rule.ReportFixer | null {
   const blocks = movableBlocks(list, units);
   const settled = settle(list.graph.edges, units.map((unit) => unit.index), new Set(blocks.keys()));
@@ -302,7 +305,7 @@ function listFix(list: List, units: Unit[]): Rule.ReportFixer | null {
   return moveFix(list.sourceCode, removed, inserts);
 }
 
-/** The block each function that can move would move as, by its index in the list. */
+/** The block each of `units` that can move would move as, by its index in `list`. */
 function movableBlocks(list: List, units: Unit[]): Map<number, Block> {
   const blocks = new Map<number, Block>();
   for (const unit of units) {
@@ -312,7 +315,7 @@ function movableBlocks(list: List, units: Unit[]): Map<number, Block> {
   return blocks;
 }
 
-/** The fix that removes the `removed` blocks and makes the `inserts`. */
+/** The fix that removes the `removed` blocks from `sourceCode` and makes the `inserts`. */
 function moveFix(sourceCode: SourceCode, removed: Block[], inserts: Insertion[]): Rule.ReportFixer {
   return (fixer) => [
     ...mergeAdjacent(sourceCode, removed).flatMap((run) => removeBlock(fixer, sourceCode, run)),
@@ -321,7 +324,7 @@ function moveFix(sourceCode: SourceCode, removed: Block[], inserts: Insertion[])
 }
 
 /**
- * The order the list settles in when each misplaced movable function moves to just after its first caller, repeated
+ * The order `units` settle in when each misplaced `movable` function moves to just after its first caller in `edges`, repeated
  * until none is misplaced: what `--fix` passes would reach one move at a time, computed at once so one pass is enough.
  * `null` when it does not settle.
  */
@@ -353,14 +356,14 @@ function firstMisplaced(order: number[], callers: Map<number, number[]>): Mispla
   return null;
 }
 
-/** Moves `unit` to just after `caller` in `order`, and records that it moved. */
+/** Moves `unit` to just after `caller` in `order`, and records in `moved` that it moved. */
 function moveBelowCaller(order: number[], moved: Set<number>, { unit, caller }: Misplacement): void {
   order.splice(order.indexOf(unit), 1);
   order.splice(order.indexOf(caller) + 1, 0, unit);
   moved.add(unit);
 }
 
-/** The moved functions after each statement that stays, in their new order. */
+/** The `moved` functions after each statement of `order` that stays, in their new order. */
 function groupsAfterAnchors(order: number[], moved: Set<number>): Map<number, number[]> | null {
   if (order.length > 0 && moved.has(order[0])) return null;
   const groups: Array<[number, number[]]> = [];
@@ -371,7 +374,7 @@ function groupsAfterAnchors(order: number[], moved: Set<number>): Map<number, nu
   return new Map(groups);
 }
 
-/** The insertions after each statement that stays, or `null` when one cannot be made safely. */
+/** The insertions that put each of `groups`, as its `blocks`, after the statement of `list` it follows, or `null` when one cannot be made safely. */
 function insertions(list: List, groups: Map<number, number[]>, blocks: Map<number, Block>): Insertion[] | null {
   const nonEmpty = [...groups].filter(([, group]) => group.length > 0);
   const result = nonEmpty.map(([anchor, group]) => insertionAfter(list.sourceCode, list.statements[anchor], group.map((unit) => blocks.get(unit)!)));
@@ -384,14 +387,14 @@ interface Insertion {
   text: string;
 }
 
-/** The insertion that puts `blocks` after the statement `anchor`, or `null` when it cannot be made safely. */
+/** The insertion into `sourceCode` that puts `blocks` after the statement `anchor`, or `null` when it cannot be made safely. */
 function insertionAfter(sourceCode: SourceCode, anchor: Node, blocks: Block[]): Insertion | null {
   const at = endOfLineAfter(sourceCode, anchor);
   if (at === null || crossesDirective(sourceCode, blocks, at)) return null;
   return { at, text: movedText(sourceCode, anchor, blocks) };
 }
 
-/** The moved blocks as one text, each laid out after the one before it, the first after `anchor`. */
+/** The moved `blocks` as one text, each laid out after the one before it in `sourceCode`, the first after `anchor`. */
 function movedText(sourceCode: SourceCode, anchor: Node, blocks: Block[]): string {
   let previous = sourceCode.getLastToken(anchor as never) as Token;
   let text = "";
@@ -411,7 +414,7 @@ function callerName(statement: Node): string {
   return declaredName(statement) ?? "(anonymous)";
 }
 
-/** Who calls whom among the functions declared directly in a list of statements. */
+/** Who calls whom among the functions declared directly in the list of statements `siblings`. */
 function listGraph(siblings: Siblings): ListGraph {
   const graph: ListGraph = { edges: new Map(), variables: new Map() };
   siblings.statements.forEach((statement, callee) => {
@@ -421,7 +424,7 @@ function listGraph(siblings: Siblings): ListGraph {
   return graph;
 }
 
-/** Adds what the declaration at `callee` declares to the graph: a function's variable, and the calls to it from sibling functions. */
+/** Adds what the declaration at `callee` in `siblings` declares to `graph`: a function's variable, and the calls to it from sibling functions. */
 function addDeclaration(siblings: Siblings, graph: ListGraph, callee: number): void {
   const declaration = unwrap(siblings.statements[callee]);
   for (const variable of siblings.sourceCode.getDeclaredVariables(declaration as never)) {
@@ -431,14 +434,14 @@ function addDeclaration(siblings: Siblings, graph: ListGraph, callee: number): v
 }
 
 /**
- * Whether `variable` is the name a function declaration declares. ESLint lists a function's parameters among its declared
- * variables too, after its name, so the name has to be picked out rather than taken as the last one.
+ * Whether `variable` is the name that `declaration`, a function declaration, declares. ESLint lists a function's parameters
+ * among its declared variables too, after its name, so the name has to be picked out rather than taken as the last one.
  */
 function isOwnName(declaration: Node, variable: Scope.Variable): boolean {
   return declaration.type === "FunctionDeclaration" && variable.name === declaration.id?.name;
 }
 
-/** The indexes of the sibling functions, other than `callee` itself, that call `declared`. */
+/** The indexes of the sibling functions among the `statements` of `container`, other than `callee` itself, that call `declared`. */
 function siblingCallers({ statements, container }: Siblings, declared: Scope.Variable, callee: number): number[] {
   return declared.references.flatMap((reference) => {
     const identifier = asTs(reference.identifier);
@@ -448,7 +451,7 @@ function siblingCallers({ statements, container }: Siblings, declared: Scope.Var
   });
 }
 
-/** A statement in a list, and whether a reference inside it is a call from a function: a declaration or a `const f = () => …`. */
+/** Whether `reference`, inside the list statement `sibling`, is a call from a function: a declaration or a `const f = () => …`. */
 function isCallFromFunction(sibling: Node, reference: Node): boolean {
   const declaration = unwrap(sibling);
   if (declaration.type === "FunctionDeclaration") return true;
@@ -491,7 +494,7 @@ export default defineRule({
   },
 });
 
-/** Keeps a `this.x` or `Name.x`, which may name a method of a class around it. */
+/** Keeps `expression` in `references` when it is a `this.x` or `Name.x`, which may name a method of a class around it. */
 function collectReference(references: TSESTree.MemberExpression[], expression: TSESTree.MemberExpression): void {
   if (expression.object.type === "ThisExpression" || expression.object.type === "Identifier") references.push(expression);
 }

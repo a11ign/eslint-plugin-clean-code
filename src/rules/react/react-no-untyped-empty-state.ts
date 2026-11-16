@@ -4,7 +4,7 @@ import { hookCalled } from "./react-hooks.ts";
 
 const USE_STATE = new Set(["useState"]);
 
-/** `useState([])` with no type argument: TypeScript gives the state `any[]` (or `never[]`). */
+/** Whether `call` is `useState([])` with no type argument: TypeScript gives the state `any[]` (or `never[]`). */
 function isUntypedEmptyArrayState(call: TSESTree.CallExpression): boolean {
   if (!hookCalled(call, USE_STATE) || call.typeArguments || call.arguments.length !== 1) return false;
   const [initial] = call.arguments;

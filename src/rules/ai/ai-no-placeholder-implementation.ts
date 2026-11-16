@@ -8,7 +8,7 @@ const STUB_MARKER = /not (yet )?implemented|todo|implement (me|this)|stub/i;
 /** A class named for being a stand-in, whose stub bodies are the point. */
 const STAND_IN_CLASS = /(Stub|Fake|Mock)$/;
 
-/** `throw new SomethingError("Not implemented")`, or the same with `Error` called without `new`. */
+/** Whether `statement` is `throw new SomethingError("Not implemented")`, or the same with `Error` called without `new`. */
 function isPlaceholderThrow(statement: TSESTree.Statement): boolean {
   if (statement.type !== "ThrowStatement") return false;
   const thrown = statement.argument;
@@ -18,14 +18,14 @@ function isPlaceholderThrow(statement: TSESTree.Statement): boolean {
   return message !== null && STUB_MARKER.test(message);
 }
 
-/** The text of a string literal, or of a template literal with no `${…}` parts; `null` for anything else. */
+/** The text of `node` when it is a string literal, or a template literal with no `${…}` parts; `null` for anything else. */
 function staticText(node: TSESTree.Node | undefined): string | null {
   if (node?.type === "Literal" && typeof node.value === "string") return node.value;
   if (node?.type === "TemplateLiteral" && node.expressions.length === 0) return node.quasis[0].value.cooked ?? null;
   return null;
 }
 
-/** Whether `return` gives one of the stub values: `null`, `undefined`, `{}`, `[]` or `""`. */
+/** Whether `statement` is a `return` that gives one of the stub values: `null`, `undefined`, `{}`, `[]` or `""`. */
 function returnsStubValue(statement: TSESTree.Statement): boolean {
   if (statement.type !== "ReturnStatement" || !statement.argument) return false;
   const value = statement.argument;
@@ -36,7 +36,7 @@ function returnsStubValue(statement: TSESTree.Statement): boolean {
   return staticText(value) === "";
 }
 
-/** Whether a comment inside the body says it is a stub. */
+/** Whether a comment inside `body`, found through `sourceCode`, says it is a stub. */
 function hasStubMarker(sourceCode: SourceCode, body: TSESTree.BlockStatement): boolean {
   return sourceCode.getAllComments().some((comment) => comment.range![0] > body.range[0] && comment.range![1] < body.range[1] && STUB_MARKER.test(comment.value));
 }
@@ -46,7 +46,7 @@ function isInStandInClass(node: TSESTree.Node): boolean {
   return name !== undefined && STAND_IN_CLASS.test(name);
 }
 
-/** The nearest class the function is a member of, or `null`. */
+/** The nearest class the function `node` is a member of, or `null`. */
 function enclosingClass(node: TSESTree.Node): TSESTree.ClassDeclaration | TSESTree.ClassExpression | null {
   for (let current = node.parent; current; current = current.parent) {
     if (current.type === "ClassDeclaration" || current.type === "ClassExpression") return current;

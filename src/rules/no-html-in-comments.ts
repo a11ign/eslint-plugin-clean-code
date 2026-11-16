@@ -45,7 +45,7 @@ function htmlIn(value: string): RegExpExecArray[] {
   return [...tags, ...entities].sort((left, right) => left.index - right.index);
 }
 
-/** The parts of a comment that show code, not formatting: an `@example` section, a fenced block and a backtick span. */
+/** The parts of a comment's `value` that show code, not formatting: an `@example` section, a fenced block and a backtick span. */
 function codeRanges(value: string): [number, number][] {
   const ranges: [number, number][] = [];
   for (const match of value.matchAll(/@example\b[\s\S]*?(?=\n[ \t]*\*?[ \t]*@\w|$)|```[\s\S]*?(?:```|$)|`[^`\n]+`/g)) {
@@ -77,19 +77,19 @@ function pairTag(pairing: TagPairing, tag: RegExpExecArray): void {
   else if (!tag[0].endsWith("/>")) pairing.open.set(name, [...(pairing.open.get(name) ?? []), tag]);
 }
 
-/** `<br>`, `<br/>`, `</br>` and an opening `<p>`, which HTML lets stand alone. */
+/** Whether `tag`, named `name`, is `<br>`, `<br/>`, `</br>` or an opening `<p>`, which HTML lets stand alone. */
 function isStandaloneTag(name: string, tag: RegExpExecArray): boolean {
   if (name === "br") return true;
   return name === "p" && !tag[0].startsWith("</");
 }
 
-/** Pairs the closing `tag` with the last opening tag of the same name, if there is one, and marks both as formatting. */
+/** Pairs the closing `tag` with the last opening tag in `pairing` named `name`, if there is one, and marks both as formatting. */
 function closeTag(pairing: TagPairing, name: string, tag: RegExpExecArray): void {
   const opening = pairing.open.get(name)?.pop();
   if (opening) pairing.formatting.add(opening).add(tag);
 }
 
-/** The comment's text with its tags removed and its entities decoded, one level, with the blank space left at line ends trimmed. */
+/** The text of `comment` with the tags in `found` removed and its entities decoded, one level, with the blank space left at line ends trimmed. */
 function plainText(comment: Comment, found: RegExpExecArray[]): string {
   let value = comment.value;
   for (const match of [...found].reverse()) {
@@ -110,7 +110,7 @@ function replacement(value: string, match: RegExpExecArray): string {
   return BLOCK_TAG.test(html) && /\S/.test(before) && /\S/.test(after) ? " " : "";
 }
 
-/** One level at a time: no fix when the decoded text is HTML again (`&amp;lt;`) or holds a new tag (`&lt;b&gt;`). */
+/** One level at a time: no fix for `found` in `comment` when the decoded `value` is HTML again (`&amp;lt;`) or holds a new tag (`&lt;b&gt;`). */
 function isOneLevelFix(comment: Comment, found: RegExpExecArray[], value: string): boolean {
   const removedTags = found.filter((match) => match[0].startsWith("<")).length;
   return htmlIn(value).length === 0 && tagCount(value) === tagCount(comment.value) - removedTags;

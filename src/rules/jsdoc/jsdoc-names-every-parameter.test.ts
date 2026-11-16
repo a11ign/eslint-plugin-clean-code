@@ -1,0 +1,83 @@
+import { runRuleTests } from "../../testing/run-rule-tests.ts";
+import rule from "./jsdoc-names-every-parameter.ts";
+
+const unnamed = (fn: string, name: string) => ({ messageId: "unnamed", data: { function: fn, name } });
+
+runRuleTests("jsdoc-names-every-parameter", rule, {
+  valid: [
+    { name: "each parameter named in a code span", code: "/** The lines of the file from `first` to `last`. */\nfunction between(first, last) {}" },
+    { name: "a parameter documented by @param with a description", code: "/**\n * The lines of the file.\n * @param first the first line kept\n */\nfunction from(first) {}" },
+    { name: "an @param with a {type} and a hyphen before its description", code: "/**\n * The lines.\n * @param {number} first - the first line kept\n */\nfunction from(first) {}", filename: "file.js" },
+    { name: "an @param of an optional parameter with a default", code: "/**\n * The lines.\n * @param [first=1] the first line kept\n */\nfunction from(first = 1) {}", filename: "file.js" },
+    { name: "a parameter unused on purpose, named with _", code: "/** Always true. */\nfunction always(_value) { return true; }" },
+    { name: "no doc comment", code: "function between(first, last) {}" },
+    { name: "a block comment that is not a doc comment", code: "/* between two lines */\nfunction between(first, last) {}" },
+    { name: "a doc comment separated by another comment is not the function's", code: "/** The file. */\n// helpers\nfunction between(first, last) {}" },
+    { name: "no parameters", code: "/** The current time. */\nfunction now() {}" },
+    { name: "a TypeScript this parameter is not a parameter", code: "/** Reads `key` from the receiver. */\nfunction read(this: Map<string, number>, key: string) {}" },
+    { name: "a destructured parameter with every name in a code span", code: "/** Whether `computed` keys are read, and `optional` ones. */\nfunction reads({ computed, optional }) {}" },
+    { name: "an array pattern with every name in a code span", code: "/** The sum of `a` and `b`. */\nfunction sum([a, b]) {}" },
+    { name: "a destructured parameter documented whole by @param options", code: "/**\n * Reads the keys.\n * @param options which keys to read\n */\nfunction reads({ computed, optional }) {}" },
+    { name: "a destructured parameter documented whole by jsdoc's root0 convention", code: "/**\n * Reads the keys.\n * @param root0 which keys to read\n * @param root0.computed whether computed keys count\n */\nfunction reads({ computed }) {}" },
+    { name: "a rest parameter named by its inner name", code: "/** Joins `items` with commas. */\nfunction join(...items) {}" },
+    { name: "a rest parameter named with its dots", code: "/** Joins `...items` with commas. */\nfunction join(...items) {}" },
+    { name: "a default parameter named by its inner name", code: "/** The span from `first` to `last`, which defaults to `first`. */\nfunction span(first, last = first) {}" },
+    { name: "an arrow function in a documented export const", code: "/** Twice `value`. */\nexport const double = (value: number) => value * 2;" },
+    { name: "a function expression in a documented export const", code: "/** Twice `value`. */\nexport const double = function (value: number) { return value * 2; };" },
+    { name: "a class method and a constructor", code: "class Account {\n  /** Opens an account holding `balance`. */\n  constructor(balance: number) {}\n  /** Adds `amount` to the balance. */\n  deposit(amount: number) {}\n}" },
+    { name: "a TypeScript parameter property", code: "class Account {\n  /** Opens an account for `owner`. */\n  constructor(private readonly owner: string) {}\n}" },
+    { name: "an interface method signature", code: "interface Store {\n  /** The value stored under `key`. */\n  get(key: string): number;\n}" },
+    { name: "a declare function", code: "/** Logs `message`. */\ndeclare function log(message: string): void;" },
+    { name: "each overload checked against its own parameters", code: "/** Parses `text`. */\nfunction parse(text: string): number;\n/** Parses `bytes`. */\nfunction parse(bytes: Uint8Array): number;\nfunction parse(input: string | Uint8Array): number { return 0; }" },
+    { name: "an object method", code: "const handlers = {\n  /** Handles `event`. */\n  click(event) {},\n};" },
+    { name: "a code span in a tag's text names a parameter", code: "/**\n * Moves the cursor.\n * @returns where it lands, `steps` lines down\n */\nfunction move(steps) {}" },
+    { name: "a callback with no doc comment of its own inside a documented function", code: "/** Doubles each of `values`. */\nfunction doubleAll(values) { return values.map((value) => value * 2); }" },
+  ],
+  invalid: [
+    {
+      name: "one of two parameters unmentioned",
+      code: "/** The lines of the file from `first` on. */\nfunction between(first, last) {}",
+      output: null,
+      errors: [{ ...unnamed("between", "last"), line: 2, column: 25 }],
+    },
+    {
+      name: "a parameter named only as a plain word, without backticks",
+      code: "/** The lines from first to last. */\nfunction between(first, last) {}",
+      output: null,
+      errors: [unnamed("between", "first"), unnamed("between", "last")],
+    },
+    {
+      name: "an @param with no description",
+      code: "/**\n * The lines of the file.\n * @param first\n */\nfunction from(first) {}",
+      output: null,
+      errors: [unnamed("from", "first")],
+    },
+    {
+      name: "a destructured parameter with one binding unmentioned",
+      code: "/** Whether `computed` keys are read. */\nfunction reads({ computed, optional }) {}",
+      output: null,
+      errors: [unnamed("reads", "optional")],
+    },
+    {
+      name: "an @param of a binding inside the pattern does not document the whole pattern",
+      code: "/**\n * Reads the keys.\n * @param computed whether computed keys count\n */\nfunction reads({ computed, optional }) {}",
+      output: null,
+      errors: [unnamed("reads", "optional")],
+    },
+    { name: "a documented export default function", code: "/** Formats the date. */\nexport default function (date: Date) {}", output: null, errors: [unnamed("default", "date")] },
+    { name: "a documented export default arrow function", code: "/** Formats the date. */\nexport default (date: Date) => String(date);", output: null, errors: [unnamed("default", "date")] },
+    { name: "a documented export function", code: "/** Formats the date. */\nexport function format(date: Date) {}", output: null, errors: [unnamed("format", "date")] },
+    { name: "a documented const arrow function", code: "/** Twice the value. */\nconst double = (value: number) => value * 2;", output: null, errors: [unnamed("double", "value")] },
+    { name: "a rest parameter unmentioned", code: "/** Joins with commas. */\nfunction join(...items) {}", output: null, errors: [unnamed("join", "items")] },
+    { name: "a constructor's parameter property", code: "class Account {\n  /** Opens an account. */\n  constructor(private readonly owner: string) {}\n}", output: null, errors: [unnamed("constructor", "owner")] },
+    { name: "a class method", code: "class Account {\n  /** Adds to the balance. */\n  deposit(amount: number) {}\n}", output: null, errors: [unnamed("deposit", "amount")] },
+    { name: "an interface method signature", code: "interface Store {\n  /** The stored value. */\n  get(key: string): number;\n}", output: null, errors: [unnamed("get", "key")] },
+    {
+      name: "an overload whose own doc comment skips its parameter",
+      code: "/** Parses `text`. */\nfunction parse(text: string): number;\n/** Parses the bytes. */\nfunction parse(bytes: Uint8Array): number;\nfunction parse(input: string | Uint8Array): number { return 0; }",
+      output: null,
+      errors: [unnamed("parse", "bytes")],
+    },
+    { name: "a code span that holds more than the name does not name it", code: "/** Reads `first.length` lines. */\nfunction read(first) {}", output: null, errors: [unnamed("read", "first")] },
+  ],
+});

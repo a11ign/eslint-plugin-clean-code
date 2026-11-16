@@ -102,7 +102,7 @@ function interfaceEncoding(name: string): Encoding | null {
   return INTERFACE_PREFIX.test(name) && !I_WORDS.test(name) ? { messageId: "interfacePrefix", prefix: "I", suggestion: name.slice(1) } : null;
 }
 
-/** The encoding a binding or member name carries, and the name without it. */
+/** The encoding the binding or member `name` carries, and the name without it. */
 function memberEncoding(name: string): Encoding | null {
   const prefix = MEMBER_PREFIX.exec(name)?.[0] ?? HUNGARIAN.exec(name)?.[0];
   if (!prefix) return null;
@@ -124,7 +124,7 @@ function canRenameVariable(variable: VariableT, encoding: Encoding, filename: st
   return isBindableName(newName) && !isEncoded(newName) && isNameFree(variable.scope, newName) && !usesEval(variable.scope);
 }
 
-/** A declaration the rename may change: a local variable, a plain identifier parameter, or (for `I`) an interface. */
+/** Whether the rename may change the declaration `def`: a local variable or a plain identifier parameter, or, `forInterface` (for `I`), an interface. */
 function isRenamableDef(def: VariableT["defs"][number], { forInterface }: { forInterface: boolean }): boolean {
   const name = asTs(def.name);
   if (forInterface) return isInterfaceDef(def);
@@ -138,7 +138,7 @@ function isEncoded(name: string): boolean {
   return memberEncoding(name) !== null || interfaceEncoding(name) !== null;
 }
 
-/** The report for a name that carries `encoding`; a `#private` name keeps its `#` in the message and the new name. */
+/** The report for `identifier`, whose name carries `encoding`, fixed by `rename`; a `#private` name keeps its `#` in the message and the new name. */
 function nameCandidate(identifier: NamedKey, encoding: Encoding, rename: Candidate["rename"]): Candidate {
   const sigil = identifier.type === "PrivateIdentifier" ? "#" : "";
   const newName = `${sigil}${encoding.suggestion}`;
@@ -154,7 +154,7 @@ function memberCandidate(member: Member, file: LintedFile): Candidate | null {
   return nameCandidate(key, encoding, fixable ? privateRename(member as TSESTree.PropertyDefinition, encoding, file) : null);
 }
 
-/** The key of a member that is not computed and is a name or a `#private` name. */
+/** The key of `member` when it is not computed and is a name or a `#private` name. */
 function namedKey(member: Member): NamedKey | null {
   if (member.computed) return null;
   const key = member.key;
@@ -166,7 +166,10 @@ function canRenameMember(member: Member, file: LintedFile): member is TSESTree.P
   return isEsModuleFile(file.sourceCode) && !isAmbient(member, file.filename) && !isAnonymousFunctionOrClass(member.value);
 }
 
-/** Renames a `#private` field: each `#name` that refers to it, when the new name appears nowhere in the class. */
+/**
+ * Renames the `#private` field `member` to the suggestion of its `encoding`: each `#name` in `file` that refers to it, when
+ * the new name appears nowhere in the class.
+ */
 function privateRename(member: TSESTree.PropertyDefinition, encoding: Encoding, file: LintedFile) {
   const key = member.key as TSESTree.PrivateIdentifier;
   const body = member.parent as TSESTree.ClassBody;
@@ -184,7 +187,7 @@ function within(node: Node, outer: Node): boolean {
   return node.range[0] >= outer.range[0] && node.range[1] <= outer.range[1];
 }
 
-/** The class body a `#name` refers to: the nearest one around it that declares that name. */
+/** The class body the `#name` in `identifier` refers to: the nearest one around it that declares that name. */
 function privateOwner(identifier: TSESTree.PrivateIdentifier): Node | null {
   for (let current: Node | undefined = identifier.parent; current; current = current.parent) {
     if (current.type === "ClassBody" && declaredPrivateNames(current).has(identifier.name)) return current;
@@ -192,7 +195,7 @@ function privateOwner(identifier: TSESTree.PrivateIdentifier): Node | null {
   return null;
 }
 
-/** The `#private` names a class body declares. */
+/** The `#private` names class `body` declares. */
 function declaredPrivateNames(body: TSESTree.ClassBody): Set<string> {
   const names = new Set<string>();
   for (const member of body.body) {
@@ -210,8 +213,8 @@ function parameterPropertyCandidate(node: TSESTree.TSParameterProperty): Candida
 }
 
 /**
- * Reports each candidate once (a class name is bound both around the class and inside it). Two renames to the same new
- * name would collide with each other, so neither is applied.
+ * Reports through `context` each candidate in `all` once (a class name is bound both around the class and inside it). Two
+ * renames to the same new name would collide with each other, so neither is applied.
  */
 function reportAll(context: Rule.RuleContext, all: Candidate[]): void {
   const byStart = new Map(all.map((candidate) => [candidate.node.range[0], candidate]));

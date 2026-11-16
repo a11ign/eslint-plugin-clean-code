@@ -33,7 +33,7 @@ function assertRecommendedReportsEveryLanguage(reports: Report[]): void {
   }
 }
 
-/** The reports on the project's source files, leaving out the config file the README asks for. */
+/** The `reports` on the project's source files, leaving out the config file the README asks for. */
 function sourceReports(reports: Report[]): Report[] {
   return reports.filter((report) => !CONFIG_FILES.has(report.file));
 }
@@ -59,7 +59,7 @@ ${Array.from({ length: 25 }, () => "  assert.equal(1 + 1, 2);\n").join("")}});
 `;
 const CHANGED_RULES = ["max-params", "clean-code-book/no-flag-argument", "clean-code-book/stepdown-order"];
 
-/** Which of CHANGED_RULES the one source file got, each as `rule (error)` or `rule (warning)`. */
+/** Which of CHANGED_RULES the one source file got in `reports`, each as `rule (error)` or `rule (warning)`. */
 function changedRulesReported(reports: Report[]): string[] {
   const [report] = sourceReports(reports);
   return CHANGED_RULES.filter((rule) => report.rules.includes(rule)).map((rule) => `${rule} (${report.warnings.includes(rule) ? "warning" : "error"})`);
@@ -68,12 +68,12 @@ function changedRulesReported(reports: Report[]): string[] {
 const ALL_ERRORS = CHANGED_RULES.map((rule) => `${rule} (error)`);
 const AFTER_CHANGE = ["clean-code-book/no-flag-argument (warning)"];
 
-/** Each `max-lines-per-function` report on the project's source files. */
+/** Each `max-lines-per-function` report among `reports` on the project's source files. */
 function maxLinesPerFunctionReports(reports: Report[]): string[] {
   return sourceReports(reports).flatMap((report) => report.rules).filter((rule) => rule === "max-lines-per-function");
 }
 
-/** `shapes.ts` got the type-aware `predicate-returns-boolean`, `plain.js` got `return-boolean-directly`, and no file failed to parse. */
+/** In `reports`, `shapes.ts` got the type-aware `predicate-returns-boolean`, `plain.js` got `return-boolean-directly`, and no file failed to parse. */
 function assertTypeAwareAndPlainRulesReported(reports: Report[]): void {
   const shapes = reports.find((report) => report.file === "shapes.ts");
   assert.ok(shapes?.rules.includes("clean-code-book/predicate-returns-boolean"), shapes?.rules.join(", "));

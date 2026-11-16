@@ -20,8 +20,8 @@ const CONTINUING_START = /^[([`+\-/*]/;
 const CONTINUING_WORD = new Set(["in", "instanceof"]);
 
 /**
- * Removes `range` and, when nothing else is on its lines, the lines themselves, adding a `;` before the code that follows
- * when that code would otherwise continue the statement before the removed one.
+ * Removes `range` from `sourceCode` as `fixer` fixes and, when nothing else is on its lines, the lines themselves, adding a
+ * `;` before the code that follows when that code would otherwise continue the statement before the removed one.
  */
 export function removeRange(fixer: Rule.RuleFixer, sourceCode: SourceCode, range: Range): Rule.Fix {
   const removed = wholeLinesRange(sourceCode.text, range[0], range[1]) ?? range;
@@ -30,7 +30,10 @@ export function removeRange(fixer: Rule.RuleFixer, sourceCode: SourceCode, range
   return fixer.replaceTextRange([removed[0], next.range[0]], `${sourceCode.text.slice(removed[1], next.range[0])};`);
 }
 
-/** The range of the whole lines `[start, end)` covers, with the line break after them, when nothing but blank space shares those lines. */
+/**
+ * The range of the whole lines of `text` that `start` up to `end` covers, with the line break after them, when nothing but
+ * blank space shares those lines.
+ */
 export function wholeLinesRange(text: string, start: number, end: number): Range | null {
   const lineStart = text.lastIndexOf("\n", start - 1) + 1;
   const lineEndIndex = text.indexOf("\n", end);
@@ -39,7 +42,7 @@ export function wholeLinesRange(text: string, start: number, end: number): Range
   return [lineStart, lineEndIndex === -1 ? lineEnd : lineEnd + 1];
 }
 
-/** `";"` when removing `range` would let the code after it continue the statement before it, else `""`. */
+/** `";"` when removing `range` from `sourceCode` would let the code after it continue the statement before it, else `""`. */
 export function semicolonGuard(sourceCode: SourceCode, range: Range): string {
   const previous = sourceCode.getTokenBefore({ range } as never) as Token | null;
   const next = sourceCode.getTokenAfter({ range } as never) as Token | null;
@@ -57,7 +60,7 @@ export function continuesStatement(previous: Token | Comment | null, next: Token
   return CONTINUING_START.test(next.value) || CONTINUING_WORD.has(next.value);
 }
 
-/** Whether a token is a `;` or a `{`, after which the next token starts a new statement for certain. */
+/** Whether `token` is a `;` or a `{`, after which the next token starts a new statement for certain. */
 function endsStatementForCertain(token: Token | Comment): boolean {
   return token.type === "Punctuator" && STATEMENT_STARTS_AFTER.has(token.value);
 }
@@ -68,7 +71,7 @@ const STATEMENT_STARTS_AFTER: ReadonlySet<string> = new Set([";", "{"]);
 const LINE_BREAKS = ["\n", "\r", "\u2028", "\u2029"];
 
 /**
- * Deletes a comment without changing how the code around it parses.
+ * Deletes `comment` from `sourceCode` as `fixer` fixes, without changing how the code around it parses.
  * - Alone on its lines: the lines go.
  * - Code on both sides on the same line: it becomes one space, so `return/*x*\/value` never becomes `returnvalue`.
  * - A block comment containing a line break (`\n`, `\r`, U+2028 or U+2029), with code beside it: it becomes a line break, because a line break can end a statement.
@@ -84,7 +87,10 @@ export function removeComment(fixer: Rule.RuleFixer, sourceCode: SourceCode, com
   return removeCommentBesideCode(fixer, text, [start, end]);
 }
 
-/** Deletes a one-line comment that shares its line with code, as `removeComment`'s last three cases say. */
+/**
+ * Deletes the one-line comment from `start` to `end` of `text` that shares its line with code, as `fixer` fixes, as
+ * `removeComment`'s last three cases say.
+ */
 function removeCommentBesideCode(fixer: Rule.RuleFixer, text: string, [start, end]: Range): Rule.Fix {
   const before = text.slice(text.lastIndexOf("\n", start - 1) + 1, start);
   const lineEnd = text.indexOf("\n", end);
@@ -128,12 +134,12 @@ const DIRECTIVE = [
   /^\s*noinspection\b/,
 ];
 
-/** Whether a comment is read by a tool (a linter, a compiler, a bundler or a formatter), so no fix may change or remove it. */
+/** Whether `comment` is read by a tool (a linter, a compiler, a bundler or a formatter), so no fix may change or remove it. */
 export function isDirectiveComment(comment: Comment): boolean {
   return DIRECTIVE.some((pattern) => pattern.test(comment.value));
 }
 
-/** Whether a comment is a doc comment (`/** … *\/`). */
+/** Whether `comment` is a doc comment (`/** … *\/`). */
 export function isDocComment(comment: Comment): boolean {
   return comment.type === "Block" && comment.value.startsWith("*") && !comment.value.startsWith("**");
 }

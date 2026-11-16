@@ -50,7 +50,10 @@ class DelegatorScan {
   }
 }
 
-/** The function as a pure delegator: not exported, its body one call by name that passes its own parameters to another function of this file. */
+/**
+ * `fn` as a pure delegator, its names resolved in `sourceCode`: not exported, its body one call by name that passes its own
+ * parameters to another function of this file.
+ */
 function findDelegator(sourceCode: SourceCode, fn: TSESTree.FunctionDeclaration): FoundDelegator | null {
   if (!fn.id || isExported(sourceCode, fn)) return null;
   const delegated = delegatedCall(fn);
@@ -61,17 +64,17 @@ function findDelegator(sourceCode: SourceCode, fn: TSESTree.FunctionDeclaration)
   return { delegation: { fn, ...delegated, target }, self };
 }
 
-/** Whether the call is a plain, non-optional call of a name: `g(…)`, not `g?.(…)` or `o.g(…)`. */
+/** Whether `call` is a plain, non-optional call of a name: `g(…)`, not `g?.(…)` or `o.g(…)`. */
 function callsByName(call: TSESTree.CallExpression): call is TSESTree.CallExpression & { callee: TSESTree.Identifier } {
   return !call.optional && call.callee.type === "Identifier";
 }
 
-/** Whether the target is a function declared in this file, other than the delegator itself. */
+/** Whether `target` is a function declared in this file, other than the delegator `self`. */
 function isOtherDeclaredFunction(target: Scope.Variable | null, self: Scope.Variable): target is Scope.Variable {
   return target !== null && target !== self && declaredFunction(target) !== null;
 }
 
-/** The call a delegator's body consists of, `return g(…)` or `g(…);`, and whether it returns the result. */
+/** The call the body of the delegator `fn` consists of, `return g(…)` or `g(…);`, and whether it returns the result. */
 function delegatedCall(fn: TSESTree.FunctionDeclaration): { call: TSESTree.CallExpression; returns: boolean } | null {
   if (fn.body.body.length !== 1) return null;
   const statement = fn.body.body[0];
@@ -80,7 +83,7 @@ function delegatedCall(fn: TSESTree.FunctionDeclaration): { call: TSESTree.CallE
   return null;
 }
 
-/** Whether the call passes the function's own parameters, unchanged and in order, and nothing else. */
+/** Whether `call` passes the function's own `params`, unchanged and in order, and nothing else. */
 function passesOwnParameters(params: Parameter[], call: TSESTree.CallExpression): boolean {
   if (params.length !== call.arguments.length) return false;
   return params.every((parameter, index) => {
@@ -92,7 +95,7 @@ function passesOwnParameters(params: Parameter[], call: TSESTree.CallExpression)
   });
 }
 
-/** The name a parameter binds when it is a single name: `a`, `a: T`, `a = 1` or `...a`. */
+/** The name `parameter` binds when it is a single name: `a`, `a: T`, `a = 1` or `...a`. */
 function parameterName(parameter: Parameter): string | null {
   if (parameter.type === "Identifier") return parameter.name;
   if (parameter.type === "AssignmentPattern" && parameter.left.type === "Identifier") return parameter.left.name;
@@ -100,7 +103,7 @@ function parameterName(parameter: Parameter): string | null {
   return null;
 }
 
-/** The function declaration a variable names, when it is a function declared in this file. */
+/** The function declaration `variable` names, when it is a function declared in this file. */
 function declaredFunction(variable: Scope.Variable | null): Node | null {
   const definition = variable?.defs[0];
   if (!definition || variable!.defs.length !== 1) return null;
@@ -110,7 +113,7 @@ function declaredFunction(variable: Scope.Variable | null): Node | null {
   return isConstFunction(declarator) ? declarator : null;
 }
 
-/** Whether the declarator is a `const` bound to a function expression or an arrow function. */
+/** Whether `declarator` is a `const` bound to a function expression or an arrow function. */
 function isConstFunction(declarator: TSESTree.VariableDeclarator): boolean {
   const init = declarator.init;
   return declarator.parent?.kind === "const" && (init?.type === "FunctionExpression" || init?.type === "ArrowFunctionExpression");
@@ -133,13 +136,19 @@ function fixFor(sourceCode: SourceCode, delegation: Delegation, self: Scope.Vari
   ];
 }
 
-/** Whether every condition of the catalog's fix holds (ONE-02). */
+/**
+ * Whether every condition of the catalog's fix (ONE-02) holds for `delegation`: its delegator can go, its target is stable, and
+ * every reference to `self` can call the target instead, as resolved in `sourceCode`.
+ */
 function canFix(sourceCode: SourceCode, delegation: Delegation, self: Scope.Variable): boolean {
   if (!canRemoveDelegator(sourceCode, delegation) || !isStableTarget(delegation.target) || hasOtherDeclarations(self)) return false;
   return self.references.every((reference) => canRedirect(sourceCode, delegation, reference));
 }
 
-/** Whether the delegator itself can go: a plain function with plain parameters, not overloaded, not a script global. */
+/**
+ * Whether the delegator `fn` itself can go: a plain function with plain parameters, not generic in itself or its `call`, not
+ * overloaded, and neither a script global nor next to a directive in `sourceCode`.
+ */
 function canRemoveDelegator(sourceCode: SourceCode, { fn, call }: Delegation): boolean {
   if (isAsyncOrGenerator(fn) || isGeneric(fn, call)) return false;
   const plain = fn.params.every((parameter) => parameter.type === "Identifier" && parameter.name !== "this" && parameter.name !== "arguments");
@@ -152,24 +161,27 @@ function isAsyncOrGenerator(fn: TSESTree.FunctionDeclaration): boolean {
   return fn.async || fn.generator;
 }
 
-/** Whether the delegator declares type parameters or passes type arguments, which calling the target directly would lose. */
+/** Whether the delegator `fn` declares type parameters or its `call` passes type arguments, which calling the target directly would lose. */
 function isGeneric(fn: TSESTree.FunctionDeclaration, call: TSESTree.CallExpression): boolean {
   return Boolean(fn.typeParameters || call.typeArguments);
 }
 
-/** Whether any comment inside or directly above the delegator is a directive, which no fix may remove or move. */
+/** Whether any comment of `sourceCode` inside or directly above the delegator `fn` is a directive, which no fix may remove or move. */
 function touchesDirective(sourceCode: SourceCode, fn: TSESTree.FunctionDeclaration): boolean {
   const inside = sourceCode.getAllComments().filter((comment) => comment.range![0] >= fn.range[0] && comment.range![1] <= fn.range[1]) as Comment[];
   const above = (sourceCode.getCommentsBefore(fn as never) as Comment[]).at(-1);
   return [...inside, ...(above ? [above] : [])].some(isDirectiveComment);
 }
 
-/** Whether the target is a hoisted function declaration that is never reassigned, so calling it directly reads the same function. */
+/** Whether `target` is a hoisted function declaration that is never reassigned, so calling it directly reads the same function. */
 function isStableTarget(target: Scope.Variable): boolean {
   return target.defs[0].type === "FunctionName" && !target.references.some((reference) => reference.isWrite());
 }
 
-/** Whether a reference to the delegator can call the target instead and do the same thing. */
+/**
+ * Whether `reference` to the delegator `fn` can call `target` instead and do the same thing: a plain call where `target`
+ * resolves the same in `sourceCode`, standing as a statement of its own unless `fn` `returns` the call's result.
+ */
 function canRedirect(sourceCode: SourceCode, { fn, returns, target }: Delegation, reference: Scope.Reference): boolean {
   const site = directCall(reference.identifier as Node);
   if (!site || !isPlainCall(site, fn)) return false;
@@ -180,13 +192,13 @@ function canRedirect(sourceCode: SourceCode, { fn, returns, target }: Delegation
   return returns || statement?.type === "ExpressionStatement";
 }
 
-/** Whether the call site passes one plain argument per parameter of the delegator, with no spread and no type arguments. */
+/** Whether the call `site` passes one plain argument per parameter of the delegator `fn`, with no spread and no type arguments. */
 function isPlainCall(site: TSESTree.CallExpression, fn: TSESTree.FunctionDeclaration): boolean {
   return !hasSpread(site) && site.arguments.length === fn.params.length && !site.typeArguments;
 }
 
 /**
- * Whether an argument takes its type from the parameter it is passed to: a function, an object or an array literal, also
+ * Whether `argument` takes its type from the parameter it is passed to: a function, an object or an array literal, also
  * as a branch of `?:`, `&&`, `||` or `??` or the last expression of a sequence. Passed to `g` instead, it would be typed
  * by `g`'s parameter, and an arrow's `value` could become an implicit `any` (TS7006).
  */
@@ -195,7 +207,7 @@ function isContextuallyTyped(argument: Node): boolean {
   return valueBranches(argument).some((branch) => isContextuallyTyped(branch));
 }
 
-/** The expressions an argument's value comes from: the branches of `?:`, both sides of `&&`, `||` or `??`, the last of a sequence. */
+/** The expressions the value of `argument` comes from: the branches of `?:`, both sides of `&&`, `||` or `??`, the last of a sequence. */
 function valueBranches(argument: Node): Node[] {
   switch (argument.type) {
     case "ConditionalExpression":
@@ -209,7 +221,7 @@ function valueBranches(argument: Node): Node[] {
   }
 }
 
-/** The doc comment directly above a function, which goes with it; `null` when there is none. */
+/** The doc comment directly above `fn` in `sourceCode`, which goes with it; `null` when there is none. */
 function docCommentOf(sourceCode: SourceCode, fn: Node): Comment | null {
   const before = sourceCode.getCommentsBefore(fn as never) as Comment[];
   const last = before.at(-1);

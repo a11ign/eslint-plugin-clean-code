@@ -41,7 +41,7 @@ interface FlaggedParameter {
 
 type Method = NonNullable<ReturnType<typeof methodOf>>;
 
-/** The flags of `fn` the rule reports. */
+/** The flags of `fn` the rule reports, read through `sourceCode`, each carrying the `usage` of `fn`. */
 function flaggedParameters(sourceCode: SourceCode, fn: FunctionNode, usage: FunctionUsage): FlaggedParameter[] {
   return fn.params
     .map((parameter) => flagOf(sourceCode, parameter))
@@ -61,12 +61,12 @@ function isBooleanAnnotation(identifier: TSESTree.Identifier): boolean {
   return identifier.typeAnnotation?.typeAnnotation.type === "TSBooleanKeyword";
 }
 
-/** `flag: boolean` or `flag?: boolean`. */
+/** The flag `parameter` declares as `flag: boolean` or `flag?: boolean`, with its type as written in `sourceCode`. */
 function annotatedFlag(sourceCode: SourceCode, parameter: TSESTree.Identifier): Flag {
   return { parameter, name: parameter.name, type: typeText(sourceCode, parameter), initial: null, required: !parameter.optional };
 }
 
-/** `flag = false` or `flag: boolean = x`. */
+/** The flag `parameter` declares as `flag = false` or `flag: boolean = x`, with its type and default as written in `sourceCode`. */
 function defaultedFlag(sourceCode: SourceCode, parameter: TSESTree.AssignmentPattern): Flag | null {
   const left = parameter.left;
   if (left.type !== "Identifier") return null;
@@ -74,7 +74,7 @@ function defaultedFlag(sourceCode: SourceCode, parameter: TSESTree.AssignmentPat
   return isFlag ? { parameter, name: left.name, type: typeText(sourceCode, left), initial: standalone(sourceCode, parameter.right), required: false } : null;
 }
 
-/** A flag declared as a constructor parameter property (`private flag: boolean`). */
+/** The flag the constructor parameter property `parameter` declares (`private flag: boolean`), read through `sourceCode`. */
 function propertyFlag(sourceCode: SourceCode, parameter: TSESTree.TSParameterProperty): Flag | null {
   const flag = flagOf(sourceCode, parameter.parameter);
   return flag && { ...flag, parameter };
@@ -88,19 +88,19 @@ function isBooleanLiteral(expression: TSESTree.Expression): boolean {
   return expression.type === "Literal" && typeof expression.value === "boolean";
 }
 
-/** Source text of an expression that can stand alone after `=` or `:` inside an object literal or pattern. */
+/** The text of `expression` in `sourceCode`, made to stand alone after `=` or `:` inside an object literal or pattern. */
 function standalone(sourceCode: SourceCode, expression: TSESTree.Expression): string {
   const text = sourceCode.getText(expression as never);
   return expression.type === "SequenceExpression" ? `(${text})` : text;
 }
 
-/** Whether the rule says nothing about this flag. */
+/** Whether the rule says nothing about the flag in `found`. */
 function isExempt(found: FlaggedParameter): boolean {
   const member = methodOf(found.fn);
   return isSignatureSetElsewhere(found.fn, member) || isSetter(found, member);
 }
 
-/** Whether the function's signature is set by someone else: a callback, or a method that overrides or implements one. */
+/** Whether the signature of `fn` is set by someone else: it is a callback, or its `member` overrides or implements one. */
 function isSignatureSetElsewhere(fn: FunctionNode, member: Method | null): boolean {
   if (isInlineCallback(fn)) return true;
   if (!member) return false;
@@ -108,7 +108,7 @@ function isSignatureSetElsewhere(fn: FunctionNode, member: Method | null): boole
   return (classOf(member)?.implements?.length ?? 0) > 0;
 }
 
-/** Whether the function is a callback written directly as a call argument or a JSX attribute. */
+/** Whether `fn` is a callback written directly as a call argument or a JSX attribute. */
 function isInlineCallback(fn: FunctionNode): boolean {
   const parent = fn.parent;
   if (isCallArgument(fn)) return true;
@@ -121,7 +121,10 @@ function isCallArgument(fn: FunctionNode): boolean {
   return isCall && parent.arguments.includes(fn as never);
 }
 
-/** The book's exception and its kin: a `setFlag(boolean)` method, a `set` accessor, and a fluent setter that returns `this`. */
+/**
+ * The book's exception and its kin, for the method `member` that `fn` is: a `setFlag(boolean)` method with `flag` last, a
+ * `set` accessor, and a fluent setter whose `usage` shows it returns `this`.
+ */
 function isSetter({ fn, flag, usage }: FlaggedParameter, member: Method | null): boolean {
   if (!member) return false;
   if (isSetAccessor(member)) return true;
@@ -134,7 +137,7 @@ function isSetAccessor(member: Method): boolean {
   return hasKind && member.kind === "set";
 }
 
-/** The key of a method, when it is a plain name. */
+/** The key of `member`, when it is a plain name. */
 function methodName(member: Method): string | null {
   return member.key.type === "Identifier" && !member.computed ? member.key.name : null;
 }
@@ -148,7 +151,7 @@ function reportFlag(context: Rule.RuleContext, { fn, flag }: FlaggedParameter, f
   });
 }
 
-/** The options-object fix, or `null` when one of the catalog's conditions does not hold (FH-01). */
+/** The options-object fix for the flag in `found`, or `null` when one of the catalog's conditions does not hold in `sourceCode` (FH-01). */
 function fixFor(sourceCode: SourceCode, found: FlaggedParameter): Rule.ReportFixer | null {
   const calls = canRewriteFunction(sourceCode, found) ? callsOf(sourceCode, found.fn) : null;
   const index = found.fn.params.length - 1;
@@ -162,7 +165,10 @@ function fixFor(sourceCode: SourceCode, found: FlaggedParameter): Rule.ReportFix
   ];
 }
 
-/** Whether the function itself meets the fix's conditions: a plain, unexported function of an ES module, with the flag last. */
+/**
+ * Whether `fn` itself meets the fix's conditions: a plain, unexported function of the ES module in `sourceCode`, with
+ * `flag` last and, by its `usage`, no use of `arguments`.
+ */
 function canRewriteFunction(sourceCode: SourceCode, { fn, flag, usage }: FlaggedParameter): boolean {
   if (!isModule(sourceCode) || methodOf(fn) || flag.parameter.type === "TSParameterProperty") return false;
   if (fn.type !== "FunctionDeclaration" && !constDeclaratorOf(fn)) return false;
@@ -172,7 +178,7 @@ function canRewriteFunction(sourceCode: SourceCode, { fn, flag, usage }: Flagged
   return isLast && !fn.params.some((parameter) => parameter.type === "Identifier" && parameter.name === "this");
 }
 
-/** Every call of the function, or `null` when a reference is not a direct call without spread arguments. */
+/** Every call of `fn` in `sourceCode`, or `null` when a reference is not a direct call without spread arguments. */
 function callsOf(sourceCode: SourceCode, fn: FunctionNode): TSESTree.CallExpression[] | null {
   const variables = [nameVariable(sourceCode, fn), ownNameVariable(sourceCode, fn)].filter((variable): variable is Scope.Variable => variable !== null);
   if (variables.length === 0 || variables.some(hasOtherDeclarations)) return null;
@@ -181,22 +187,22 @@ function callsOf(sourceCode: SourceCode, fn: FunctionNode): TSESTree.CallExpress
   return calls.every(isPlainCall) ? calls : null;
 }
 
-/** Whether an identifier is the name a `const` declares, which scope analysis lists as its initialising write. */
+/** Whether `identifier` is the name a `const` declares, which scope analysis lists as its initialising write. */
 function isDeclaringName(identifier: Node): boolean {
   return identifier.parent?.type === "VariableDeclarator" && identifier.parent.id === identifier;
 }
 
-/** A call the fix can edit: one that exists and passes no spread arguments. */
+/** Whether the fix can edit `call`: it exists and passes no spread arguments. */
 function isPlainCall(call: TSESTree.CallExpression | null): call is TSESTree.CallExpression {
   return call !== null && !hasSpread(call);
 }
 
-/** A required flag gets no `= {}`, so a call that leaves it out would throw on destructuring `undefined`. */
+/** Whether one of `calls` leaves out a required `flag` at `index`: it gets no `= {}`, so such a call would throw on destructuring `undefined`. */
 function leavesOutRequiredFlag(flag: Flag, calls: TSESTree.CallExpression[], index: number): boolean {
   return flag.required && calls.some((call) => call.arguments.length <= index);
 }
 
-/** The new flag parameter of each overload signature of `fn`, or `null` when one of them cannot be rewritten. */
+/** The new parameter for the flag `name` in each overload signature of `fn`, typed from `sourceCode`, or `null` when one cannot be rewritten. */
 function signatureEdits(sourceCode: SourceCode, fn: FunctionNode, name: string): Array<{ parameter: Parameter; text: string | null }> | null {
   const index = fn.params.length - 1;
   const signatures = overloadSignatures(fn)
@@ -206,8 +212,8 @@ function signatureEdits(sourceCode: SourceCode, fn: FunctionNode, name: string):
 }
 
 /**
- * The new text of an overload signature's flag parameter, `options?: { verbose?: boolean }`, or `null` when it is not a
- * plain annotated name. A signature names the object instead of destructuring it, because an optional binding pattern
+ * The new text of an overload signature's `parameter` for the flag `name`, `options?: { verbose?: boolean }` with its type
+ * read from `sourceCode`, or `null` when it is not a plain annotated name. A signature names the object instead of destructuring it, because an optional binding pattern
  * does not type-check there.
  */
 function signatureParameter(sourceCode: SourceCode, parameter: Parameter | undefined, name: string): string | null {
@@ -224,7 +230,7 @@ function isOptionsNameTaken(parameter: TSESTree.Identifier): boolean {
 }
 
 /**
- * The options object that replaces the flag: `{ verbose }: { verbose: boolean }` for a required flag, which keeps it a
+ * The options object that replaces `flag`: `{ verbose }: { verbose: boolean }` for a required flag, which keeps it a
  * `boolean` in the body, and `{ verbose = false }: { verbose?: boolean } = {}` for an optional one or one with a default.
  */
 function optionsParameter(flag: Flag): string {
@@ -233,7 +239,7 @@ function optionsParameter(flag: Flag): string {
   return flag.type === null ? `${pattern} = {}` : `${pattern}: { ${flag.name}?: ${flag.type} } = {}`;
 }
 
-/** The fix's edit to one call's flag argument, if it passes one: the argument becomes `{ name: argument }`. */
+/** The edit `fixer` makes to one call's flag `argument`, if it passes one: it becomes `{ name: argument }` for the flag `name`. */
 function argumentFix(fixer: Rule.RuleFixer, argument: TSESTree.Expression | undefined, name: string): Rule.Fix[] {
   if (!argument) return [];
   if (argument.type === "Identifier" && argument.name === name) return [fixer.replaceText(argument as never, `{ ${name} }`)];

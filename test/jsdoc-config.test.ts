@@ -1,7 +1,7 @@
 /**
  * The opt-in `jsdoc` config, end to end: the README's setup blocks, as written, under ESLint and under Oxlint, on the files in
- * `test/fixtures/jsdoc/`. `src/doc.ts` holds one case for each rule, `src/plain.js` a `{type}` that JavaScript needs, and
- * `src/clean.ts` a well-formed doc comment. Each linter loads the BUILT package by its name, the way an installed project does.
+ * `test/fixtures/jsdoc/`. `src/doc.ts` holds one case for each rule of `eslint-plugin-jsdoc`, `src/unnamed.ts` a doc comment that
+ * skips a parameter (DOC-05), `src/plain.js` a `{type}` that JavaScript needs, and `src/clean.ts` a well-formed doc comment. Each linter loads the BUILT package by its name, the way an installed project does.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -11,16 +11,23 @@ import { ROOT, assertNoParseErrors, onFixtures, readmeBlock, relatedReports, run
 
 const FIXTURES = join(ROOT, "test", "fixtures", "jsdoc");
 
-/** Under ESLint every rule reports `src/doc.ts`; `no-types` leaves the `{type}` in `src/plain.js` alone, and `src/clean.ts` gets nothing. */
+/**
+ * Under ESLint every rule of `eslint-plugin-jsdoc` reports `src/doc.ts` and DOC-05 reports `src/unnamed.ts`; `no-types` leaves the
+ * `{type}` in `src/plain.js` alone, and `src/clean.ts` gets nothing.
+ */
 const ESLINT_EXPECTED: Record<string, string[]> = {
   "src/doc.ts": ["jsdoc/check-param-names", "jsdoc/check-tag-names", "jsdoc/empty-tags", "jsdoc/no-types"],
+  "src/unnamed.ts": ["clean-code-book/jsdoc-names-every-parameter"],
 };
 
-/** Oxlint has no `check-param-names` or `no-types`, so it reports the misspelled tag and the content on `@async` only. */
-const OXLINT_EXPECTED: Record<string, string[]> = { "src/doc.ts": ["jsdoc/check-tag-names", "jsdoc/empty-tags"] };
+/** Oxlint has no `check-param-names` or `no-types`, so it reports the misspelled tag and the content on `@async`, and DOC-05 through `jsPlugins`. */
+const OXLINT_EXPECTED: Record<string, string[]> = {
+  "src/doc.ts": ["jsdoc/check-tag-names", "jsdoc/empty-tags"],
+  "src/unnamed.ts": ["clean-code-book/jsdoc-names-every-parameter"],
+};
 
 function jsdocReports(reports: Report[]): Record<string, string[]> {
-  return relatedReports(reports, /^jsdoc\//);
+  return relatedReports(reports, /^(jsdoc\/|clean-code-book\/jsdoc-)/);
 }
 
 interface WithoutPluginJsdoc {
@@ -69,10 +76,10 @@ describe("the jsdoc config", () => {
     const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, { eslintConfig: readmeBlock("eslint-jsdoc") });
     assertNoParseErrors(reports);
     assert.deepEqual(jsdocReports(reports), ESLINT_EXPECTED);
-    assert.equal(reports.filter((report) => report.file.startsWith("src/")).length, 3, "ESLint did not lint every fixture, so this check could not fail");
+    assert.equal(reports.filter((report) => report.file.startsWith("src/")).length, 4, "ESLint did not lint every fixture, so this check could not fail");
   });
 
-  it("Oxlint: the README's jsdoc setup reports the misspelled tag and the content on an empty tag natively, and loads no JS plugin for them", async () => {
+  it("Oxlint: the README's jsdoc setup reports the misspelled tag and the content on an empty tag natively, and the skipped parameter through jsPlugins", async () => {
     const reports = await onFixtures(FIXTURES, (dir) => runOxlint(dir, [], readmeBlock("oxlint-jsdoc")));
     assertNoParseErrors(reports);
     assert.deepEqual(jsdocReports(reports), OXLINT_EXPECTED);

@@ -23,7 +23,7 @@ function checkClass(context: Rule.RuleContext, services: TypeServices, cls: Clas
   }
 }
 
-/** The class `node` extends, when it is a class (not a mixin's intersection or an `any`). */
+/** The class `node` extends, read through `services`, when it is a class (not a mixin's intersection or an `any`). */
 function baseClass(services: TypeServices, node: ClassNode): { type: ts.Type; symbol: ts.Symbol } | null {
   const { checker } = services;
   const type = checker.getTypeAtLocation(services.tsNode(node));
@@ -49,7 +49,7 @@ function concreteOverrides(services: TypeServices, base: ts.Type, members: TSEST
   });
 }
 
-/** An instance method with a body: constructors, static methods and overload signatures override nothing. */
+/** Whether `member` is an instance method with a body: constructors, static methods and overload signatures override nothing. */
 function isOverridableMethod(member: TSESTree.ClassElement): member is TSESTree.MethodDefinition {
   return member.type === "MethodDefinition" && isInstanceMethod(member) && Boolean(member.value.body);
 }
@@ -58,7 +58,10 @@ function isInstanceMethod(member: TSESTree.MethodDefinition): boolean {
   return member.kind !== "constructor" && !member.static;
 }
 
-/** The concrete project method (or accessor) of the base class that `name` overrides, as `Class.method`, or `null`. */
+/**
+ * The concrete method (or accessor) of the `base` class that `name` overrides, as `Class.method`, or `null`. Only a method
+ * the program of `services` counts as the project's own code is concrete here.
+ */
 function overriddenConcrete(services: TypeServices, base: ts.Type, name: string): string | null {
   const property = base.getProperty(name);
   const concrete = (property?.getDeclarations() ?? []).find((declaration) => hasBody(declaration) && isProjectDeclaration(services.program, declaration));

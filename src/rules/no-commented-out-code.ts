@@ -38,7 +38,10 @@ function isCode(text: string): boolean {
   return parsed.tokens.some((token) => token.type === "Punctuator" && CODE_PUNCTUATION.test(token.value)) || hasCall(parsed.program);
 }
 
-/** A single comparison (`sum(1, 2) === 3`) states a fact about the code; nobody comments out a statement with no effect. */
+/**
+ * Whether `statements` is a single comparison (`sum(1, 2) === 3`), which states a fact about the code; nobody comments out
+ * a statement with no effect.
+ */
 function isClaim(statements: SyntaxNode[]): boolean {
   if (statements.length !== 1 || statements[0].type !== "ExpressionStatement") return false;
   const expression = statements[0].expression as SyntaxNode;
@@ -73,7 +76,7 @@ function parseUnder(options: espree.Options, text: string): Parsed | null {
   }
 }
 
-/** The text of a group of comments as code would read it: a block's `*` decoration taken off, a run's lines joined. */
+/** The text of the comments in `group` as code would read it: a block's `*` decoration taken off, a run's lines joined. */
 function groupText(group: Comment[]): string {
   if (group[0].type === "Line") return group.map((comment) => comment.value).join("\n");
   const lines = commentLines(group[0]);
@@ -81,7 +84,7 @@ function groupText(group: Comment[]): string {
   return decorated ? lines.map((line) => line.content).join("\n") : group[0].value;
 }
 
-/** Comments this rule never reads: doc comments, `@example` blocks, directives and the TODOs `no-warning-comments` reports. */
+/** Whether this rule skips `comment`: a doc comment, an `@example` block, a directive or a TODO `no-warning-comments` reports. */
 function isSkipped(comment: Comment): boolean {
   return isDocComment(comment) || /@example\b/.test(comment.value) || isDirectiveComment(comment) || isWarningComment(comment);
 }

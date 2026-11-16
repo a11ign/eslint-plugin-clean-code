@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Linter } from "eslint";
 import plugin from "../src/index.ts";
-import { AI_RULE_PREFIX, NODE_RULE_PREFIX, REACT_RULE_PREFIX, TYPESCRIPT_RULE_PREFIX } from "../src/lib/define-rule.ts";
+import { AI_RULE_PREFIX, JSDOC_RULE_PREFIX, NODE_RULE_PREFIX, REACT_RULE_PREFIX, TYPESCRIPT_RULE_PREFIX } from "../src/lib/define-rule.ts";
 import { ROOT } from "./support.ts";
 
 export const catalog = readFileSync(join(ROOT, "docs", "catalog.md"), "utf8");
@@ -21,23 +21,28 @@ export const isAiRule = (name: string) => name.startsWith(AI_RULE_PREFIX);
 export const isNodeRule = (name: string) => name.startsWith(NODE_RULE_PREFIX);
 export const isReactRule = (name: string) => name.startsWith(REACT_RULE_PREFIX);
 export const isTypescriptRule = (name: string) => name.startsWith(TYPESCRIPT_RULE_PREFIX);
-export const isLanguageRule = (name: string) => isTypescriptRule(name) || isNodeRule(name) || isReactRule(name);
+export const isJsdocRule = (name: string) => name.startsWith(JSDOC_RULE_PREFIX);
+export const isLanguageRule = (name: string) => isTypescriptRule(name) || isNodeRule(name) || isReactRule(name) || isJsdocRule(name);
 
 /** The opt-in language configs whose rules quote a book of their own: the config, its rule folder, its catalog and its books. */
 export const LANGUAGES = [
   { config: "typescript", isRule: isTypescriptRule, catalog: typescriptCatalog, catalogFile: "docs/catalog-typescript.md", entry: /TS-\d{2}/, books: /Programming TypeScript|JavaScript: The Definitive Guide/ },
   { config: "node", isRule: isNodeRule, catalog: nodeCatalog, catalogFile: "docs/catalog-node.md", entry: /NODE-\d{2}/, books: /Distributed Systems with Node\.js|JavaScript: The Definitive Guide/ },
   { config: "react", isRule: isReactRule, catalog: reactCatalog, catalogFile: "docs/catalog-react.md", entry: /RCT-\d{2}/, books: /Learn React with TypeScript/ },
+  { config: "jsdoc", isRule: isJsdocRule, catalog: jsdocCatalog, catalogFile: "docs/catalog-jsdoc.md", entry: /DOC-\d{2}/, books: /Clean Code, 2nd Edition/ },
 ] as const;
 
-/** Where a rule's doc page is, by the config its prefix names. */
+/** Where the doc page of the rule `name` is, by the config its prefix names. */
 export function docPath(name: string): string {
   if (isAiRule(name)) return `docs/rules/ai/${name}.md`;
   const language = LANGUAGES.find((candidate) => candidate.isRule(name));
   return language ? `docs/rules/${language.config}/${name}.md` : `docs/rules/${name}.md`;
 }
 
-/** The cells of a markdown table row. A `|` inside a cell is written `\\|`, as GitHub tables need, so only an unescaped `|` ends one. */
+/**
+ * The cells of `line`, a markdown table row. A `|` inside a cell is written `\\|`, as GitHub tables need, so only an
+ * unescaped `|` ends one.
+ */
 export function tableCells(line: string): string[] {
   return line.split(/(?<!\\)\|/).slice(1, -1).map((cell) => cell.trim());
 }

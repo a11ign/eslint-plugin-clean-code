@@ -20,7 +20,7 @@ const removeEveryComment: Rule.RuleModule = {
   },
 };
 
-/** Whether the test rule removes a comment: a line or block comment that is not a directive. */
+/** Whether the test rule removes `comment`: a line or block comment that is not a directive. */
 function isRemovable(comment: Comment): boolean {
   if (comment.type !== "Line" && comment.type !== "Block") return false;
   return !isDirectiveComment(comment);

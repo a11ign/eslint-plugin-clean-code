@@ -54,7 +54,7 @@ function markOwnerUsage(stack: TrackedFunction[], usage: "usesThis" | "usesArgum
   if (owner) owner.usage[usage] = true;
 }
 
-/** Whether an identifier reads the `arguments` binding. */
+/** Whether `identifier` reads the `arguments` binding. */
 function isArgumentsReference(identifier: TSESTree.Identifier): boolean {
   return identifier.name === "arguments" && isValueReference(identifier);
 }
@@ -73,7 +73,7 @@ function functionListeners(stack: TrackedFunction[], onExit: (fn: FunctionNode, 
   return listeners;
 }
 
-/** A function as it is entered: nothing used yet, except an arrow whose body is `this`, which returns `this`. */
+/** The function `fn` as it is entered: nothing used yet, except an arrow whose body is `this`, which returns `this`. */
 function trackedFunction(fn: FunctionNode): TrackedFunction {
   const returnsThis = fn.type === "ArrowFunctionExpression" && isThis(fn.body);
   return { fn, usage: { usesArguments: false, usesThis: false, returnsThis } };
@@ -82,7 +82,7 @@ function trackedFunction(fn: FunctionNode): TrackedFunction {
 const TYPE_WRAPPERS = new Set(["TSAsExpression", "TSSatisfiesExpression", "TSNonNullExpression", "TSTypeAssertion", "ParenthesizedExpression"]);
 
 /**
- * Whether an expression gives `this`: `this`, or `this` behind a type-only wrapper (`this as this`, `this satisfies X`,
+ * Whether `expression` gives `this`: `this`, or `this` behind a type-only wrapper (`this as this`, `this satisfies X`,
  * `this!`, `<this>this`, parentheses), or as the last expression of a sequence.
  */
 export function isThis(expression: Node | null | undefined): boolean {
@@ -91,30 +91,30 @@ export function isThis(expression: Node | null | undefined): boolean {
   return current?.type === "ThisExpression";
 }
 
-/** Whether an expression's value is the value of an expression inside it: a type-only wrapper, or a sequence. */
+/** Whether the value of `expression` is the value of an expression inside it: a type-only wrapper, or a sequence. */
 function givesInnerValue(expression: Node): boolean {
   return TYPE_WRAPPERS.has(expression.type) || expression.type === "SequenceExpression";
 }
 
-/** The expression whose value a wrapper or a sequence gives: the wrapped one, or a sequence's last. */
+/** The expression whose value `expression`, a wrapper or a sequence, gives: the wrapped one, or a sequence's last. */
 function innerValue(expression: Node): Node | undefined {
   return expression.type === "SequenceExpression" ? expression.expressions.at(-1) : (expression as { expression: Node }).expression;
 }
 
-/** Whether a call is a direct `eval(…)`, which can read the local scope and `arguments`, and call anything in scope by name. */
+/** Whether `call` is a direct `eval(…)`, which can read the local scope and `arguments`, and call anything in scope by name. */
 export function isDirectEval(call: TSESTree.CallExpression): boolean {
   return call.callee.type === "Identifier" && call.callee.name === "eval" && !call.optional;
 }
 
 /**
- * Whether a variable has more than one declaration, not counting TypeScript overload signatures: a second function of the
+ * Whether `variable` has more than one declaration, not counting TypeScript overload signatures: a second function of the
  * same name, or a merged namespace. A call may then reach another declaration than the one a fix rewrites.
  */
 export function hasOtherDeclarations(variable: Scope.Variable): boolean {
   return variable.defs.filter((definition) => (definition.node as Node).type !== "TSDeclareFunction").length > 1;
 }
 
-/** Whether an identifier reads a binding, rather than naming a property or a key. */
+/** Whether `identifier` reads a binding, rather than naming a property or a key. */
 function isValueReference(identifier: TSESTree.Identifier): boolean {
   const parent = identifier.parent;
   if (parent?.type === "MemberExpression" && parent.property === identifier && !parent.computed) return false;
@@ -128,7 +128,7 @@ function isPlainKeyOf(parent: Node | undefined, identifier: TSESTree.Identifier)
   return parent.key === identifier && !parent.computed;
 }
 
-/** The class member or object property a function is the value of, if any. */
+/** The class member or object property `fn` is the value of, if any. */
 export function methodOf(fn: FunctionNode): TSESTree.MethodDefinition | TSESTree.TSAbstractMethodDefinition | TSESTree.Property | TSESTree.PropertyDefinition | null {
   const parent = fn.parent;
   if (parent?.type === "MethodDefinition" || parent?.type === "TSAbstractMethodDefinition") return parent;
@@ -142,14 +142,17 @@ function isPropertyValueOf(parent: Node | undefined, fn: FunctionNode): parent i
   return parent.value === fn;
 }
 
-/** The class a method belongs to, if it is a class member. */
+/** The class `member` belongs to, if it is a class member. */
 export function classOf(member: Node): TSESTree.ClassDeclaration | TSESTree.ClassExpression | null {
   const body = member.parent;
   if (body?.type !== "ClassBody") return null;
   return body.parent as TSESTree.ClassDeclaration | TSESTree.ClassExpression;
 }
 
-/** Whether the function is exported, where it is declared or later by name (`export { f }`, `export default f`). */
+/**
+ * Whether `fn` is exported, where it is declared or later by name (`export { f }`, `export default f`), looking up its
+ * references through `sourceCode`.
+ */
 export function isExported(sourceCode: SourceCode, fn: FunctionNode): boolean {
   if (isExportedDeclaration(fn)) return true;
   const variable = nameVariable(sourceCode, fn);
@@ -159,19 +162,19 @@ export function isExported(sourceCode: SourceCode, fn: FunctionNode): boolean {
   });
 }
 
-/** Whether the function is exported where it is declared (`export function f`, `export const f`, `export default function`). */
+/** Whether `fn` is exported where it is declared (`export function f`, `export const f`, `export default function`). */
 export function isExportedDeclaration(fn: FunctionNode): boolean {
   const parent = declaringStatement(fn)?.parent;
   return parent?.type === "ExportNamedDeclaration" || parent?.type === "ExportDefaultDeclaration";
 }
 
-/** The statement that declares a named function: the declaration itself, or the `const` declaration holding it. */
+/** The statement that declares `fn`, a named function: the declaration itself, or the `const` declaration holding it. */
 function declaringStatement(fn: FunctionNode): Node | null {
   if (fn.type === "FunctionDeclaration") return fn;
   return constDeclaratorOf(fn)?.parent ?? null;
 }
 
-/** The `const` declarator a function is the whole initializer of: `const f = () => …`. */
+/** The `const` declarator `fn` is the whole initializer of: `const f = () => …`. */
 export function constDeclaratorOf(fn: FunctionNode): TSESTree.VariableDeclarator | null {
   const declarator = fn.parent;
   if (declarator?.type !== "VariableDeclarator" || declarator.init !== fn || declarator.id.type !== "Identifier") return null;
@@ -179,7 +182,7 @@ export function constDeclaratorOf(fn: FunctionNode): TSESTree.VariableDeclarator
   return declaration?.type === "VariableDeclaration" && declaration.kind === "const" ? declarator : null;
 }
 
-/** The variable a function is called by: a function declaration's name, or the `const` it is assigned to. */
+/** The variable `fn` is called by, found through `sourceCode`: a function declaration's name, or the `const` it is assigned to. */
 export function nameVariable(sourceCode: SourceCode, fn: FunctionNode): Scope.Variable | null {
   const declarator = constDeclaratorOf(fn);
   const declared = fn.type === "FunctionDeclaration" && fn.id ? sourceCode.getDeclaredVariables(fn as never) : declarator ? sourceCode.getDeclaredVariables(declarator as never) : [];
@@ -187,14 +190,17 @@ export function nameVariable(sourceCode: SourceCode, fn: FunctionNode): Scope.Va
   return declared.find((variable) => variable.name === name) ?? null;
 }
 
-/** The variable a named function expression's own name binds inside it (`function g() {}` in `const f = function g() {}`). */
+/**
+ * The variable the own name of `fn`, a named function expression, binds inside it (`function g() {}` in
+ * `const f = function g() {}`), found through `sourceCode`.
+ */
 export function ownNameVariable(sourceCode: SourceCode, fn: FunctionNode): Scope.Variable | null {
   if (fn.type !== "FunctionExpression" || !fn.id) return null;
   const name = fn.id.name;
   return sourceCode.getDeclaredVariables(fn as never).find((variable) => variable.name === name) ?? null;
 }
 
-/** The TypeScript overload signatures (`function f(a: string): void;`) declared next to a function declaration. */
+/** The TypeScript overload signatures (`function f(a: string): void;`) declared next to `fn`, a function declaration. */
 export function overloadSignatures(fn: FunctionNode): TSESTree.TSDeclareFunction[] {
   if (fn.type !== "FunctionDeclaration" || !fn.id) return [];
   const name = fn.id.name;
@@ -206,18 +212,18 @@ export function overloadSignatures(fn: FunctionNode): TSESTree.TSDeclareFunction
     .filter((sibling): sibling is TSESTree.TSDeclareFunction => sibling?.type === "TSDeclareFunction" && sibling.id?.name === name);
 }
 
-/** The call a reference is the callee of (`f(…)` or `f?.(…)`), or `null` when the reference is used any other way. */
+/** The call `identifier`, a reference, is the callee of (`f(…)` or `f?.(…)`), or `null` when it is used any other way. */
 export function directCall(identifier: Node): TSESTree.CallExpression | null {
   const parent = identifier.parent;
   return parent?.type === "CallExpression" && parent.callee === identifier ? parent : null;
 }
 
-/** Whether a call passes a spread argument, which hides how many arguments it passes and where each one lands. */
+/** Whether `call` passes a spread argument, which hides how many arguments it passes and where each one lands. */
 export function hasSpread(call: TSESTree.CallExpression): boolean {
   return call.arguments.some((argument) => argument.type === "SpreadElement");
 }
 
-/** The variable `name` refers to when written at `node`, found by walking out through the scopes. */
+/** The variable `name` refers to when written at `node`, found by walking out through the scopes of `sourceCode`. */
 export function resolveAt(sourceCode: SourceCode, node: Node, name: string): Scope.Variable | null {
   for (let scope: Scope.Scope | null = sourceCode.getScope(node as never); scope; scope = scope.upper) {
     const variable = scope.set.get(name);
@@ -226,7 +232,7 @@ export function resolveAt(sourceCode: SourceCode, node: Node, name: string): Sco
   return null;
 }
 
-/** Whether a function's body starts with a `"use strict"` directive, which a non-simple parameter list makes a syntax error. */
+/** Whether the body of `fn` starts with a `"use strict"` directive, which a non-simple parameter list makes a syntax error. */
 export function hasUseStrict(fn: FunctionNode): boolean {
   return fn.body.type === "BlockStatement" && hasUseStrictDirective(fn.body.body);
 }

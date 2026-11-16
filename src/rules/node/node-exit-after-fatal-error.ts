@@ -9,7 +9,7 @@ const CAPTURE_CALLBACK = new Set(["setUncaughtExceptionCaptureCallback"]);
 const ENDING_METHODS = new Set(["exit", "abort"]);
 const FATAL_EVENTS = new Set(["uncaughtException", "unhandledRejection"]);
 
-/** The fatal-error handler a call registers on `process`, or `null` when it registers none. */
+/** The fatal-error handler `call` registers on `process`, or `null` when it registers none. */
 function fatalErrorHandler(call: TSESTree.CallExpression): Node | null {
   if (isMethodCall(call, PROCESS, CAPTURE_CALLBACK)) return call.arguments[0] ?? null;
   if (!isMethodCall(call, PROCESS, LISTENER_METHODS)) return null;
@@ -31,7 +31,7 @@ class FatalErrorHandlers {
   readonly #handlers = new Map<FunctionNode, Node>();
   readonly #ending = new Set<FunctionNode>();
 
-  /** Notes a call: it may end the process, and it may register a handler for a fatal error. */
+  /** Notes `call`: it may end the process, and it may register a handler for a fatal error, which `sourceCode` resolves. */
   noteCall(sourceCode: SourceCode, call: TSESTree.CallExpression): void {
     this.noteEnding(call);
     const argument = fatalErrorHandler(call);

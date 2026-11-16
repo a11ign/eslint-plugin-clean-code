@@ -11,7 +11,7 @@ export type Range = [number, number];
 type Location = NonNullable<Comment["loc"]>;
 
 /**
- * The comments of the file in groups: a run of line comments, each alone on its line, on consecutive lines, is one
+ * The comments of `sourceCode` in groups: a run of line comments, each alone on its line, on consecutive lines, is one
  * group; every other comment is a group of its own. A comment for which `standsAlone` is true never joins a run.
  */
 export function commentGroups(sourceCode: SourceCode, standsAlone: (comment: Comment) => boolean = () => false): Comment[][] {
@@ -26,18 +26,18 @@ export function commentGroups(sourceCode: SourceCode, standsAlone: (comment: Com
   return groups;
 }
 
-/** Whether `comment` joins the run `group` ends with: both are joinable line comments, on consecutive lines. */
+/** Whether `comment` joins the run `group` ends with: both are `joinable` line comments, on consecutive lines. */
 function continuesRun(group: Comment[], comment: Comment, joinable: ReadonlySet<Comment>): boolean {
   const last = group.at(-1)!;
   return joinable.has(comment) && joinable.has(last) && last.loc!.end.line + 1 === comment.loc!.start.line;
 }
 
-/** Whether nothing but blank space shares the comment's lines. */
+/** Whether nothing but blank space shares the lines of `comment` in the text of `sourceCode`. */
 export function isAloneOnItsLines(sourceCode: SourceCode, comment: Comment): boolean {
   return wholeLinesRange(sourceCode.text, comment.range![0], comment.range![1]) !== null;
 }
 
-/** The line and block comments of the file, without a hashbang. */
+/** The line and block comments of `sourceCode`, without a hashbang. */
 export function sourceComments(sourceCode: SourceCode): Comment[] {
   return sourceCode.getAllComments().filter((comment) => comment.type === "Line" || comment.type === "Block");
 }
@@ -48,14 +48,14 @@ export interface CommentEdit {
   sourceCode: SourceCode;
 }
 
-/** Where a group of comments starts and ends, for the report. */
+/** Where the comments of `group` start and end, for the report. */
 export function groupLocation(group: Comment[]): Location {
   return { start: group[0].loc!.start, end: group.at(-1)!.loc!.end };
 }
 
 /**
- * Keeps only the comments of a run of line comments for which `keep` is true, deleting the lines of the others, or
- * deletes the whole run when the kept comments hold no text.
+ * Keeps only the comments of `run`, a run of line comments, for which `keep` is true, deleting the lines of the others
+ * from `sourceCode` with `fixer`, or deletes the whole run when the kept comments hold no text.
  */
 export function keepInRun({ fixer, sourceCode }: CommentEdit, run: Comment[], keep: (comment: Comment, index: number) => boolean): Rule.Fix {
   const kept = run.filter(keep);
@@ -67,7 +67,10 @@ export function keepInRun({ fixer, sourceCode }: CommentEdit, run: Comment[], ke
   return fixer.replaceTextRange(range, text.join("\n") + (endsWithLineBreak ? "\n" : ""));
 }
 
-/** Deletes a group: one comment the safe way (`removeComment`), or a run of line comments with their whole lines. */
+/**
+ * Deletes `group` from `sourceCode` with `fixer`: one comment the safe way (`removeComment`), or a run of line comments
+ * with their whole lines.
+ */
 export function removeGroup(fixer: Rule.RuleFixer, sourceCode: SourceCode, group: Comment[]): Rule.Fix {
   if (group.length === 1) return removeComment(fixer, sourceCode, group[0]);
   return fixer.removeRange(wholeLinesRange(sourceCode.text, group[0].range![0], group.at(-1)!.range![1])!);
@@ -79,18 +82,18 @@ export interface CommentLine {
   content: string;
 }
 
-/** The comment text that `commentLines` split, joined back. */
+/** The `lines` that `commentLines` split, joined back with the line break of `comment`. */
 export function joinLines(comment: Comment, lines: CommentLine[]): string {
   return lines.map((line) => line.prefix + line.content).join(lineBreakOf(comment));
 }
 
-/** The line break a comment's text uses. */
+/** The line break the text of `comment` uses. */
 export function lineBreakOf(comment: Comment): string {
   return comment.value.includes("\r\n") ? "\r\n" : "\n";
 }
 
 /**
- * Drops the lines whose index is in `drop`. The first and last lines carry the comment's delimiters, so they are
+ * Drops the `lines` of `comment` whose index is in `drop`. The first and last lines carry the comment's delimiters, so they are
  * emptied instead: the first keeps nothing after `/*` (or `/**`), the last keeps only its indentation before `*\/`.
  */
 export function withoutLines(comment: Comment, lines: CommentLine[], drop: Set<number>): CommentLine[] {
@@ -103,7 +106,10 @@ export function withoutLines(comment: Comment, lines: CommentLine[], drop: Set<n
   });
 }
 
-/** Replaces the comment's text with `value`, or deletes the comment when `value` holds no text. `null` when unsafe. */
+/**
+ * Replaces the text of `comment` with `value` through `fixer`, or deletes the comment from `sourceCode` when `value`
+ * holds no text. `null` when unsafe.
+ */
 export function replaceCommentText({ fixer, sourceCode }: CommentEdit, comment: Comment, value: string): Rule.Fix | null {
   const lines = commentLines({ ...comment, value } as Comment);
   if (holdsNoText(lines)) return removeComment(fixer, sourceCode, comment);
@@ -127,17 +133,17 @@ export function rewrittenComment(comment: Comment, value: string): string | null
   return `/*${value}*/`;
 }
 
-/** Whether `value` would turn the line comment into a `///` triple-slash comment it was not before. */
+/** Whether `value` would turn the line comment `comment` into a `///` triple-slash comment it was not before. */
 function becomesTripleSlash(comment: Comment, value: string): boolean {
   return value.startsWith("/") && !comment.value.startsWith("/");
 }
 
-/** Whether a comment's lines hold no text at all. */
+/** Whether the comment `lines` hold no text at all. */
 export function holdsNoText(lines: CommentLine[]): boolean {
   return lines.every((line) => line.content.trim() === "");
 }
 
-/** The comment's text split into lines, each with its decoration apart from its content. */
+/** The text of `comment` split into lines, each with its decoration apart from its content. */
 export function commentLines(comment: Comment): CommentLine[] {
   const doc = isDocComment(comment);
   return comment.value.split(lineBreakOf(comment)).map((line, index) => {
@@ -147,12 +153,12 @@ export function commentLines(comment: Comment): CommentLine[] {
   });
 }
 
-/** Whether the comment starts with `TODO` or `FIXME`, which `no-warning-comments` reports (CMT-10). */
+/** Whether `comment` starts with `TODO` or `FIXME`, which `no-warning-comments` reports (CMT-10). */
 export function isWarningComment(comment: Comment): boolean {
   return /^[\s*]*(?:todo|fixme)\b/iu.test(comment.value);
 }
 
-/** The lower-case words of an identifier: `getDayOfMonth` gives `get`, `day`, `of`, `month`. */
+/** The lower-case words of the identifier `name`: `getDayOfMonth` gives `get`, `day`, `of`, `month`. */
 export function nameWords(name: string): string[] {
   return name
     .replace(/([\p{Ll}\d])(\p{Lu})/gu, "$1 $2")
@@ -162,7 +168,7 @@ export function nameWords(name: string): string[] {
     .map((word) => word.toLowerCase());
 }
 
-/** The lower-case words of prose. */
+/** The lower-case words of the prose `text`. */
 export function proseWords(text: string): string[] {
   return text
     .toLowerCase()

@@ -39,14 +39,15 @@ function checkInstanceof(context: Rule.RuleContext, services: TypeServices, test
   context.report({ node: test as never, messageId: "subtypeCheck", data: { subtype: subtype.getName(), type: supertype.getName() } });
 }
 
-/** Whether `subtype` is a class that inherits from `supertype`, not `supertype` itself. */
+/** Whether `subtype` is a class that inherits from `supertype`, not `supertype` itself, as the type checker of `services` sees it. */
 function isProperSubtype(services: TypeServices, subtype: ts.Symbol, supertype: ts.Symbol): boolean {
   return subtype !== supertype && inheritsFrom(services.checker, subtype, supertype);
 }
 
 /**
- * The declared type of the checked value: a variable's, parameter's or property's own declared type, not the type it
- * is narrowed to at this point, so that an `else if` chain of checks is judged against the same type each time.
+ * The declared type of the checked value `node`, read through `services`: a variable's, parameter's or property's own
+ * declared type, not the type it is narrowed to at this point, so that an `else if` chain of checks is judged against the
+ * same type each time.
  */
 function declaredType(services: TypeServices, node: Node): ts.Type {
   const { checker } = services;
@@ -57,7 +58,7 @@ function declaredType(services: TypeServices, node: Node): ts.Type {
   return isTopType(checker, type) ? type : checker.getNonNullableType(type);
 }
 
-/** The class or interface `T` the value is declared as, when it is declared in the project. */
+/** The class or interface `T` that `type`, the value's declared type, is, when `services` shows it declared in the project. */
 function projectSupertype(services: TypeServices, type: ts.Type): ts.Symbol | null {
   if (type.isUnion() || isTopType(services.checker, type)) return null;
   const owner = classOrInterfaceOf(services.checker, type);
@@ -66,7 +67,7 @@ function projectSupertype(services: TypeServices, type: ts.Type): ts.Symbol | nu
   return declarations.length > 0 && declarations.every((declaration) => isProjectDeclaration(services.program, declaration)) ? owner.symbol : null;
 }
 
-/** The class `S` that `x instanceof S` tests for: what the right-hand side constructs. */
+/** The class `S` that `x instanceof S` tests for: what `node`, the right-hand side, constructs, read through `services`. */
 function testedClass(services: TypeServices, node: Node): ts.Symbol | null {
   const { checker } = services;
   const [construct] = checker.getTypeAtLocation(services.tsNode(node)).getConstructSignatures();

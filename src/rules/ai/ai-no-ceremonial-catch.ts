@@ -9,7 +9,7 @@ interface Options {
   loggerNames?: string[];
 }
 
-/** What a catch clause that only logs does with the error: `rethrow` or `swallow` it; `null` when it does more than log. */
+/** What `clause`, when it only logs through `console` or `loggerNames`, does with the error: `rethrow` or `swallow` it; `null` when it does more than log. */
 function ceremonyOf(clause: TSESTree.CatchClause, loggerNames: Set<string>): "rethrow" | "swallow" | null {
   const statements = clause.body.body;
   const rethrows = rethrowsParam(statements.at(-1), clause.param);
@@ -18,7 +18,7 @@ function ceremonyOf(clause: TSESTree.CatchClause, loggerNames: Set<string>): "re
   return rethrows ? "rethrow" : "swallow";
 }
 
-/** Whether the statement is only a call on `console`, or on a callee whose last name is in `loggerNames`, awaited or not. */
+/** Whether `statement` is only a call on `console`, or on a callee whose last name is in `loggerNames`, awaited or not. */
 function isLoggingCall(statement: TSESTree.Statement, loggerNames: Set<string>): boolean {
   if (statement.type !== "ExpressionStatement") return false;
   const expression = statement.expression.type === "AwaitExpression" ? statement.expression.argument : statement.expression;
@@ -28,7 +28,7 @@ function isLoggingCall(statement: TSESTree.Statement, loggerNames: Set<string>):
   return (names[0] === "console" && names.length === 2) || loggerNames.has(names.at(-1)!);
 }
 
-/** The names of a callee chain, outermost first: `this.logger.error` gives `this`, `logger`, `error`; `null` for anything else. */
+/** The names of the chain in `callee`, outermost first: `this.logger.error` gives `this`, `logger`, `error`; `null` for anything else. */
 function calleeNames(callee: TSESTree.Node): string[] | null {
   if (callee.type === "Identifier") return [callee.name];
   if (callee.type === "ThisExpression") return ["this"];
@@ -37,7 +37,7 @@ function calleeNames(callee: TSESTree.Node): string[] | null {
   return object && [...object, callee.property.name];
 }
 
-/** Whether the statement is `throw <param>`, rethrowing the error the clause caught. */
+/** Whether `statement` is `throw <param>`, rethrowing the error the clause caught in `param`. */
 function rethrowsParam(statement: TSESTree.Statement | undefined, param: TSESTree.CatchClause["param"]): boolean {
   return statement?.type === "ThrowStatement" && param?.type === "Identifier" && statement.argument.type === "Identifier" && statement.argument.name === param.name;
 }

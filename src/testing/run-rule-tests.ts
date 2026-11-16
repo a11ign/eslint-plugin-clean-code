@@ -56,7 +56,7 @@ EslintRuleTester.it = it;
 OxlintRuleTester.describe = describe;
 OxlintRuleTester.it = it as never;
 
-/** Runs `cases` for the rule under both linters, with the fix checks above. */
+/** Runs `cases` for `rule`, titled `ruleName`, under both linters, with the fix checks above. */
 export function runRuleTests(ruleName: string, rule: Rule.RuleModule, cases: RuleCases): void {
   const extra = fixedOutputCases(cases.invalid);
   const all = { valid: [...cases.valid.map(normalise), ...extra.valid], invalid: [...cases.invalid, ...extra.invalid] };
@@ -124,7 +124,7 @@ function behaviourTests(ruleName: string, invalid: InvalidCase[]): void {
   });
 }
 
-/** Asserts that `expression` runs on the case's code, and gives the same result on its fixed output. */
+/** Asserts that `expression` runs on the code of `testCase`, and gives the same result on its fixed output. */
 function assertSameValueAfterFix(testCase: InvalidCase, expression: string): void {
   const filename = testCase.filename ?? DEFAULT_FILENAME;
   const before = evaluate(runnable(testCase.code, filename), expression);
@@ -147,7 +147,7 @@ function evaluate(code: string, expression: string): string {
   }
 }
 
-/** The cases each fix adds: its output reports nothing (or only `outputErrors`, with no further fix). */
+/** The cases each fix in `invalid` adds: its output reports nothing (or only `outputErrors`, with no further fix). */
 function fixedOutputCases(invalid: InvalidCase[]): { valid: CaseBase[]; invalid: InvalidCase[] } {
   const valid: CaseBase[] = [];
   const stillInvalid: InvalidCase[] = [];

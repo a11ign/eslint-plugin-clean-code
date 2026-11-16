@@ -22,7 +22,10 @@ const DOCUMENTED = new Set([
 
 const FUNCTIONS = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"]);
 
-/** The comments the rule reports: all but the licence header, tool directives, `allow` matches and attached doc comments. */
+/**
+ * The comments of `sourceCode` the rule reports: all but the licence header, tool directives, `allow` matches and attached
+ * doc comments. Code starts at `firstCodeStart`.
+ */
 function narratingComments(sourceCode: SourceCode, firstCodeStart: number, allow: RegExp[]): Comment[] {
   const comments = sourceComments(sourceCode);
   const header = licenceHeader(comments, firstCodeStart);
@@ -30,20 +33,23 @@ function narratingComments(sourceCode: SourceCode, firstCodeStart: number, allow
   return comments.filter((comment) => !isKept(comment));
 }
 
-/** The file's licence header: its first comment, when no code comes before it and it names a licence. A hashbang may precede it. */
+/**
+ * The file's licence header: the first of `comments`, when it ends before the code at `firstCodeStart` and names a licence.
+ * A hashbang may precede it.
+ */
 function licenceHeader(comments: Comment[], firstCodeStart: number): Comment | undefined {
   const [first] = comments;
   return first && first.range![1] <= firstCodeStart && LICENCE.test(first.value) ? first : undefined;
 }
 
-/** Whether the rule leaves the comment alone: a tool directive, or one an `allow` pattern matches. */
+/** Whether the rule leaves `comment` alone: a tool directive, or one an `allow` pattern matches. */
 function isAllowed(comment: Comment, allow: RegExp[]): boolean {
   return isDirectiveComment(comment) || allow.some((pattern) => pattern.test(comment.value));
 }
 
 /**
- * Whether a doc comment documents something: it sits directly on a declaration outside any function body, or it is the
- * file's overview, before the first statement. A doc comment between statements, or inside a function, narrates.
+ * Whether the doc `comment` documents something: it sits directly on a declaration of `sourceCode` outside any function
+ * body, or it is the file's overview, before `firstCodeStart`. A doc comment between statements, or inside a function, narrates.
  */
 function isAttachedDoc(sourceCode: SourceCode, comment: Comment, firstCodeStart: number): boolean {
   if (comment.range![1] <= firstCodeStart) return true;
@@ -52,7 +58,7 @@ function isAttachedDoc(sourceCode: SourceCode, comment: Comment, firstCodeStart:
   return declaration !== null && !insideFunction(declaration);
 }
 
-/** The outermost declaration that starts at `index`, or null when none does. */
+/** The outermost declaration in `sourceCode` that starts at `index`, or null when none does. */
 function declarationStartingAt(sourceCode: SourceCode, index: number): Node | null {
   let found: Node | null = null;
   for (let node = sourceCode.getNodeByRangeIndex(index) as Node | null; node && node.range[0] === index; node = node.parent ?? null) {

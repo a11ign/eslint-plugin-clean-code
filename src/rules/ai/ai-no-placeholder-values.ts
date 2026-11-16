@@ -17,7 +17,7 @@ interface Options {
 }
 
 /**
- * Whether the string names something rather than being a value: a property key, a computed member name (`el["placeholder"]`),
+ * Whether the string `node` names something rather than being a value: a property key, a computed member name (`el["placeholder"]`),
  * a module specifier, or a TypeScript literal type.
  */
 function isName(node: TSESTree.Node): boolean {

@@ -5,6 +5,7 @@ import aiNoEmoji from "./ai/ai-no-emoji.ts";
 import aiNoInlineComments from "./ai/ai-no-inline-comments.ts";
 import aiNoPlaceholderImplementation from "./ai/ai-no-placeholder-implementation.ts";
 import aiNoPlaceholderValues from "./ai/ai-no-placeholder-values.ts";
+import jsdocNamesEveryParameter from "./jsdoc/jsdoc-names-every-parameter.ts";
 import errorHandlingIsOneThing from "./error-handling-is-one-thing.ts";
 import fieldsFirst from "./fields-first.ts";
 import lawOfDemeter from "./law-of-demeter.ts";
@@ -59,6 +60,7 @@ export const rules: Record<string, CleanCodeRule> = {
   "ai-no-placeholder-values": aiNoPlaceholderValues,
   "error-handling-is-one-thing": errorHandlingIsOneThing,
   "fields-first": fieldsFirst,
+  "jsdoc-names-every-parameter": jsdocNamesEveryParameter,
   "law-of-demeter": lawOfDemeter,
   "loop-variable-in-loop": loopVariableInLoop,
   "max-block-statements": maxBlockStatements,

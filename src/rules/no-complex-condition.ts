@@ -31,8 +31,8 @@ function conditionChecker(context: Rule.RuleContext, max: number): ConditionChec
 }
 
 /**
- * The `&&` and `||` operators a condition joins and how many operands they join. A `!` in front of a group is looked
- * through, so `!(a && b) || c` mixes both. `??`, calls and every other expression are one operand.
+ * The `&&` and `||` operators the condition `expression` joins and how many operands they join. A `!` in front of a group
+ * is looked through, so `!(a && b) || c` mixes both. `??`, calls and every other expression are one operand.
  */
 function shapeOf(expression: Expression): Shape {
   const group = andOrGroup(expression);

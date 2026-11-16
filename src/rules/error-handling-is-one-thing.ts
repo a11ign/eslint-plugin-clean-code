@@ -4,7 +4,10 @@ import { asTs, isFunction, type FunctionNode, type Node, type TSESTree } from ".
 
 type Statement = TSESTree.Statement;
 
-/** Reports each statement before the function's first `try` that is not a declaration, and each after it that runs code. */
+/**
+ * Reports through `context` each statement of the function `body` before its first `try` that is not a declaration, and each
+ * after it that runs code.
+ */
 function reportAroundTry(context: Rule.RuleContext, body: TSESTree.BlockStatement): void {
   const statements = body.body.filter((statement) => !isNotCode(statement));
   const first = statements.findIndex((statement) => statement.type === "TryStatement");
@@ -15,22 +18,25 @@ function reportAroundTry(context: Rule.RuleContext, body: TSESTree.BlockStatemen
   });
 }
 
-/** Statements that may come before the `try`: the book's "some variable declarations", and TypeScript type declarations, which do nothing at run time. */
+/**
+ * Whether `statement` may come before the `try`: the book's "some variable declarations", and TypeScript type declarations,
+ * which do nothing at run time.
+ */
 function isDeclarationOnly(statement: Statement): boolean {
   return statement.type === "VariableDeclaration" || statement.type === "TSTypeAliasDeclaration" || statement.type === "TSInterfaceDeclaration";
 }
 
-/** Statements after the `try` that do not run there: a hoisted function declaration and TypeScript type declarations. */
+/** Whether `statement`, after the `try`, does not run there: a hoisted function declaration and TypeScript type declarations. */
 function runsNothing(statement: Statement): boolean {
   return statement.type === "FunctionDeclaration" || statement.type === "TSDeclareFunction" || statement.type === "TSTypeAliasDeclaration" || statement.type === "TSInterfaceDeclaration";
 }
 
-/** A directive prologue entry (`"use strict"`) or an empty statement, which are not code the function runs. */
+/** Whether `statement` is a directive prologue entry (`"use strict"`) or an empty statement, which are not code the function runs. */
 function isNotCode(statement: Statement): boolean {
   return statement.type === "EmptyStatement" || (statement.type === "ExpressionStatement" && typeof statement.directive === "string");
 }
 
-/** Whether a `try` statement sits inside a `catch` clause of the same function. */
+/** Whether the `try` statement `node` sits inside a `catch` clause of the same function. */
 function isInsideCatch(node: TSESTree.TryStatement): boolean {
   for (let current: Node | undefined = node.parent; current && !isFunction(current); current = current.parent) {
     if (current.type === "CatchClause") return true;

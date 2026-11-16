@@ -24,7 +24,7 @@ export interface Block {
   lastToken: Token;
 }
 
-/** The block from `first` to `last` (the same node for one), or `null` when it shares a line with other code. */
+/** The block from `first` to `last` (the same node for one) in `sourceCode`, or `null` when it shares a line with other code. */
 export function blockOf(sourceCode: SourceCode, first: Node, last: Node = first): Block | null {
   const leading = leadingComments(sourceCode, first);
   const trailing = trailingComments(sourceCode, last);
@@ -37,13 +37,13 @@ export function blockOf(sourceCode: SourceCode, first: Node, last: Node = first)
   return { range: [start, end], lines, firstToken, lastToken };
 }
 
-/** The comments after `node` on the line where it ends. */
+/** The comments of `sourceCode` after `node` on the line where it ends. */
 function trailingComments(sourceCode: SourceCode, node: Node): Comment[] {
   const endLine = node.loc.end.line;
   return (sourceCode.getCommentsAfter(node as never) as Comment[]).filter((comment) => comment.loc!.start.line === endLine);
 }
 
-/** The comments directly above `node` that belong to it, in source order. */
+/** The comments of `sourceCode` directly above `node` that belong to it, in source order. */
 export function leadingComments(sourceCode: SourceCode, node: Node): Comment[] {
   const before = sourceCode.getCommentsBefore(node as never) as Comment[];
   const attached: Comment[] = [];
@@ -56,8 +56,8 @@ export function leadingComments(sourceCode: SourceCode, node: Node): Comment[] {
 }
 
 /**
- * Whether a comment above a node belongs to it: it starts its line, and no blank line separates it from the code below.
- * A directive that covers a region (`eslint-disable`, `#region`, a license) stays where it is.
+ * Whether `comment` belongs to the code starting at `below`: it starts its line in `sourceCode`, and no blank line
+ * separates it from that code. A directive that covers a region (`eslint-disable`, `#region`, a license) stays where it is.
  */
 function isAttached(sourceCode: SourceCode, comment: Comment, below: number): boolean {
   const text = sourceCode.text;
@@ -69,8 +69,9 @@ function isAttached(sourceCode: SourceCode, comment: Comment, below: number): bo
 }
 
 /**
- * Removes a block, with `removeRange` so the code after it never continues the statement before it. One blank line next
- * to it goes too when the removal would otherwise leave two gaps in a row, or a gap after the list's `{` or before its `}`.
+ * Removes `block` from `sourceCode` as `fixer` fixes, through `removeRange` so the code after it never continues the
+ * statement before it. One blank line next to it goes too when the removal would otherwise leave two gaps in a row, or a
+ * gap after the list's `{` or before its `}`.
  */
 export function removeBlock(fixer: Rule.RuleFixer, sourceCode: SourceCode, block: Block): Rule.Fix[] {
   const removal = removeRange(fixer, sourceCode, block.range);
@@ -88,8 +89,8 @@ interface SurplusBlankLine {
 }
 
 /**
- * The blank line next to the removed `lines` that would leave two gaps in a row, or a gap after the list's `{` or before
- * its `}`; `null` when there is none.
+ * The blank line in `sourceCode` next to the removed lines, from `start` to the line starting at `after`, that would leave
+ * two gaps in a row, or a gap after the list's `{` or before its `}`; `null` when there is none.
  */
 function surplusBlankLine(sourceCode: SourceCode, [start, after]: Range): SurplusBlankLine | null {
   const text = sourceCode.text;
@@ -101,7 +102,7 @@ function surplusBlankLine(sourceCode: SourceCode, [start, after]: Range): Surplu
   return null;
 }
 
-/** Whether the token next to `offset` (before or after it, comments included) is `brace`, or there is none. */
+/** Whether the token of `sourceCode` next to `offset` (before or after it, comments included) is `brace`, or there is none. */
 function besideBrace(sourceCode: SourceCode, offset: number, brace: "{" | "}"): boolean {
   const range = { range: [offset, offset] } as never;
   const token = (brace === "{" ? sourceCode.getTokenBefore(range, { includeComments: true }) : sourceCode.getTokenAfter(range, { includeComments: true })) as Token | null;
@@ -118,8 +119,8 @@ function isBlankLine(text: string, lineStart: number): boolean {
 }
 
 /**
- * Where code can be inserted on its own line after `node`: the end of the line `node` ends on. `null` when other code, or a
- * comment that runs onto the next line, follows `node` on that line.
+ * Where code can be inserted on its own line after `node` in `sourceCode`: the end of the line `node` ends on. `null` when
+ * other code, or a comment that runs onto the next line, follows `node` on that line.
  */
 export function endOfLineAfter(sourceCode: SourceCode, node: Node): number | null {
   const text = sourceCode.text;
@@ -132,8 +133,8 @@ export function endOfLineAfter(sourceCode: SourceCode, node: Node): number | nul
 }
 
 /**
- * The text of `block` inserted on new lines after `previous` (the last token before the insertion point), with a `;` in
- * front when the block's first token would otherwise continue `previous`'s statement.
+ * The text of `block`, read from `sourceCode`, inserted on new lines after `previous` (the last token before the insertion
+ * point), with a `;` in front when the block's first token would otherwise continue `previous`'s statement.
  */
 export function insertedAfter(sourceCode: SourceCode, previous: Token, block: Block): string {
   const guard = continuesStatement(previous, block.firstToken) ? ";" : "";
@@ -141,19 +142,19 @@ export function insertedAfter(sourceCode: SourceCode, previous: Token, block: Bl
   return `\n${blankLine}${guard}${blockText(sourceCode, block)}`;
 }
 
-/** Whether a blank line separates `block` from the code after it, so a moved copy keeps the same spacing. */
+/** Whether a blank line in `sourceCode` separates `block` from the code after it, so a moved copy keeps the same spacing. */
 export function blankLineAfter(sourceCode: SourceCode, block: Block): boolean {
   return isBlankLine(sourceCode.text, block.lines[1]);
 }
 
-/** The block's lines, without the line break after the last one. */
+/** The lines of `block` in `sourceCode`, without the line break after the last one. */
 export function blockText(sourceCode: SourceCode, block: Block): string {
   return sourceCode.text.slice(block.lines[0], block.range[1]);
 }
 
 /**
- * The text of `block` ending with a `;` when `next` (the first token after the insertion point) would otherwise continue
- * the block's last statement or member.
+ * The text of `block` in `sourceCode`, ending with a `;` when `next` (the first token after the insertion point) would
+ * otherwise continue the block's last statement or member.
  */
 export function guardedBefore(sourceCode: SourceCode, block: Block, next: Token | null): string {
   const text = blockText(sourceCode, block);
@@ -162,7 +163,10 @@ export function guardedBefore(sourceCode: SourceCode, block: Block, next: Token 
   return `${text.slice(0, cut)};${text.slice(cut)}`;
 }
 
-/** Runs of blocks with nothing but blank space between them, so each run is removed in one piece. `blocks` is in source order. */
+/**
+ * Runs of `blocks` with nothing but blank space between them in `sourceCode`, so each run is removed in one piece. `blocks`
+ * is in source order.
+ */
 export function mergeAdjacent(sourceCode: SourceCode, blocks: Block[]): Block[] {
   const merged: Block[] = [];
   for (const block of blocks) {
@@ -180,8 +184,9 @@ export function mergeAdjacent(sourceCode: SourceCode, blocks: Block[]): Block[] 
 const REGION_DIRECTIVE = /^\s*(eslint|oxlint)-(disable|enable)(?![-\w])|^\s*(istanbul|c8|v8|node:coverage)\s+(ignore\s+)?(start|stop|disable|enable)\b|^\s*#(region|endregion)\b/;
 
 /**
- * Whether moving `blocks` to `to` would carry code across a directive comment, or carry a region directive to cover other
- * code: a directive between a block's old place and `to` that is not itself moving, or a region directive inside a block.
+ * Whether moving `blocks` to `to` in `sourceCode` would carry code across a directive comment, or carry a region directive
+ * to cover other code: a directive between a block's old place and `to` that is not itself moving, or a region directive
+ * inside a block.
  */
 export function crossesDirective(sourceCode: SourceCode, blocks: Block[], to: number): boolean {
   const directives = (sourceCode.getAllComments() as Comment[]).filter(isDirectiveComment);
@@ -192,8 +197,8 @@ export function crossesDirective(sourceCode: SourceCode, blocks: Block[], to: nu
 }
 
 /**
- * Whether a directive on a block's path stops it moving: one that is not itself moving, or a region directive inside the
- * block, which would cover other code once moved.
+ * Whether `directive`, on the path of `block`, stops it moving: one that is not itself moving with `blocks`, or a region
+ * directive inside `block`, which would cover other code once moved.
  */
 function blocksMove(directive: Comment, block: Block, blocks: Block[]): boolean {
   return inside(directive, blocks) ? inside(directive, [block]) && REGION_DIRECTIVE.test(directive.value) : true;

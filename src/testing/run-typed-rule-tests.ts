@@ -50,8 +50,8 @@ function toCase(testCase: TypedCase | string) {
 }
 
 /**
- * Lints each case with typescript-eslint's parser and no `projectService`, so `parserServices.program` is `null`. A
- * type-aware rule must then report nothing and not crash: every case here is valid.
+ * Lints each of the `valid` cases of `rule`, named `ruleName`, with typescript-eslint's parser and no `projectService`, so
+ * `parserServices.program` is `null`. A type-aware rule must then report nothing and not crash.
  */
 export function runWithoutTypeInformation(ruleName: string, rule: Rule.RuleModule, valid: string[]): void {
   const tester = new RuleTester({ languageOptions: { parser: tsParser } });

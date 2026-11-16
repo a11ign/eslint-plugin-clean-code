@@ -52,8 +52,8 @@ export default defineAiRule<[Options]>({
 });
 
 /**
- * Hands the range of every comment, string literal and template literal part (and JSX text, with `checkJsxText`) to
- * `checkRange`.
+ * Hands the range of every comment of `sourceCode`, string literal and template literal part (and JSX text, when
+ * `options` turn on `checkJsxText`) to `checkRange`.
  */
 function commentAndStringVisitors(sourceCode: SourceCode, checkRange: (range: Range) => void, options: Options): Rule.RuleListener {
   const checkNode = (node: unknown) => checkRange(asTs(node).range);
@@ -67,7 +67,7 @@ function commentAndStringVisitors(sourceCode: SourceCode, checkRange: (range: Ra
   };
 }
 
-/** Reports each emoji in the source text in `range`, except those `allowed` lists. */
+/** Reports through `context` each emoji in the source text in `range`, except those `allowed` lists. */
 function reportEmojiIn(context: Rule.RuleContext, allowed: ReadonlySet<string>, range: Range) {
   const [start, end] = range;
   const matches = context.sourceCode.text.slice(start, end).matchAll(EMOJI);
@@ -76,12 +76,12 @@ function reportEmojiIn(context: Rule.RuleContext, allowed: ReadonlySet<string>, 
   }
 }
 
-/** An emoji without its U+FE0F, so an `allow` entry matches it written either way. */
+/** `emoji` without its U+FE0F, so an `allow` entry matches it written either way. */
 function bare(emoji: string): string {
   return emoji.replaceAll("️", "");
 }
 
-/** Reports `emoji`, which starts at `offset` in the source text. */
+/** Reports through `context` the `emoji` that starts at `offset` in the source text. */
 function reportEmojiAt(context: Rule.RuleContext, offset: number, emoji: string) {
   const sourceCode = context.sourceCode;
   const loc = { start: sourceCode.getLocFromIndex(offset), end: sourceCode.getLocFromIndex(offset + emoji.length) };

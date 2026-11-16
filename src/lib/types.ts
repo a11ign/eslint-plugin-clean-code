@@ -22,7 +22,7 @@ interface ParserServicesShape {
   esTreeNodeToTSNodeMap?: { get: (node: Node) => ts.Node };
 }
 
-/** The program and checker, or `null` when the file was parsed without type information (then a rule reports nothing). */
+/** The program and checker of the file `context` lints, or `null` when the file was parsed without type information (then a rule reports nothing). */
 export function typeServices(context: Rule.RuleContext): TypeServices | null {
   const services = (context.sourceCode as { parserServices?: ParserServicesShape }).parserServices;
   const program = services?.program;
@@ -31,12 +31,12 @@ export function typeServices(context: Rule.RuleContext): TypeServices | null {
   return { program, checker: program.getTypeChecker(), tsNode: (node) => map.get(node) };
 }
 
-/** The members of a union, or the type itself. */
+/** The members of the union `type`, or `type` itself. */
 export function unionMembers(type: ts.Type): ts.Type[] {
   return type.isUnion() ? type.types : [type];
 }
 
-/** The class or interface a type is an instance of (`Foo` for `Foo<number>`), or `null`. */
+/** The class or interface `type` is an instance of (`Foo` for `Foo<number>`), as `checker` declares it, or `null`. */
 export function classOrInterfaceOf(checker: ts.TypeChecker, type: ts.Type): { symbol: ts.Symbol; declared: ts.InterfaceType } | null {
   const symbol = type.getSymbol();
   if (!symbol) return null;
@@ -45,8 +45,8 @@ export function classOrInterfaceOf(checker: ts.TypeChecker, type: ts.Type): { sy
 }
 
 /**
- * Whether the symbol is a class declared in the project (see `isProjectDeclaration`). Every declaration must be, so a
- * project interface merged into a library class does not make it a project class.
+ * Whether `symbol` is a class declared in the project (see `isProjectDeclaration`), checked with the checker and program of
+ * `services`. Every declaration must be, so a project interface merged into a library class does not make it a project class.
  */
 export function isProjectClass(services: TypeServices, symbol: ts.Symbol): boolean {
   if (!services.checker.getDeclaredTypeOfSymbol(symbol).isClass()) return false;
@@ -54,24 +54,24 @@ export function isProjectClass(services: TypeServices, symbol: ts.Symbol): boole
   return declarations.length > 0 && declarations.every((declaration) => isProjectDeclaration(services.program, declaration));
 }
 
-/** Whether a declaration is the project's own code: not in a default library file (`lib.*.d.ts`) and not under `node_modules`. */
+/** Whether `declaration` is the project's own code in `program`: not in a default library file (`lib.*.d.ts`) and not under `node_modules`. */
 export function isProjectDeclaration(program: ts.Program, declaration: ts.Node): boolean {
   const file = declaration.getSourceFile();
   if (program.isSourceFileDefaultLibrary(file) || program.isSourceFileFromExternalLibrary(file)) return false;
   return !/[\\/]node_modules[\\/]/.test(file.fileName);
 }
 
-/** A method or accessor with a body: a concrete function, as opposed to an abstract method or an overload signature. */
+/** Whether `declaration` is a method or accessor with a body: a concrete function, as opposed to an abstract method or an overload signature. */
 export function hasBody(declaration: ts.Node): boolean {
   return isFunctionLikeDeclaration(declaration) && (declaration as { body?: unknown }).body !== undefined;
 }
 
-/** A method or accessor declaration: something with a parameter list (fields and parameter properties have none). */
+/** Whether `declaration` is a method or accessor: something with a parameter list (fields and parameter properties have none). */
 export function isFunctionLikeDeclaration(declaration: ts.Node): boolean {
   return "parameters" in declaration && Array.isArray((declaration as { parameters?: unknown }).parameters);
 }
 
-/** A field or parameter property that is `private`, `protected` or `#private`. */
+/** Whether `declaration` is a field or parameter property that is `private`, `protected` or `#private`. */
 export function isNonPublicState(declaration: ts.Node): boolean {
   if (isFunctionLikeDeclaration(declaration)) return false;
   const name = (declaration as { name?: ts.Node }).name;
@@ -79,7 +79,7 @@ export function isNonPublicState(declaration: ts.Node): boolean {
   return hasModifier(declaration, "private") || hasModifier(declaration, "protected");
 }
 
-/** Whether a declaration carries the modifier keyword (`abstract`, `private`, `static` and so on). */
+/** Whether `declaration` carries the modifier `keyword` (`abstract`, `private`, `static` and so on). */
 export function hasModifier(declaration: ts.Node, keyword: string): boolean {
   return modifierTexts(declaration).includes(keyword);
 }
@@ -89,7 +89,7 @@ function modifierTexts(declaration: ts.Node): string[] {
   return modifiers.map((modifier) => modifier.getText());
 }
 
-/** Whether `symbol` extends or implements `ancestor`, directly or through other types. */
+/** Whether `symbol` extends or implements `ancestor`, directly or through other types, as `checker` resolves them. */
 export function inheritsFrom(checker: ts.TypeChecker, symbol: ts.Symbol, ancestor: ts.Symbol): boolean {
   const seen = new Set<ts.Symbol>();
   const reaches = (current: ts.Symbol): boolean => {
@@ -103,7 +103,7 @@ export function inheritsFrom(checker: ts.TypeChecker, symbol: ts.Symbol, ancesto
   return reaches(symbol);
 }
 
-/** The class's direct supertypes: what it `extends` and `implements` (an interface: what it `extends`). */
+/** The direct supertypes of the class `symbol`, as `checker` resolves them: what it `extends` and `implements` (an interface: what it `extends`). */
 export function directSupertypes(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Type[] {
   const declared = checker.getDeclaredTypeOfSymbol(symbol);
   const bases: ts.Type[] = declared.isClassOrInterface() ? [...checker.getBaseTypes(declared)] : [];
@@ -111,16 +111,16 @@ export function directSupertypes(checker: ts.TypeChecker, symbol: ts.Symbol): ts
   return bases;
 }
 
-/** The types a declaration's `extends` and `implements` clauses name, in source order. */
+/** The types the `extends` and `implements` clauses of `declaration` name, resolved by `checker`, in source order. */
 function heritageTypes(checker: ts.TypeChecker, declaration: ts.Declaration): ts.Type[] {
   const clauses = (declaration as { heritageClauses?: readonly ts.HeritageClause[] }).heritageClauses ?? [];
   return clauses.flatMap((clause) => clause.types.map((heritage) => checker.getTypeAtLocation(heritage)));
 }
 
 /**
- * The ESTree node's TypeScript type, with `null` and `undefined` removed. A type parameter is replaced by its constraint
- * when it has one. `any` and `unknown` are returned as they are (`NonNullable<unknown>` would be `{}`), and so is an
- * unconstrained type parameter.
+ * The TypeScript type of the ESTree `node`, read through `services`, with `null` and `undefined` removed. A type parameter
+ * is replaced by its constraint when it has one. `any` and `unknown` are returned as they are (`NonNullable<unknown>` would
+ * be `{}`), and so is an unconstrained type parameter.
  */
 export function nonNullableTypeAt(services: TypeServices, node: Node): ts.Type {
   const { checker } = services;
@@ -130,7 +130,7 @@ export function nonNullableTypeAt(services: TypeServices, node: Node): ts.Type {
   return checker.getNonNullableType(type);
 }
 
-/** `any` and `unknown`: the only types `unknown` is assignable to. They carry no information to report on. */
+/** Whether `type` is `any` or `unknown`, the only types `checker` finds `unknown` assignable to. They carry no information to report on. */
 export function isTopType(checker: ts.TypeChecker, type: ts.Type): boolean {
   return checker.isTypeAssignableTo(checker.getUnknownType(), type);
 }

@@ -24,7 +24,8 @@
  * - `react-extended`: opt-in, `eslint-plugin-react-hooks`' and `eslint-plugin-react`'s rules that `docs/catalog-react.md` grounds,
  *   listed one by one. Stack it after `react`. Both plugins are optional peer dependencies, loaded only when this config is read.
  * - `jsdoc`: opt-in, `eslint-plugin-jsdoc`'s rules that `docs/catalog-jsdoc.md` grounds, which check that a doc comment is
- *   well-formed, listed one by one, on JavaScript and TypeScript files, with `no-types` on TypeScript files only. Stack it after
+ *   well-formed, listed one by one, on JavaScript and TypeScript files, with `no-types` on TypeScript files only, and this plugin's
+ *   `jsdoc-names-every-parameter`, which checks that a doc comment names every parameter. Stack it after
  *   `recommended`. `eslint-plugin-jsdoc` is an optional peer dependency, loaded only when this config is read.
  */
 import { createRequire } from "node:module";
@@ -32,7 +33,7 @@ import type { ESLint, Linter, Rule } from "eslint";
 import tseslint from "typescript-eslint";
 import plugin from "./plugin.ts";
 import {
-  AI_RULES, AI_TEST_FILE_OFF, ALL_FILES, BUILT_IN_RULES, JSDOC_RULES, JSDOC_TS_RULES, JS_UNUSED_VARS, NODE_EXTENDED_RULES, NODE_RULES, PLUGIN_PREFIX, PROMISE_RULES, REACT_FILES, REACT_HOOKS_RULES,
+  AI_RULES, AI_TEST_FILE_OFF, ALL_FILES, BUILT_IN_RULES, JSDOC_RULES, JSDOC_SYNTAX_RULES, JSDOC_TS_RULES, JS_UNUSED_VARS, NODE_EXTENDED_RULES, NODE_RULES, PLUGIN_PREFIX, PROMISE_RULES, REACT_FILES, REACT_HOOKS_RULES,
   REACT_HOOK_FILES, REACT_HOOK_TS_FILES, REACT_TS_FILES, REACT_JSX_RULES, REACT_RULES, SYNTAX_RULES, TEST_FILES, TEST_FILE_OFF, TEST_FILE_RULES, TS_FILES, TS_UNUSED_VARS, TYPE_CHECKED_OPTIONS,
   TYPE_CHECKED_RULES, TYPESCRIPT_BUILT_IN_RULES, TYPESCRIPT_ESLINT_RULES, TYPESCRIPT_EXTENDED_RULES, TYPESCRIPT_RULES, TYPESCRIPT_TYPE_CHECKED_RULES, pluginRules,
   pluginSettings, prefixed, prefixedOptions,
@@ -100,7 +101,10 @@ const node: Linter.Config[] = [
   { name: `${PLUGIN_PREFIX}/node/typescript`, files: TS_FILES, languageOptions: { parser: tseslint.parser as Linter.Parser } },
 ];
 
-/** A config built once, when it is first read, so the optional peer plugins it loads are required only by a project that uses it. */
+/**
+ * A config that `build` makes once, when it is first read, so the optional peer plugins it loads are required only by a
+ * project that uses it.
+ */
 function builtOnce(build: () => Linter.Config[]): () => Linter.Config[] {
   let built: Linter.Config[] | undefined;
   return () => (built ??= build());
@@ -139,7 +143,10 @@ function typescriptExtendedPromiseConfig(): Linter.Config {
   };
 }
 
-/** An optional peer plugin, required when the config that needs it is first read; `ruleNames` are the rules that config turns on. */
+/**
+ * The optional peer plugin `packageName`, required when `configName`, the config that needs it, is first read; `ruleNames`
+ * are the rules that config turns on.
+ */
 function loadPeerPlugin(packageName: string, configName: string, ruleNames: readonly string[]): ESLint.Plugin {
   try {
     const loaded = createRequire(import.meta.url)(packageName) as ESLint.Plugin & { default?: ESLint.Plugin };
@@ -149,7 +156,10 @@ function loadPeerPlugin(packageName: string, configName: string, ruleNames: read
   }
 }
 
-/** The stand-in for every rule of a missing peer plugin: it fails when it is created, saying what to install. */
+/**
+ * The stand-in for every rule of a missing peer plugin: it fails when it is created, saying that the `configName` config
+ * needs `packageName` installed, with the load error as its `cause`.
+ */
 function missingPeerRule(packageName: string, configName: string, cause: unknown): Rule.RuleModule {
   return {
     meta: { schema: false },
@@ -160,8 +170,9 @@ function missingPeerRule(packageName: string, configName: string, cause: unknown
 }
 
 /**
- * Stands in for an optional peer plugin that is not installed. Reading the config, or listing every config, still works; linting
- * with the config that needs it fails, at its first file, with a message that says what to install.
+ * Stands in for `packageName`, an optional peer plugin that is not installed, with `missing` as each of its `ruleNames`.
+ * Reading the config, or listing every config, still works; linting with the config that needs it fails, at its first
+ * file, with a message that says what to install.
  */
 function missingPeerPlugin(packageName: string, ruleNames: readonly string[], missing: Rule.RuleModule): ESLint.Plugin {
   return { meta: { name: `${packageName} (not installed)` }, rules: Object.fromEntries(ruleNames.map((name) => [name, missing])) };
@@ -220,13 +231,14 @@ const reactExtended = builtOnce((): Linter.Config[] => [
   { name: `${PLUGIN_PREFIX}/react-extended/typescript`, files: REACT_HOOK_TS_FILES, languageOptions: { parser: tseslint.parser as Linter.Parser } },
 ]);
 
-/** DOC-01 to DOC-03 on every file, with `eslint-plugin-jsdoc` loaded for all four rules. */
+/** DOC-01 to DOC-03 and DOC-05 on every file, with `eslint-plugin-jsdoc` loaded for its four rules and this plugin for DOC-05. */
 function jsdocAllFilesConfig(): Linter.Config {
   return {
     name: `${PLUGIN_PREFIX}/jsdoc`,
     files: ALL_FILES,
-    plugins: { jsdoc: loadPeerPlugin("eslint-plugin-jsdoc", "jsdoc", [...JSDOC_RULES, ...JSDOC_TS_RULES]) },
-    rules: pluginRules("jsdoc", JSDOC_RULES),
+    plugins: { jsdoc: loadPeerPlugin("eslint-plugin-jsdoc", "jsdoc", [...JSDOC_RULES, ...JSDOC_TS_RULES]), [PLUGIN_PREFIX]: plugin as unknown as ESLint.Plugin },
+    languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
+    rules: { ...pluginRules("jsdoc", JSDOC_RULES), ...prefixed(JSDOC_SYNTAX_RULES) },
   };
 }
 
@@ -240,7 +252,7 @@ function jsdocTypeScriptConfig(): Linter.Config {
   };
 }
 
-/** DOC-01 to DOC-03 on every file, and DOC-04 on TypeScript files only, from `eslint-plugin-jsdoc`. */
+/** DOC-01 to DOC-03 and DOC-05 on every file, and DOC-04 on TypeScript files only. */
 const jsdoc = builtOnce((): Linter.Config[] => [jsdocAllFilesConfig(), jsdocTypeScriptConfig()]);
 
 type ConfigName =

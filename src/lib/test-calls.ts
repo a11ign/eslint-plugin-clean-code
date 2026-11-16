@@ -50,7 +50,7 @@ export function readTestCall(node: unknown): TestCall | null {
   return { call, kind, ...read, options, callback: isFunction(last) ? last : null };
 }
 
-/** Reads `it`, `it.skip`, `it.each(table)`, `it.concurrent.only` … into a base and its modifiers, or `null`. */
+/** Reads `callee`, such as `it`, `it.skip`, `it.each(table)` or `it.concurrent.only` …, into a base and its modifiers, or `null`. */
 function readCallee(callee: TSESTree.Node): CalleeParts | null {
   if (callee.type === "Identifier") return BASES.has(callee.name) ? { base: callee, modifiers: [] } : null;
   if (callee.type === "CallExpression") return readCalledCallee(callee);
@@ -64,14 +64,14 @@ interface CalleeParts {
   modifiers: TSESTree.Identifier[];
 }
 
-/** Reads `it.each(table)` as a callee: only a call to a modifier that returns the test function, such as `each`. */
+/** Reads a called `callee` such as `it.each(table)`: only a call to a modifier that returns the test function, such as `each`. */
 function readCalledCallee(callee: TSESTree.CallExpression): CalleeParts | null {
   const inner = readCallee(callee.callee);
   const last = inner?.modifiers.at(-1);
   return last && CALLED_MODIFIERS.has(last.name) ? inner : null;
 }
 
-/** Whether a node reads a known modifier by name: `.skip`, `.only`, `.each` … */
+/** Whether `node` reads a known modifier by name: `.skip`, `.only`, `.each` … */
 function isModifierAccess(node: TSESTree.Node): node is TSESTree.MemberExpression & { property: TSESTree.Identifier } {
   if (node.type !== "MemberExpression" || node.computed) return false;
   return node.property.type === "Identifier" && MODIFIERS.has(node.property.name);
@@ -82,14 +82,14 @@ function withModifier(inner: CalleeParts | null, modifier: TSESTree.Identifier):
   return inner ? { base: inner.base, modifiers: [...inner.modifiers, modifier] } : null;
 }
 
-/** Whether the test is marked as a to-do: `.todo`, or `{ todo: true }` / `{ todo: "reason" }`. */
+/** Whether `test` is marked as a to-do: `.todo`, or `{ todo: true }` / `{ todo: "reason" }`. */
 export function isTodo(test: TestCall): boolean {
   if (test.modifiers.some((modifier) => modifier.name === "todo")) return true;
   const option = optionProperty(test.options, "todo");
   return option !== null && !(option.value.type === "Literal" && (option.value.value === false || option.value.value === null || option.value.value === ""));
 }
 
-/** The value of a plain (non-computed, non-spread) property `name` in an options object. */
+/** The value of a plain (non-computed, non-spread) property `name` in the `options` object. */
 export function optionProperty(options: TSESTree.ObjectExpression | null, name: string): TSESTree.Property | null {
   if (!options) return null;
   return options.properties.find((property): property is TSESTree.Property => isPlainPropertyNamed(property, name)) ?? null;
@@ -101,20 +101,20 @@ function isPlainPropertyNamed(property: TSESTree.ObjectLiteralElement, name: str
   return plainKeyName(property.key) === name;
 }
 
-/** The name an identifier or literal key spells, or `null` for any other key. */
+/** The name `key` spells when it is an identifier or a literal, or `null` for any other key. */
 function plainKeyName(key: TSESTree.PropertyName): string | null {
   if (key.type === "Identifier") return key.name;
   return key.type === "Literal" ? String(key.value) : null;
 }
 
-/** Whether the test is skipped in any way: disabled, or `{ skip: "reason" }`, which `node:test` reads as skip with a message. */
+/** Whether `test` is skipped in any way: disabled, or `{ skip: "reason" }`, which `node:test` reads as skip with a message. */
 export function isSkipped(test: TestCall): boolean {
   if (disablingNode(test)) return true;
   const option = optionProperty(test.options, "skip");
   return option?.value.type === "Literal" && typeof option.value.value === "string" && option.value.value !== "";
 }
 
-/** How a test is disabled: the node that disables it, or `null` when it runs. `.todo` is not counted as disabled. */
+/** How `test` is disabled: the node that disables it, or `null` when it runs. `.todo` is not counted as disabled. */
 export function disablingNode(test: TestCall): TSESTree.Node | null {
   if (BASES.get(test.base.name)!.disabledByPrefix) return test.base;
   const skip = test.modifiers.find((modifier) => modifier.name === "skip");

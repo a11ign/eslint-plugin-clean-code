@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import plugin from "../src/index.ts";
-import { AI_RULES, JSDOC_RULES, JSDOC_TS_RULES, NODE_EXTENDED_RULES, NODE_RULES, PLUGIN_PREFIX, REACT_RULES, SYNTAX_RULES, TEST_FILE_RULES, TYPE_CHECKED_RULES, TYPESCRIPT_RULES } from "../src/configs.ts";
+import { AI_RULES, JSDOC_RULES, JSDOC_SYNTAX_RULES, JSDOC_TS_RULES, NODE_EXTENDED_RULES, NODE_RULES, PLUGIN_PREFIX, REACT_RULES, SYNTAX_RULES, TEST_FILE_RULES, TYPE_CHECKED_RULES, TYPESCRIPT_RULES } from "../src/configs.ts";
 import { docPath, readme, rules, rulesOf, tableCells } from "./plugin-support.ts";
 import { ROOT } from "./support.ts";
 
@@ -17,7 +17,7 @@ interface ReadmeRow {
   fix: string;
 }
 
-/** The rule names in the README's table under `### <heading>`, each with its link and its Fix cell. */
+/** The rule names in the README's table under the `heading` section (`### <heading>`), each with its link and its Fix cell. */
 function readmeTable(heading: string): ReadmeRow[] {
   const start = readme.indexOf(`\n### ${heading}\n`);
   assert.notEqual(start, -1, `the README has no "### ${heading}" section`);
@@ -59,10 +59,15 @@ describe("the README", () => {
     assert.deepEqual(readmeTable("In `node-extended`").map((row) => row.name), Object.keys(NODE_EXTENDED_RULES));
   });
 
-  it("lists exactly the rules jsdoc turns on", () => {
-    const listed = readmeTable("In `jsdoc`").map((row) => row.name);
-    assert.deepEqual(listed, [...JSDOC_RULES, ...JSDOC_TS_RULES].map((name) => `jsdoc/${name}`));
-    assert.deepEqual([...listed].sort(), Object.keys(rulesOf(plugin.configs.jsdoc)).sort());
+  it("lists exactly the rules jsdoc turns on: its own, each linked to its doc page, then eslint-plugin-jsdoc's", () => {
+    const rows = readmeTable("In `jsdoc`");
+    const own = rows.filter((row) => !row.name.startsWith("jsdoc/"));
+    assert.deepEqual(own.map((row) => row.name), [...JSDOC_SYNTAX_RULES]);
+    for (const row of own) assertLinkedWithItsFix(row);
+    const thirdParty = rows.filter((row) => row.name.startsWith("jsdoc/")).map((row) => row.name);
+    assert.deepEqual(thirdParty, [...JSDOC_RULES, ...JSDOC_TS_RULES].map((name) => `jsdoc/${name}`));
+    const configured = [...thirdParty, ...JSDOC_SYNTAX_RULES.map((name) => `${PLUGIN_PREFIX}/${name}`)];
+    assert.deepEqual(configured.sort(), Object.keys(rulesOf(plugin.configs.jsdoc)).sort());
   });
 
   it("lists exactly the rules react-extended turns on", () => {
@@ -77,7 +82,7 @@ describe("the README", () => {
   });
 });
 
-/** The row links the rule's doc page, which exists, and its Fix cell says "no" exactly when the rule has no fix. */
+/** `row` links its rule's doc page, which exists, and its Fix cell says "no" exactly when the rule has no fix. */
 function assertLinkedWithItsFix(row: ReadmeRow): void {
   assert.equal(row.link, docPath(row.name));
   assert.ok(existsSync(join(ROOT, row.link)), row.link);

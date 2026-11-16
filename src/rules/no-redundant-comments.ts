@@ -24,7 +24,10 @@ interface Documented {
   words: string[] | null;
 }
 
-/** Reports the doc comment of `node` once: as a whole when it only restates the name, else each `@param` tag that does. */
+/**
+ * Reports the doc comment of `node` in `context` once, keeping `seen` of those done: as a whole when it only restates the
+ * name, else each `@param` tag that does.
+ */
 function checkDocComment(context: Rule.RuleContext, seen: Set<Comment>, node: TSESTree.Node): void {
   const sourceCode = context.sourceCode;
   const comment = docCommentOf(sourceCode, node);
@@ -38,17 +41,17 @@ function checkDocComment(context: Rule.RuleContext, seen: Set<Comment>, node: TS
   reportRedundantParams(context, doc);
 }
 
-/** The text a report names a declaration by: its key, its id, or the whole node. */
+/** The text in `sourceCode` a report names the declaration `node` by: its key, its id, or the whole node. */
 function shownName(sourceCode: SourceCode, node: TSESTree.Node): string {
   return sourceCode.getText(("key" in node && node.key ? node.key : "id" in node && node.id ? node.id : node) as never);
 }
 
-/** Whether a doc comment with no tags says nothing its declaration's name does not. */
+/** Whether a doc comment's `parts`, with no tags, say nothing the `words` of its declaration's name do not. */
 function onlyRestatesName(parts: DocParts, words: string[] | null): boolean {
   return words !== null && !parts.hasTags && restatesName(parts.description, words);
 }
 
-/** Reports each redundant `@param` tag; the first report carries the fix that drops them all. */
+/** Reports each redundant `@param` tag of `doc` in `context`; the first report carries the fix that drops them all. */
 function reportRedundantParams(context: Rule.RuleContext, doc: Documented): void {
   const start = doc.comment.loc!.start.line;
   doc.parts.redundantParams.forEach((param, index) => {
@@ -66,7 +69,7 @@ function paramsFix(sourceCode: SourceCode, { comment, parts, words }: Documented
   };
 }
 
-/** The words a declaration's doc comment may repeat: its name's, and for a constructor its class's name and "default constructor". */
+/** The words the doc comment of `node` may repeat: its name's, and for a constructor its class's name and "default constructor". */
 function declarationWords(node: TSESTree.Node): string[] | null {
   if (isConstructor(node)) {
     const owner = node.parent.parent as TSESTree.ClassDeclaration | TSESTree.ClassExpression;
@@ -81,7 +84,7 @@ function isConstructor(node: TSESTree.Node): node is TSESTree.MethodDefinition |
   return isMethod && node.kind === "constructor";
 }
 
-/** The name of a declaration, or `null` when it has none this rule can compare (a computed key, a destructuring). */
+/** The name the declaration `node` declares, or `null` when it has none this rule can compare (a computed key, a destructuring). */
 function declarationName(node: TSESTree.Node): string | null {
   if (NAMED_BY_ID.has(node.type)) {
     const id = (node as { id?: Named | null }).id;
@@ -101,7 +104,7 @@ function keyName(key: Named, { computed }: { computed: boolean }): string | null
   return key.type === "Literal" && typeof key.value === "string" ? key.value : null;
 }
 
-/** The doc comment directly above `node`, if any. */
+/** The doc comment in `sourceCode` directly above `node`, if any. */
 function docCommentOf(sourceCode: SourceCode, node: TSESTree.Node): Comment | null {
   const anchor = anchorOf(node);
   const comment = sourceCode.getCommentsBefore(anchor as never).at(-1);
@@ -109,7 +112,7 @@ function docCommentOf(sourceCode: SourceCode, node: TSESTree.Node): Comment | nu
   return comment.loc!.end.line >= anchor.loc.start.line - 1 ? comment : null;
 }
 
-/** The node a declaration's doc comment sits above: the `export` around it, if any. */
+/** The node the doc comment of `node` sits above: the `export` around it, if any. */
 function anchorOf(node: TSESTree.Node): TSESTree.Node {
   const parent = node.parent;
   return parent?.type === "ExportNamedDeclaration" || parent?.type === "ExportDefaultDeclaration" ? parent : node;
@@ -124,7 +127,7 @@ interface DocParts {
   redundantParams: { name: string; lines: number[] }[];
 }
 
-/** The text left after dropping `drop`, with the blank lines it would leave before the comment's end dropped too. */
+/** The text of `comment` left after dropping `drop` from its `lines`, with the blank lines it would leave before its end dropped too. */
 function remainingText(comment: Comment, lines: CommentLine[], drop: Set<number>): string {
   for (let index = lines.length - 2; index > 0 && (drop.has(index) || lines[index].content.trim() === ""); index -= 1) drop.add(index);
   return joinLines(comment, withoutLines(comment, lines, drop));
@@ -139,7 +142,7 @@ function docParts(comment: Comment): DocParts {
   return { lines, description, hasTags: sections.length > 0 || description.includes("@"), redundantParams };
 }
 
-/** The `@param` tag on the lines `section`, as a one-item list when its description is empty or only its name split into words. */
+/** The `@param` tag on the `lines` at `section`, as a one-item list when its description is empty or only its name split into words. */
 function redundantParam(lines: CommentLine[], section: number[]): DocParts["redundantParams"] {
   const match = PARAM_TAG.exec(lines[section[0]].content.trim());
   if (!match) return [];
@@ -149,7 +152,7 @@ function redundantParam(lines: CommentLine[], section: number[]): DocParts["redu
   return repeats ? [{ name: match[1], lines: section }] : [];
 }
 
-/** The tags of a doc comment, each as the indexes of its lines: the line it starts on and the lines continuing it. */
+/** The tags among a doc comment's `lines`, each as the indexes of its lines: the line it starts on and the lines continuing it. */
 function tagSections(lines: CommentLine[]): number[][] {
   const sections: number[][] = [];
   lines.forEach((line, index) => {
@@ -159,7 +162,7 @@ function tagSections(lines: CommentLine[]): number[][] {
   return sections;
 }
 
-/** Whether every content word of `text` is a word of the name. A text with no content words is not reported. */
+/** Whether every content word of `text` is one of the name's `words`. A text with no content words is not reported. */
 function restatesName(text: string, words: string[]): boolean {
   const found = contentWords(text);
   return found.length > 0 && found.every((word) => words.includes(word));
