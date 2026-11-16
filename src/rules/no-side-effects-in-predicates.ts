@@ -5,12 +5,6 @@ import { lookUp, predicateCandidateName, unwrapTypeScript, type VariableT } from
 
 const PREDICATE = /^(is|has|can|should)[A-Z]/;
 
-function predicateName(node: Node): string | null {
-  if (!isFunction(node)) return null;
-  const name = predicateCandidateName(node);
-  return name && PREDICATE.test(name) ? name : null;
-}
-
 /** The identifiers and member expressions a write target (possibly a destructuring pattern) assigns to. */
 function writeTargets(target: Node | null): Node[] {
   const node = unwrapTypeScript(target);
@@ -50,23 +44,29 @@ function predicateOwningThis(node: Node): FunctionNode | null {
   return null;
 }
 
-function within(node: Node, outer: Node): boolean {
-  return node.range[0] >= outer.range[0] && node.range[1] <= outer.range[1];
+function predicateName(node: Node): string | null {
+  if (!isFunction(node)) return null;
+  const name = predicateCandidateName(node);
+  return name && PREDICATE.test(name) ? name : null;
+}
+
+/** The predicate around `identifier` that a write to it (or to its property) has a side effect on. */
+function predicateAffectedBy(identifier: TSESTree.Identifier, variable: VariableT | null, { property }: { property: boolean }): FunctionNode | null {
+  for (let current: Node | undefined = identifier.parent; current; current = current.parent) {
+    if (predicateName(current) && reachesOutside(variable, current as FunctionNode, { property })) return current as FunctionNode;
+  }
+  return null;
 }
 
 /** Whether writing to `variable` (or, for `property`, to one of its properties) from inside `predicate` reaches outside it. */
-function reachesOutside(variable: VariableT | null, predicate: FunctionNode, property: boolean): boolean {
+function reachesOutside(variable: VariableT | null, predicate: FunctionNode, { property }: { property: boolean }): boolean {
   if (!variable) return true;
   if (!within(asTs(variable.defs[0].name), predicate)) return true;
   return property && variable.defs.some((def) => def.type === "Parameter" && asTs(def.node) === predicate);
 }
 
-/** The predicate around `identifier` that a write to it (or to its property) has a side effect on. */
-function predicateAffectedBy(identifier: TSESTree.Identifier, variable: VariableT | null, property: boolean): FunctionNode | null {
-  for (let current: Node | undefined = identifier.parent; current; current = current.parent) {
-    if (predicateName(current) && reachesOutside(variable, current as FunctionNode, property)) return current as FunctionNode;
-  }
-  return null;
+function within(node: Node, outer: Node): boolean {
+  return node.range[0] >= outer.range[0] && node.range[1] <= outer.range[1];
 }
 
 export default defineRule({
@@ -93,7 +93,7 @@ export default defineRule({
       const root = target.type === "MemberExpression" ? chainRoot(target) : target;
       let predicate: FunctionNode | null = null;
       if (root.type === "ThisExpression" || root.type === "Super") predicate = predicateOwningThis(write);
-      else if (root.type === "Identifier") predicate = predicateAffectedBy(root, lookUp(sourceCode.getScope(root as never), root.name), target !== root);
+      else if (root.type === "Identifier") predicate = predicateAffectedBy(root, lookUp(sourceCode.getScope(root as never), root.name), { property: target !== root });
       if (predicate) reportWrite(write, target, predicate);
     };
     const checkAll = (write: Node, left: Node | null) => {

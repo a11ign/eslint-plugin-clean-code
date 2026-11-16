@@ -70,11 +70,6 @@ interface TableRow {
   fix: string;
 }
 
-/** The cells of a markdown table row. A `|` inside a cell is written `\\|`, as GitHub tables need, so only an unescaped `|` ends one. */
-function tableCells(line: string): string[] {
-  return line.split(/(?<!\\)\|/).slice(1, -1).map((cell) => cell.trim());
-}
-
 /** The rows of the catalog's "The rule set at a glance" table. */
 function ruleTable(): TableRow[] {
   const section = catalog.slice(catalog.indexOf("## The rule set at a glance"), catalog.indexOf("## Entries"));
@@ -82,6 +77,11 @@ function ruleTable(): TableRow[] {
     const [names, , config, , fix] = tableCells(line);
     return { names: [...names.matchAll(/`([^`]+)`/g)].map((match) => match[1]), config, fix };
   });
+}
+
+/** The cells of a markdown table row. A `|` inside a cell is written `\\|`, as GitHub tables need, so only an unescaped `|` ends one. */
+function tableCells(line: string): string[] {
+  return line.split(/(?<!\\)\|/).slice(1, -1).map((cell) => cell.trim());
 }
 
 const BUILT_IN_NAMES = new Set([...Object.keys(BUILT_IN_RULES), "no-unused-vars", "@typescript-eslint/no-unused-vars", "@typescript-eslint/prefer-for-of"]);

@@ -14,32 +14,6 @@ import {
 
 type Body = TSESTree.ClassBody;
 
-/** The only statement of a function's block body. */
-function onlyStatement(fn: FunctionNode): TSESTree.Statement | null {
-  return fn.body?.type === "BlockStatement" && fn.body.body.length === 1 ? fn.body.body[0] : null;
-}
-
-/** The field a trivial getter returns: a `get` accessor, or a method with no parameters, whose body is `return this.x;`. */
-function trivialGetterField(member: ClassMember): string | null {
-  if (member.type !== "MethodDefinition" || (member.kind !== "get" && member.kind !== "method")) return null;
-  const fn = member.value;
-  if (fn.type !== "FunctionExpression" || fn.params.length > 0) return null;
-  const statement = onlyStatement(fn);
-  return statement?.type === "ReturnStatement" ? thisMemberName(statement.argument) : null;
-}
-
-/** Whether a member is a trivial setter: a `set` accessor, or a one-parameter method, whose body is `this.x = parameter;`. */
-function isTrivialSetter(member: ClassMember): boolean {
-  if (member.type !== "MethodDefinition" || (member.kind !== "set" && member.kind !== "method")) return false;
-  const fn = member.value;
-  const param = fn.params[0];
-  if (fn.type !== "FunctionExpression" || fn.params.length !== 1 || param.type !== "Identifier") return false;
-  const statement = onlyStatement(fn);
-  if (statement?.type !== "ExpressionStatement" || statement.expression.type !== "AssignmentExpression") return false;
-  const assignment = statement.expression;
-  return assignment.operator === "=" && thisMemberName(assignment.left) !== null && assignment.right.type === "Identifier" && assignment.right.name === param.name;
-}
-
 function privateFields(body: Body): string[] {
   const names = body.body.filter(isPrivateField).map(memberName);
   for (const param of parameterProperties(body)) {
@@ -59,6 +33,32 @@ function gettersOnly(body: Body): Set<string> | null {
     else if (!isTrivialSetter(member) && (member.type === "MethodDefinition" || memberFunction(member))) return null;
   }
   return returned;
+}
+
+/** Whether a member is a trivial setter: a `set` accessor, or a one-parameter method, whose body is `this.x = parameter;`. */
+function isTrivialSetter(member: ClassMember): boolean {
+  if (member.type !== "MethodDefinition" || (member.kind !== "set" && member.kind !== "method")) return false;
+  const fn = member.value;
+  const param = fn.params[0];
+  if (fn.type !== "FunctionExpression" || fn.params.length !== 1 || param.type !== "Identifier") return false;
+  const statement = onlyStatement(fn);
+  if (statement?.type !== "ExpressionStatement" || statement.expression.type !== "AssignmentExpression") return false;
+  const assignment = statement.expression;
+  return assignment.operator === "=" && thisMemberName(assignment.left) !== null && assignment.right.type === "Identifier" && assignment.right.name === param.name;
+}
+
+/** The only statement of a function's block body. */
+function onlyStatement(fn: FunctionNode): TSESTree.Statement | null {
+  return fn.body?.type === "BlockStatement" && fn.body.body.length === 1 ? fn.body.body[0] : null;
+}
+
+/** The field a trivial getter returns: a `get` accessor, or a method with no parameters, whose body is `return this.x;`. */
+function trivialGetterField(member: ClassMember): string | null {
+  if (member.type !== "MethodDefinition" || (member.kind !== "get" && member.kind !== "method")) return null;
+  const fn = member.value;
+  if (fn.type !== "FunctionExpression" || fn.params.length > 0) return null;
+  const statement = onlyStatement(fn);
+  return statement?.type === "ReturnStatement" ? thisMemberName(statement.argument) : null;
 }
 
 export default defineRule({

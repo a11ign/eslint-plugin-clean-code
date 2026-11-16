@@ -9,11 +9,6 @@ import { asTs, isFunction, type FunctionNode, type Node } from "./ast.ts";
 export type ScopeT = Scope.Scope;
 export type VariableT = Scope.Variable;
 
-/** Every scope of the file, from the scope manager both linters expose on `sourceCode`. */
-export function allScopes(sourceCode: SourceCode): ScopeT[] {
-  return sourceCode.scopeManager?.scopes ?? [];
-}
-
 /**
  * The bindings this file declares: every variable with a declaration. The global scope's implicit and library variables
  * (ESLint's parser adds the `lib` names, Oxlint adds none) have no declaration, so both linters see the same list.
@@ -22,23 +17,9 @@ export function declaredVariables(sourceCode: SourceCode): VariableT[] {
   return allScopes(sourceCode).flatMap((scope) => scope.variables.filter((variable) => variable.defs.length > 0));
 }
 
-/** `scope` and every scope nested in it. */
-export function scopeAndDescendants(scope: ScopeT): ScopeT[] {
-  const result: ScopeT[] = [];
-  const pending = [scope];
-  while (pending.length > 0) {
-    const next = pending.pop() as ScopeT;
-    result.push(next);
-    pending.push(...next.childScopes);
-  }
-  return result;
-}
-
-/** `scope` and every scope it is nested in, up to the global scope. */
-export function scopeAndAncestors(scope: ScopeT): ScopeT[] {
-  const result: ScopeT[] = [];
-  for (let current: ScopeT | null = scope; current; current = current.upper) result.push(current);
-  return result;
+/** Every scope of the file, from the scope manager both linters expose on `sourceCode`. */
+export function allScopes(sourceCode: SourceCode): ScopeT[] {
+  return sourceCode.scopeManager?.scopes ?? [];
 }
 
 /** The variable `name` resolves to from `scope`, looking outward, or `null` for an undeclared (global) name. */
@@ -48,6 +29,13 @@ export function lookUp(scope: ScopeT, name: string): VariableT | null {
     if (variable && variable.defs.length > 0) return variable;
   }
   return null;
+}
+
+/** `scope` and every scope it is nested in, up to the global scope. */
+export function scopeAndAncestors(scope: ScopeT): ScopeT[] {
+  const result: ScopeT[] = [];
+  for (let current: ScopeT | null = scope; current; current = current.upper) result.push(current);
+  return result;
 }
 
 /**
@@ -97,13 +85,14 @@ export function lowerFirstWord(name: string): string {
   return lowered.toLowerCase() + name.slice(lowered.length);
 }
 
-/** Removes the TypeScript wrappers (`as`, `satisfies`, `!`, `<T>x`) that leave the run-time value unchanged. */
-export function unwrapTypeScript(node: Node | null | undefined): Node | null {
-  let current = node ?? null;
-  while (current && (current.type === "TSAsExpression" || current.type === "TSSatisfiesExpression" || current.type === "TSNonNullExpression" || current.type === "TSTypeAssertion")) {
-    current = current.expression;
+/** Whether binding `identifier` takes the name of an anonymous function or class assigned to it right there. */
+export function receivesNamedFunction(identifier: Node): boolean {
+  const parent = identifier.parent;
+  if (parent?.type === "VariableDeclarator" && parent.id === identifier) return isAnonymousFunctionOrClass(parent.init);
+  if ((parent?.type === "AssignmentExpression" || parent?.type === "AssignmentPattern") && parent.left === identifier) {
+    return isAnonymousFunctionOrClass(parent.right);
   }
-  return current;
+  return false;
 }
 
 /**
@@ -117,14 +106,13 @@ export function isAnonymousFunctionOrClass(node: Node | null | undefined): boole
   return (value.type === "FunctionExpression" || value.type === "ClassExpression") && !value.id;
 }
 
-/** Whether binding `identifier` takes the name of an anonymous function or class assigned to it right there. */
-export function receivesNamedFunction(identifier: Node): boolean {
-  const parent = identifier.parent;
-  if (parent?.type === "VariableDeclarator" && parent.id === identifier) return isAnonymousFunctionOrClass(parent.init);
-  if ((parent?.type === "AssignmentExpression" || parent?.type === "AssignmentPattern") && parent.left === identifier) {
-    return isAnonymousFunctionOrClass(parent.right);
+/** Removes the TypeScript wrappers (`as`, `satisfies`, `!`, `<T>x`) that leave the run-time value unchanged. */
+export function unwrapTypeScript(node: Node | null | undefined): Node | null {
+  let current = node ?? null;
+  while (current && (current.type === "TSAsExpression" || current.type === "TSSatisfiesExpression" || current.type === "TSNonNullExpression" || current.type === "TSTypeAssertion")) {
+    current = current.expression;
   }
-  return false;
+  return current;
 }
 
 /** Whether `identifier` is written as a shorthand property (`{ m_count }`) in an object literal or a destructuring pattern. */
@@ -179,15 +167,21 @@ export function isNameFree(scope: ScopeT, name: string): boolean {
   return !scopeAndDescendants(scope).some((current) => current.set.get(name)?.defs.length || current.references.some((reference) => reference.identifier.name === name));
 }
 
+/** `scope` and every scope nested in it. */
+export function scopeAndDescendants(scope: ScopeT): ScopeT[] {
+  const result: ScopeT[] = [];
+  const pending = [scope];
+  while (pending.length > 0) {
+    const next = pending.pop() as ScopeT;
+    result.push(next);
+    pending.push(...next.childScopes);
+  }
+  return result;
+}
+
 /** Whether code in `scope` or a scope inside it calls `eval`, which can read any binding by its name. */
 export function usesEval(scope: ScopeT): boolean {
   return scopeAndDescendants(scope).some((current) => current.references.some((reference) => reference.identifier.name === "eval"));
-}
-
-/** The text range of an identifier's name alone, without the type annotation typescript-eslint includes in its range. */
-export function nameRange(identifier: Node, name: string): [number, number] {
-  const start = identifier.range[0];
-  return [start, start + name.length];
 }
 
 /** Replaces the name at each identifier, once per position. */
@@ -202,16 +196,15 @@ export function renameAll(fixer: Rule.RuleFixer, identifiers: Node[], oldName: s
   return fixes;
 }
 
+/** The text range of an identifier's name alone, without the type annotation typescript-eslint includes in its range. */
+export function nameRange(identifier: Node, name: string): [number, number] {
+  const start = identifier.range[0];
+  return [start, start + name.length];
+}
+
 /** The identifier nodes of a variable: its declarations and its references. */
 export function variableIdentifiers(variable: VariableT): Node[] {
   return [...variable.defs.map((def) => asTs(def.name)), ...variable.references.map((reference) => asTs(reference.identifier))];
-}
-
-/** The name a key spells, when it is not computed: an identifier, a `#private` name or a string. */
-export function keyName(key: Node, computed: boolean): string | null {
-  if (computed) return null;
-  if (key.type === "PrivateIdentifier" || key.type === "Identifier") return key.name;
-  return key.type === "Literal" && typeof key.value === "string" ? key.value : null;
 }
 
 /** The name a function is known by, including a `#private` method's name and a key written as a string. */
@@ -222,6 +215,13 @@ export function predicateCandidateName(node: FunctionNode): string | null {
   if (parent?.type === "VariableDeclarator" && parent.id.type === "Identifier") return parent.id.name;
   if (parent?.type === "AssignmentExpression" && parent.left.type === "Identifier") return parent.left.name;
   return null;
+}
+
+/** The name a key spells, when it is not computed: an identifier, a `#private` name or a string. */
+export function keyName(key: Node, computed: boolean): string | null {
+  if (computed) return null;
+  if (key.type === "PrivateIdentifier" || key.type === "Identifier") return key.name;
+  return key.type === "Literal" && typeof key.value === "string" ? key.value : null;
 }
 
 /** The number of lines a node spans. */

@@ -13,11 +13,6 @@ function siblingsOf(node: Node): readonly Node[] | null {
   return parent.type === "SwitchCase" ? parent.consequent : (parent as { body: Node[] }).body;
 }
 
-/** Whether `expression` is `name = …`. */
-function assigns(expression: Node | null | undefined, name: string): expression is TSESTree.AssignmentExpression {
-  return expression?.type === "AssignmentExpression" && expression.operator === "=" && expression.left.type === "Identifier" && expression.left.name === name;
-}
-
 /** Whether a `for` statement's init assigns `name`, on its own or in a comma-separated list. */
 function initAssigns(loop: TSESTree.ForStatement, name: string): boolean {
   const init = loop.init;
@@ -25,16 +20,9 @@ function initAssigns(loop: TSESTree.ForStatement, name: string): boolean {
   return assigns(init, name);
 }
 
-function within(node: Node, range: [number, number]): boolean {
-  return node.range[0] >= range[0] && node.range[1] <= range[1];
-}
-
-/** Whether a reference sits in a function or class nested in the loop, where a per-iteration `let` would change what it sees. */
-function inNestedScope(identifier: Node, loop: Node): boolean {
-  for (let current: Node | undefined = identifier.parent; current && current !== loop; current = current.parent) {
-    if (isFunction(current) || current.type === "ClassBody") return true;
-  }
-  return false;
+/** Whether `expression` is `name = …`. */
+function assigns(expression: Node | null | undefined, name: string): expression is TSESTree.AssignmentExpression {
+  return expression?.type === "AssignmentExpression" && expression.operator === "=" && expression.left.type === "Identifier" && expression.left.name === name;
 }
 
 interface Candidate {
@@ -59,6 +47,18 @@ function canMove(candidate: Candidate, siblings: readonly Node[]): boolean {
     const identifier = asTs(reference.identifier);
     return within(identifier, loop.range) && !inNestedScope(identifier, loop) && !within(identifier, right.range);
   });
+}
+
+/** Whether a reference sits in a function or class nested in the loop, where a per-iteration `let` would change what it sees. */
+function inNestedScope(identifier: Node, loop: Node): boolean {
+  for (let current: Node | undefined = identifier.parent; current && current !== loop; current = current.parent) {
+    if (isFunction(current) || current.type === "ClassBody") return true;
+  }
+  return false;
+}
+
+function within(node: Node, range: [number, number]): boolean {
+  return node.range[0] >= range[0] && node.range[1] <= range[1];
 }
 
 function moveFix(sourceCode: SourceCode, candidate: Candidate): Rule.ReportFixer {

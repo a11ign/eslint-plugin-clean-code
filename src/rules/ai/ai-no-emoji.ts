@@ -49,7 +49,10 @@ export default defineAiRule<[Options]>({
     const sourceCode = context.sourceCode;
     const options = (context.options[0] as Options | undefined) ?? {};
     const allowed = new Set((options.allow ?? []).map(bare));
-
+    const checkNode = (node: unknown) => {
+      const [start, end] = asTs(node).range;
+      checkRange(start, end);
+    };
     /** Reports each emoji in the source text between `start` and `end`. */
     function checkRange(start: number, end: number) {
       for (const match of sourceCode.text.slice(start, end).matchAll(EMOJI)) {
@@ -59,10 +62,6 @@ export default defineAiRule<[Options]>({
         context.report({ loc, messageId: "emoji", data: { emoji: match[0] } });
       }
     }
-    const checkNode = (node: unknown) => {
-      const [start, end] = asTs(node).range;
-      checkRange(start, end);
-    };
 
     return {
       Program() {

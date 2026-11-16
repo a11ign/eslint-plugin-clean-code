@@ -14,20 +14,11 @@ function stateBinding(declarator: TSESTree.VariableDeclarator): TSESTree.Identif
   return state?.type === "Identifier" ? state : null;
 }
 
-/** The outermost member expression `node` is the object of, such as `state.items.total` for `state`: what a write changes. */
-function outermostMember(node: Node): TSESTree.MemberExpression | null {
-  let member: TSESTree.MemberExpression | null = null;
-  let current = node;
-  while (current.parent?.type === "MemberExpression" && current.parent.object === current) {
-    member = current.parent;
-    current = member;
-  }
-  return member;
-}
-
-function propertyName(member: TSESTree.MemberExpression): string | null {
-  if (!member.computed && member.property.type === "Identifier") return member.property.name;
-  return member.property.type === "Literal" && typeof member.property.value === "string" ? member.property.value : null;
+/** The member of the state a reference writes through, and how, or `null` when the reference only reads the state. */
+function writtenMember(reference: Scope.Reference): { member: TSESTree.MemberExpression; mutation: string } | null {
+  const member = outermostMember(asTs(reference.identifier));
+  const mutation = member ? mutationOf(member) : null;
+  return member && mutation ? { member, mutation } : null;
 }
 
 /** How a write through `member` mutates the state, or `null` when the member is only read. */
@@ -41,11 +32,20 @@ function mutationOf(member: TSESTree.MemberExpression): string | null {
   return null;
 }
 
-/** The member of the state a reference writes through, and how, or `null` when the reference only reads the state. */
-function writtenMember(reference: Scope.Reference): { member: TSESTree.MemberExpression; mutation: string } | null {
-  const member = outermostMember(asTs(reference.identifier));
-  const mutation = member ? mutationOf(member) : null;
-  return member && mutation ? { member, mutation } : null;
+function propertyName(member: TSESTree.MemberExpression): string | null {
+  if (!member.computed && member.property.type === "Identifier") return member.property.name;
+  return member.property.type === "Literal" && typeof member.property.value === "string" ? member.property.value : null;
+}
+
+/** The outermost member expression `node` is the object of, such as `state.items.total` for `state`: what a write changes. */
+function outermostMember(node: Node): TSESTree.MemberExpression | null {
+  let member: TSESTree.MemberExpression | null = null;
+  let current = node;
+  while (current.parent?.type === "MemberExpression" && current.parent.object === current) {
+    member = current.parent;
+    current = member;
+  }
+  return member;
 }
 
 export default defineReactRule({

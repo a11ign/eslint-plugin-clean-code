@@ -4,32 +4,6 @@ import { className, classOfBody, keyName, type ClassNode, memberFunction, member
 
 type Body = TSESTree.ClassBody;
 
-/** The static field a write target names: `Class.x`, `Class.#x`, or `this.x` where `this` is the class (a static member). */
-function staticTarget(target: Node, body: Body, name: string | null): string | null {
-  const expression = unwrapTs(target);
-  if (expression.type !== "MemberExpression") return null;
-  const object = unwrapTs(expression.object);
-  const member = keyName(expression.property, expression.computed);
-  if (object.type === "Identifier" && object.name === name) return member;
-  if (object.type !== "ThisExpression") return null;
-  const owner = thisOwner(object);
-  return owner?.body === body && owner.isStatic ? member : null;
-}
-
-/** The node each write in `root` assigns to: assignments, `++`/`--`, and `delete`. */
-function writeTargets(root: Node): Node[] {
-  const targets: Node[] = [];
-  walk(
-    root,
-    (node) => {
-      if (node.type === "AssignmentExpression" || node.type === "UpdateExpression") targets.push(node.type === "AssignmentExpression" ? node.left : node.argument);
-      else if (node.type === "UnaryExpression" && node.operator === "delete") targets.push(node.argument);
-    },
-    true,
-  );
-  return targets;
-}
-
 /** The class's own name, which its methods use to reach its static members: its id, or the variable it is assigned to. */
 function ownName(owner: ClassNode): string | null {
   if (owner.id) return owner.id.name;
@@ -61,6 +35,32 @@ function staticWrites(body: Body, name: string | null): Array<{ field: string; m
     }
   }
   return writes;
+}
+
+/** The node each write in `root` assigns to: assignments, `++`/`--`, and `delete`. */
+function writeTargets(root: Node): Node[] {
+  const targets: Node[] = [];
+  walk(
+    root,
+    (node) => {
+      if (node.type === "AssignmentExpression" || node.type === "UpdateExpression") targets.push(node.type === "AssignmentExpression" ? node.left : node.argument);
+      else if (node.type === "UnaryExpression" && node.operator === "delete") targets.push(node.argument);
+    },
+    true,
+  );
+  return targets;
+}
+
+/** The static field a write target names: `Class.x`, `Class.#x`, or `this.x` where `this` is the class (a static member). */
+function staticTarget(target: Node, body: Body, name: string | null): string | null {
+  const expression = unwrapTs(target);
+  if (expression.type !== "MemberExpression") return null;
+  const object = unwrapTs(expression.object);
+  const member = keyName(expression.property, expression.computed);
+  if (object.type === "Identifier" && object.name === name) return member;
+  if (object.type !== "ThisExpression") return null;
+  const owner = thisOwner(object);
+  return owner?.body === body && owner.isStatic ? member : null;
 }
 
 export default defineRule({

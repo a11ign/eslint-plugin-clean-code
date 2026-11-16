@@ -30,10 +30,6 @@ const CLASS_MESSAGE = {
   refactor: "name the class for the one thing it represents, without the word; if nothing is left, the class has no clear responsibility yet.",
 };
 
-function annotationOf(node: Node): TSESTree.TypeNode | null {
-  return (node as { typeAnnotation?: TSESTree.TSTypeAnnotation }).typeAnnotation?.typeAnnotation ?? null;
-}
-
 /** The noise in a variable, parameter or property name: the word `variable`, or a suffix repeating its declared type. */
 function nameNoise(name: string, annotated: Node): { messageId: string; data: Record<string, string> } | null {
   const parts = words(name);
@@ -43,6 +39,10 @@ function nameNoise(name: string, annotated: Node): { messageId: string; data: Re
   if (!suffix || !type) return null;
   const repeats = type.type === suffix.keyword || (type.type === "TSTypeReference" && type.typeName.type === "Identifier" && type.typeName.name === suffix.wrapper);
   return repeats ? { messageId: "typeSuffix", data: { name, suffix: suffix.suffix } } : null;
+}
+
+function annotationOf(node: Node): TSESTree.TypeNode | null {
+  return (node as { typeAnnotation?: TSESTree.TSTypeAnnotation }).typeAnnotation?.typeAnnotation ?? null;
 }
 
 type Property = TSESTree.PropertyDefinition | TSESTree.AccessorProperty | TSESTree.TSAbstractPropertyDefinition | TSESTree.TSAbstractAccessorProperty | TSESTree.TSPropertySignature;

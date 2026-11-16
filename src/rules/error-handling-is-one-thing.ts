@@ -50,6 +50,10 @@ export default defineRule({
     },
   },
   create(context) {
+    function checkFunction(node: unknown): void {
+      const fn = asTs<TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression>(node);
+      if (fn.body?.type === "BlockStatement") checkBody(fn.body);
+    }
     function checkBody(body: TSESTree.BlockStatement): void {
       const statements = body.body.filter((statement) => !isNotCode(statement));
       const first = statements.findIndex((statement) => statement.type === "TryStatement");
@@ -58,10 +62,6 @@ export default defineRule({
         if (index < first && !isDeclarationOnly(statement)) context.report({ node: statement as never, messageId: "beforeTry" });
         else if (index > first && !runsNothing(statement)) context.report({ node: statement as never, messageId: "afterTry" });
       });
-    }
-    function checkFunction(node: unknown): void {
-      const fn = asTs<TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression>(node);
-      if (fn.body?.type === "BlockStatement") checkBody(fn.body);
     }
     return {
       FunctionDeclaration: checkFunction,

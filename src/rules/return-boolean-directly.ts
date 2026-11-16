@@ -14,6 +14,12 @@ function returnedBoolean(statement: Statement | null | undefined): boolean | nul
   return typeof only.argument.value === "boolean" ? only.argument.value : null;
 }
 
+function returnText(sourceCode: SourceCode, test: Expression, { inverse }: { inverse: boolean }): string {
+  const text = sourceCode.getText(test as never);
+  if (inverse) return `return !(${text});`;
+  return isBooleanBySyntax(test) ? `return ${text};` : `return !!(${text});`;
+}
+
 /** Whether `expression` is a boolean by its syntax alone, so `return expression` gives exactly `true` or `false`. */
 function isBooleanBySyntax(expression: Expression): boolean {
   if (expression.type === "Literal") return typeof expression.value === "boolean";
@@ -21,12 +27,6 @@ function isBooleanBySyntax(expression: Expression): boolean {
   if (expression.type === "BinaryExpression") return COMPARISON.has(expression.operator);
   if (expression.type === "LogicalExpression" && expression.operator !== "??") return isBooleanBySyntax(expression.left) && isBooleanBySyntax(expression.right);
   return false;
-}
-
-function returnText(sourceCode: SourceCode, test: Expression, inverse: boolean): string {
-  const text = sourceCode.getText(test as never);
-  if (inverse) return `return !(${text});`;
-  return isBooleanBySyntax(test) ? `return ${text};` : `return !!(${text});`;
 }
 
 /** The comments inside the replaced statements, each on its own line above the new `return`. */
@@ -75,7 +75,7 @@ export default defineRule({
         const whenFalse = returnedBoolean(otherwise);
         if (whenFalse === null || whenFalse === whenTrue || !otherwise) return;
         const range: [number, number] = [statement.range[0], otherwise.range[1]];
-        const replacement = returnText(sourceCode, statement.test, !whenTrue);
+        const replacement = returnText(sourceCode, statement.test, { inverse: !whenTrue });
         context.report({
           node,
           messageId: "branchToBoolean",

@@ -39,10 +39,6 @@ function resolve(scope: Scope.Scope, identifier: TSESTree.Identifier): Scope.Var
   return null;
 }
 
-function contains(outer: { range: [number, number] }, inner: { range?: [number, number] }): boolean {
-  return inner.range !== undefined && outer.range[0] <= inner.range[0] && inner.range[1] <= outer.range[1];
-}
-
 /** The nearest test (`it`, `test`) or `beforeEach`/`afterEach` callback around `node`, whichever is innermost. */
 function ownerOf(node: TSESTree.Node): { kind: "test" | "hook"; callback: FunctionNode } | null {
   for (let current = node.parent; current; current = current.parent) {
@@ -57,6 +53,10 @@ function ownerOf(node: TSESTree.Node): { kind: "test" | "hook"; callback: Functi
 
 function declaredInside(variable: Scope.Variable, callback: FunctionNode): boolean {
   return variable.identifiers.some((identifier) => contains(callback, asTs<TSESTree.Identifier>(identifier)));
+}
+
+function contains(outer: { range: [number, number] }, inner: { range?: [number, number] }): boolean {
+  return inner.range !== undefined && outer.range[0] <= inner.range[0] && inner.range[1] <= outer.range[1];
 }
 
 export default defineRule({

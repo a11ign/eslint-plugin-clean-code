@@ -4,18 +4,6 @@ import { asTs, type Comment, type TSESTree } from "../lib/ast.ts";
 import { isDirectiveComment } from "../lib/safe-fix.ts";
 import { disablingNode, readTestCall, type TestCall } from "../lib/test-calls.ts";
 
-/** The node a reason comment sits above: the statement the call is, through an `await`, or the call itself. */
-function commentedNode(call: TSESTree.CallExpression): TSESTree.Node {
-  let node: TSESTree.Node = call;
-  while (node.parent?.type === "AwaitExpression" || (node.parent?.type === "ExpressionStatement" && node.parent.expression === node)) node = node.parent;
-  return node;
-}
-
-/** Whether a comment says something: it is not a tool directive and has words in it. */
-function givesReason(comment: Comment): boolean {
-  return !isDirectiveComment(comment) && /\p{L}{2,}/u.test(comment.value);
-}
-
 /**
  * Whether a comment directly before the call gives a reason. The comments that touch the call, each on the line after
  * the one before it (no blank line between), are read from the call upwards; a directive among them is skipped.
@@ -31,6 +19,18 @@ function hasReasonComment(sourceCode: SourceCode, call: TSESTree.CallExpression)
     nextLine = comment.loc!.start.line;
   }
   return false;
+}
+
+/** Whether a comment says something: it is not a tool directive and has words in it. */
+function givesReason(comment: Comment): boolean {
+  return !isDirectiveComment(comment) && /\p{L}{2,}/u.test(comment.value);
+}
+
+/** The node a reason comment sits above: the statement the call is, through an `await`, or the call itself. */
+function commentedNode(call: TSESTree.CallExpression): TSESTree.Node {
+  let node: TSESTree.Node = call;
+  while (node.parent?.type === "AwaitExpression" || (node.parent?.type === "ExpressionStatement" && node.parent.expression === node)) node = node.parent;
+  return node;
 }
 
 /** How the report names what turned the test off. */

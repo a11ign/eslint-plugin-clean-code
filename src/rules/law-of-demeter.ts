@@ -3,11 +3,6 @@ import { defineRule } from "../lib/define-rule.ts";
 import { asTs, type Node, type TSESTree } from "../lib/ast.ts";
 import { classOrInterfaceOf, isFunctionLikeDeclaration, isNonPublicState, isProjectClass, isProjectDeclaration, isTopType, nonNullableTypeAt, unionMembers, type TypeServices, typeServices } from "../lib/types.ts";
 
-function unwrap(node: Node): Node {
-  if (node.type === "TSNonNullExpression" || node.type === "ChainExpression") return unwrap(node.expression);
-  return node;
-}
-
 /** `a.b()` in `a.b().c()`: a call of a method, made on the result of another method call. */
 interface InnerCall {
   call: TSESTree.CallExpression;
@@ -23,8 +18,14 @@ function innerMethodCall(call: TSESTree.CallExpression): InnerCall | null {
   return member.type === "MemberExpression" ? { call: inner, member } : null;
 }
 
-function declarationsOf(property: ts.Symbol): ts.Declaration[] {
-  return property.getDeclarations() ?? [];
+function unwrap(node: Node): Node {
+  if (node.type === "TSNonNullExpression" || node.type === "ChainExpression") return unwrap(node.expression);
+  return node;
+}
+
+function isObjectResult(services: TypeServices, type: ts.Type): boolean {
+  if (isTopType(services.checker, type)) return false;
+  return unionMembers(type).every((member) => isBookObject(services, member));
 }
 
 /**
@@ -39,16 +40,8 @@ function isBookObject(services: TypeServices, type: ts.Type): boolean {
   return declarations.some(isFunctionLikeDeclaration) && declarations.some(isNonPublicState);
 }
 
-function isObjectResult(services: TypeServices, type: ts.Type): boolean {
-  if (isTopType(services.checker, type)) return false;
-  return unionMembers(type).every((member) => isBookObject(services, member));
-}
-
-/** The class a receiver is an instance of, or, for a class reference (`Complex.from(…)`), the class it constructs. */
-function receiverClasses(services: TypeServices, receiver: Node): Set<ts.Symbol> {
-  const type = nonNullableTypeAt(services, receiver);
-  const constructed = type.getConstructSignatures().map((signature) => services.checker.getReturnTypeOfSignature(signature));
-  return new Set([type, ...constructed].flatMap(unionMembers).flatMap((member) => member.getSymbol() ?? []));
+function declarationsOf(property: ts.Symbol): ts.Declaration[] {
+  return property.getDeclarations() ?? [];
 }
 
 /** A fluent call (`builder.limit(10).build()`) or a static factory (`Complex.from(1).add(z)`): the result is the receiver's own type. */
@@ -58,6 +51,13 @@ function isFluent(services: TypeServices, inner: InnerCall, result: ts.Type): bo
     const symbol = member.getSymbol();
     return symbol !== undefined && own.has(symbol);
   });
+}
+
+/** The class a receiver is an instance of, or, for a class reference (`Complex.from(…)`), the class it constructs. */
+function receiverClasses(services: TypeServices, receiver: Node): Set<ts.Symbol> {
+  const type = nonNullableTypeAt(services, receiver);
+  const constructed = type.getConstructSignatures().map((signature) => services.checker.getReturnTypeOfSignature(signature));
+  return new Set([type, ...constructed].flatMap(unionMembers).flatMap((member) => member.getSymbol() ?? []));
 }
 
 /**

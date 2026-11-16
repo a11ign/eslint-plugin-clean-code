@@ -97,6 +97,16 @@ const node: Linter.Config[] = [
   { name: `${PLUGIN_PREFIX}/node/typescript`, files: TS_FILES, languageOptions: { parser: tseslint.parser as Linter.Parser } },
 ];
 
+/** An optional peer plugin, required when the config that needs it is first read; `ruleNames` are the rules that config turns on. */
+function loadPeerPlugin(packageName: string, configName: string, ruleNames: readonly string[]): ESLint.Plugin {
+  try {
+    const loaded = createRequire(import.meta.url)(packageName) as ESLint.Plugin & { default?: ESLint.Plugin };
+    return loaded.default ?? loaded;
+  } catch (error) {
+    return missingPeerPlugin(packageName, configName, ruleNames, error);
+  }
+}
+
 /**
  * Stands in for an optional peer plugin that is not installed. Reading the config, or listing every config, still works; linting
  * with the config that needs it fails, at its first file, with a message that says what to install.
@@ -109,16 +119,6 @@ function missingPeerPlugin(packageName: string, configName: string, ruleNames: r
     },
   };
   return { meta: { name: `${packageName} (not installed)` }, rules: Object.fromEntries(ruleNames.map((name) => [name, missing])) };
-}
-
-/** An optional peer plugin, required when the config that needs it is first read; `ruleNames` are the rules that config turns on. */
-function loadPeerPlugin(packageName: string, configName: string, ruleNames: readonly string[]): ESLint.Plugin {
-  try {
-    const loaded = createRequire(import.meta.url)(packageName) as ESLint.Plugin & { default?: ESLint.Plugin };
-    return loaded.default ?? loaded;
-  } catch (error) {
-    return missingPeerPlugin(packageName, configName, ruleNames, error);
-  }
 }
 
 /** A config built once, when it is first read, so the optional peer plugins it loads are required only by a project that uses it. */

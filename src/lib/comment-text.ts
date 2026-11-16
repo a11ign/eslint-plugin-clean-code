@@ -10,16 +10,6 @@ import { hasLineBreak, isDirectiveComment, isDocComment, removeComment, wholeLin
 export type Range = [number, number];
 type Location = NonNullable<Comment["loc"]>;
 
-/** The line and block comments of the file, without a hashbang. */
-export function sourceComments(sourceCode: SourceCode): Comment[] {
-  return sourceCode.getAllComments().filter((comment) => comment.type === "Line" || comment.type === "Block");
-}
-
-/** Whether nothing but blank space shares the comment's lines. */
-export function isAloneOnItsLines(sourceCode: SourceCode, comment: Comment): boolean {
-  return wholeLinesRange(sourceCode.text, comment.range![0], comment.range![1]) !== null;
-}
-
 /**
  * The comments of the file in groups: a run of line comments, each alone on its line, on consecutive lines, is one
  * group; every other comment is a group of its own. A comment for which `standsAlone` is true never joins a run.
@@ -42,15 +32,19 @@ export function commentGroups(sourceCode: SourceCode, standsAlone: (comment: Com
   return groups;
 }
 
+/** Whether nothing but blank space shares the comment's lines. */
+export function isAloneOnItsLines(sourceCode: SourceCode, comment: Comment): boolean {
+  return wholeLinesRange(sourceCode.text, comment.range![0], comment.range![1]) !== null;
+}
+
+/** The line and block comments of the file, without a hashbang. */
+export function sourceComments(sourceCode: SourceCode): Comment[] {
+  return sourceCode.getAllComments().filter((comment) => comment.type === "Line" || comment.type === "Block");
+}
+
 /** Where a group of comments starts and ends, for the report. */
 export function groupLocation(group: Comment[]): Location {
   return { start: group[0].loc!.start, end: group.at(-1)!.loc!.end };
-}
-
-/** Deletes a group: one comment the safe way (`removeComment`), or a run of line comments with their whole lines. */
-export function removeGroup(fixer: Rule.RuleFixer, sourceCode: SourceCode, group: Comment[]): Rule.Fix {
-  if (group.length === 1) return removeComment(fixer, sourceCode, group[0]);
-  return fixer.removeRange(wholeLinesRange(sourceCode.text, group[0].range![0], group.at(-1)!.range![1])!);
 }
 
 /**
@@ -67,30 +61,26 @@ export function keepInRun(fixer: Rule.RuleFixer, sourceCode: SourceCode, run: Co
   return fixer.replaceTextRange(range, text.join("\n") + (endsWithLineBreak ? "\n" : ""));
 }
 
+/** Deletes a group: one comment the safe way (`removeComment`), or a run of line comments with their whole lines. */
+export function removeGroup(fixer: Rule.RuleFixer, sourceCode: SourceCode, group: Comment[]): Rule.Fix {
+  if (group.length === 1) return removeComment(fixer, sourceCode, group[0]);
+  return fixer.removeRange(wholeLinesRange(sourceCode.text, group[0].range![0], group.at(-1)!.range![1])!);
+}
+
 /** One line of a comment's text: its decoration (indentation, a leading `*`, the space after) and its content. */
 export interface CommentLine {
   prefix: string;
   content: string;
 }
 
-/** The line break a comment's text uses. */
-export function lineBreakOf(comment: Comment): string {
-  return comment.value.includes("\r\n") ? "\r\n" : "\n";
-}
-
-/** The comment's text split into lines, each with its decoration apart from its content. */
-export function commentLines(comment: Comment): CommentLine[] {
-  const doc = isDocComment(comment);
-  return comment.value.split(lineBreakOf(comment)).map((line, index) => {
-    const decoration = index === 0 ? (doc ? /^\*[ \t]*/ : /^[ \t]*/) : /^[ \t]*(?:\*(?!\*)[ \t]?)?/;
-    const prefix = decoration.exec(line)![0];
-    return { prefix, content: line.slice(prefix.length) };
-  });
-}
-
 /** The comment text that `commentLines` split, joined back. */
 export function joinLines(comment: Comment, lines: CommentLine[]): string {
   return lines.map((line) => line.prefix + line.content).join(lineBreakOf(comment));
+}
+
+/** The line break a comment's text uses. */
+export function lineBreakOf(comment: Comment): string {
+  return comment.value.includes("\r\n") ? "\r\n" : "\n";
 }
 
 /**
@@ -107,9 +97,12 @@ export function withoutLines(comment: Comment, lines: CommentLine[], drop: Set<n
   });
 }
 
-/** Whether a comment's lines hold no text at all. */
-export function holdsNoText(lines: CommentLine[]): boolean {
-  return lines.every((line) => line.content.trim() === "");
+/** Replaces the comment's text with `value`, or deletes the comment when `value` holds no text. `null` when unsafe. */
+export function replaceCommentText(fixer: Rule.RuleFixer, sourceCode: SourceCode, comment: Comment, value: string): Rule.Fix | null {
+  const lines = commentLines({ ...comment, value } as Comment);
+  if (holdsNoText(lines)) return removeComment(fixer, sourceCode, comment);
+  const text = rewrittenComment(comment, value);
+  return text === null ? null : fixer.replaceTextRange(comment.range!, text);
 }
 
 /**
@@ -128,12 +121,19 @@ export function rewrittenComment(comment: Comment, value: string): string | null
   return `/*${value}*/`;
 }
 
-/** Replaces the comment's text with `value`, or deletes the comment when `value` holds no text. `null` when unsafe. */
-export function replaceCommentText(fixer: Rule.RuleFixer, sourceCode: SourceCode, comment: Comment, value: string): Rule.Fix | null {
-  const lines = commentLines({ ...comment, value } as Comment);
-  if (holdsNoText(lines)) return removeComment(fixer, sourceCode, comment);
-  const text = rewrittenComment(comment, value);
-  return text === null ? null : fixer.replaceTextRange(comment.range!, text);
+/** Whether a comment's lines hold no text at all. */
+export function holdsNoText(lines: CommentLine[]): boolean {
+  return lines.every((line) => line.content.trim() === "");
+}
+
+/** The comment's text split into lines, each with its decoration apart from its content. */
+export function commentLines(comment: Comment): CommentLine[] {
+  const doc = isDocComment(comment);
+  return comment.value.split(lineBreakOf(comment)).map((line, index) => {
+    const decoration = index === 0 ? (doc ? /^\*[ \t]*/ : /^[ \t]*/) : /^[ \t]*(?:\*(?!\*)[ \t]?)?/;
+    const prefix = decoration.exec(line)![0];
+    return { prefix, content: line.slice(prefix.length) };
+  });
 }
 
 /** Whether the comment starts with `TODO` or `FIXME`, which `no-warning-comments` reports (CMT-10). */

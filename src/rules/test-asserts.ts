@@ -37,16 +37,22 @@ const ASSERTION_EXPORTS = new Map([
   ["@jest/globals", new Set(["expect"])],
 ]);
 
-/** Whether a binding imported from `source` under `imported` (`null` for a default or namespace import) is an assertion. */
-function isAssertionExport(source: unknown, imported: string | null): boolean {
-  if (typeof source !== "string") return false;
-  if (ASSERTION_MODULES.has(source)) return true;
-  return imported !== null && (ASSERTION_EXPORTS.get(source)?.has(imported) ?? false);
+/** The variables, at the top of the file, that hold an assertion module or function, through `import` or `require`. */
+function assertionBindings(sourceCode: SourceCode, program: TSESTree.Program): Set<Scope.Variable> {
+  return new Set(
+    program.body.flatMap((statement) => {
+      if (statement.type === "ImportDeclaration") return importedAssertions(sourceCode, statement);
+      if (statement.type === "VariableDeclaration") return requiredAssertions(sourceCode, statement);
+      return [];
+    }),
+  );
 }
 
-function importedName(specifier: TSESTree.ImportClause): string | null {
-  if (specifier.type !== "ImportSpecifier") return null;
-  return specifier.imported.type === "Identifier" ? specifier.imported.name : String(specifier.imported.value);
+function requiredAssertions(sourceCode: SourceCode, statement: TSESTree.VariableDeclaration): Scope.Variable[] {
+  return statement.declarations.flatMap((declarator) => {
+    const names = new Set(requiredAssertionNames(declarator.id, requiredModule(declarator.init)));
+    return sourceCode.getDeclaredVariables(declarator as never).filter((variable) => names.has(variable.name));
+  });
 }
 
 /** The module a `require("…")` call loads, or `null` when `node` is not one. */
@@ -67,28 +73,22 @@ function requiredAssertionNames(id: TSESTree.Node, source: unknown): string[] {
   });
 }
 
+/** Whether a binding imported from `source` under `imported` (`null` for a default or namespace import) is an assertion. */
+function isAssertionExport(source: unknown, imported: string | null): boolean {
+  if (typeof source !== "string") return false;
+  if (ASSERTION_MODULES.has(source)) return true;
+  return imported !== null && (ASSERTION_EXPORTS.get(source)?.has(imported) ?? false);
+}
+
 function importedAssertions(sourceCode: SourceCode, statement: TSESTree.ImportDeclaration): Scope.Variable[] {
   return statement.specifiers
     .filter((specifier) => isAssertionExport(statement.source.value, importedName(specifier)))
     .flatMap((specifier) => sourceCode.getDeclaredVariables(specifier as never));
 }
 
-function requiredAssertions(sourceCode: SourceCode, statement: TSESTree.VariableDeclaration): Scope.Variable[] {
-  return statement.declarations.flatMap((declarator) => {
-    const names = new Set(requiredAssertionNames(declarator.id, requiredModule(declarator.init)));
-    return sourceCode.getDeclaredVariables(declarator as never).filter((variable) => names.has(variable.name));
-  });
-}
-
-/** The variables, at the top of the file, that hold an assertion module or function, through `import` or `require`. */
-function assertionBindings(sourceCode: SourceCode, program: TSESTree.Program): Set<Scope.Variable> {
-  return new Set(
-    program.body.flatMap((statement) => {
-      if (statement.type === "ImportDeclaration") return importedAssertions(sourceCode, statement);
-      if (statement.type === "VariableDeclaration") return requiredAssertions(sourceCode, statement);
-      return [];
-    }),
-  );
+function importedName(specifier: TSESTree.ImportClause): string | null {
+  if (specifier.type !== "ImportSpecifier") return null;
+  return specifier.imported.type === "Identifier" ? specifier.imported.name : String(specifier.imported.value);
 }
 
 /** The identifier at the root of a callee: `equal` in `equal(…)`, `strict` in `strict.equal(…)`, `a` in `a.ok(…)`. */
@@ -111,15 +111,21 @@ function resolve(scope: Scope.Scope, name: string): Scope.Variable | null {
 
 type NamePattern = Array<RegExp | "**">;
 
+/** Reads `request.**.expect` or `verify*` into one matcher per name: `*` matches within one name, `**` any number of names. */
+function namePattern(name: string): NamePattern {
+  return name.split(".").map((part) => (part === "**" ? "**" : wildcard(part)));
+}
+
 /** A name with `*` wildcards as a pattern for one name: `verify*` matches `verifyTotals`. */
 function wildcard(part: string): RegExp {
   const literal = part.split("*").map((text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   return new RegExp(`^${literal.join(".*")}$`);
 }
 
-/** Reads `request.**.expect` or `verify*` into one matcher per name: `*` matches within one name, `**` any number of names. */
-function namePattern(name: string): NamePattern {
-  return name.split(".").map((part) => (part === "**" ? "**" : wildcard(part)));
+function isAssertion(path: string[], extra: NamePattern[]): boolean {
+  if (ASSERTION_PREFIX.test(path[0])) return true;
+  if (path.slice(1).some((name) => ASSERTION_PROPERTY.has(name))) return true;
+  return extra.some((pattern) => matches(pattern, path));
 }
 
 function matches(pattern: NamePattern, path: string[]): boolean {
@@ -127,12 +133,6 @@ function matches(pattern: NamePattern, path: string[]): boolean {
   const [first, ...rest] = pattern;
   if (first === "**") return matches(rest, path) || (path.length > 0 && matches(pattern, path.slice(1)));
   return path.length > 0 && first.test(path[0]) && matches(rest, path.slice(1));
-}
-
-function isAssertion(path: string[], extra: NamePattern[]): boolean {
-  if (ASSERTION_PREFIX.test(path[0])) return true;
-  if (path.slice(1).some((name) => ASSERTION_PROPERTY.has(name))) return true;
-  return extra.some((pattern) => matches(pattern, path));
 }
 
 export default defineRule<[Options]>({

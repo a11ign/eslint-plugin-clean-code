@@ -8,13 +8,6 @@ const STUB_MARKER = /not (yet )?implemented|todo|implement (me|this)|stub/i;
 /** A class named for being a stand-in, whose stub bodies are the point. */
 const STAND_IN_CLASS = /(Stub|Fake|Mock)$/;
 
-/** The text of a string literal, or of a template literal with no `${…}` parts; `null` for anything else. */
-function staticText(node: TSESTree.Node | undefined): string | null {
-  if (node?.type === "Literal" && typeof node.value === "string") return node.value;
-  if (node?.type === "TemplateLiteral" && node.expressions.length === 0) return node.quasis[0].value.cooked ?? null;
-  return null;
-}
-
 /** `throw new SomethingError("Not implemented")`, or the same with `Error` called without `new`. */
 function isPlaceholderThrow(statement: TSESTree.Statement): boolean {
   if (statement.type !== "ThrowStatement") return false;
@@ -23,6 +16,13 @@ function isPlaceholderThrow(statement: TSESTree.Statement): boolean {
   if (thrown.callee.type !== "Identifier" || !thrown.callee.name.endsWith("Error")) return false;
   const message = staticText(thrown.arguments[0]);
   return message !== null && STUB_MARKER.test(message);
+}
+
+/** The text of a string literal, or of a template literal with no `${…}` parts; `null` for anything else. */
+function staticText(node: TSESTree.Node | undefined): string | null {
+  if (node?.type === "Literal" && typeof node.value === "string") return node.value;
+  if (node?.type === "TemplateLiteral" && node.expressions.length === 0) return node.quasis[0].value.cooked ?? null;
+  return null;
 }
 
 /** Whether `return` gives one of the stub values: `null`, `undefined`, `{}`, `[]` or `""`. */
@@ -41,17 +41,17 @@ function hasStubMarker(sourceCode: SourceCode, body: TSESTree.BlockStatement): b
   return sourceCode.getAllComments().some((comment) => comment.range![0] > body.range[0] && comment.range![1] < body.range[1] && STUB_MARKER.test(comment.value));
 }
 
+function isInStandInClass(node: TSESTree.Node): boolean {
+  const name = enclosingClass(node)?.id?.name;
+  return name !== undefined && STAND_IN_CLASS.test(name);
+}
+
 /** The nearest class the function is a member of, or `null`. */
 function enclosingClass(node: TSESTree.Node): TSESTree.ClassDeclaration | TSESTree.ClassExpression | null {
   for (let current = node.parent; current; current = current.parent) {
     if (current.type === "ClassDeclaration" || current.type === "ClassExpression") return current;
   }
   return null;
-}
-
-function isInStandInClass(node: TSESTree.Node): boolean {
-  const name = enclosingClass(node)?.id?.name;
-  return name !== undefined && STAND_IN_CLASS.test(name);
 }
 
 export default defineAiRule({

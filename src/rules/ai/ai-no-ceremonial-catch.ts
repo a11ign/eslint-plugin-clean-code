@@ -9,15 +9,6 @@ interface Options {
   loggerNames?: string[];
 }
 
-/** The names of a callee chain, outermost first: `this.logger.error` gives `this`, `logger`, `error`; `null` for anything else. */
-function calleeNames(callee: TSESTree.Node): string[] | null {
-  if (callee.type === "Identifier") return [callee.name];
-  if (callee.type === "ThisExpression") return ["this"];
-  if (callee.type !== "MemberExpression" || callee.computed || callee.property.type !== "Identifier") return null;
-  const object = calleeNames(callee.object);
-  return object && [...object, callee.property.name];
-}
-
 /** Whether the statement is only a call on `console`, or on a callee whose last name is in `loggerNames`, awaited or not. */
 function isLoggingCall(statement: TSESTree.Statement, loggerNames: Set<string>): boolean {
   if (statement.type !== "ExpressionStatement") return false;
@@ -26,6 +17,15 @@ function isLoggingCall(statement: TSESTree.Statement, loggerNames: Set<string>):
   const names = calleeNames(expression.callee);
   if (!names) return false;
   return (names[0] === "console" && names.length === 2) || loggerNames.has(names.at(-1)!);
+}
+
+/** The names of a callee chain, outermost first: `this.logger.error` gives `this`, `logger`, `error`; `null` for anything else. */
+function calleeNames(callee: TSESTree.Node): string[] | null {
+  if (callee.type === "Identifier") return [callee.name];
+  if (callee.type === "ThisExpression") return ["this"];
+  if (callee.type !== "MemberExpression" || callee.computed || callee.property.type !== "Identifier") return null;
+  const object = calleeNames(callee.object);
+  return object && [...object, callee.property.name];
 }
 
 /** Whether the statement is `throw <param>`, rethrowing the error the clause caught. */

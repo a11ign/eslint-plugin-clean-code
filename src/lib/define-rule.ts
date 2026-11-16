@@ -9,42 +9,17 @@ import type { Rule } from "eslint";
 
 export const PACKAGE_NAME = "eslint-plugin-clean-code-book";
 
-/** Where a rule's doc page is served from: the published package's own `docs/rules/`, so the link moves with the package. */
-export function docsUrl(ruleName: string): string {
-  return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/${ruleName}.md`;
-}
-
 /** The rules of the opt-in `ai` config are named `ai-<name>`, and their doc pages are under `docs/rules/ai/`. */
 export const AI_RULE_PREFIX = "ai-";
-
-/** Where an `ai` rule's doc page is served from. */
-export function aiDocsUrl(ruleName: string): string {
-  return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/ai/${ruleName}.md`;
-}
 
 /** The rules of the opt-in `typescript` config are named `ts-<name>`, and their doc pages are under `docs/rules/typescript/`. */
 export const TYPESCRIPT_RULE_PREFIX = "ts-";
 
-/** Where a `typescript` rule's doc page is served from. */
-export function typescriptDocsUrl(ruleName: string): string {
-  return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/typescript/${ruleName}.md`;
-}
-
 /** The rules of the opt-in `node` config are named `node-<name>`, and their doc pages are under `docs/rules/node/`. */
 export const NODE_RULE_PREFIX = "node-";
 
-/** Where a `node` rule's doc page is served from. */
-export function nodeDocsUrl(ruleName: string): string {
-  return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/node/${ruleName}.md`;
-}
-
 /** The rules of the opt-in `react` config are named `react-<name>`, and their doc pages are under `docs/rules/react/`. */
 export const REACT_RULE_PREFIX = "react-";
-
-/** Where a `react` rule's doc page is served from. */
-export function reactDocsUrl(ruleName: string): string {
-  return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/react/${ruleName}.md`;
-}
 
 /** The passage a rule enforces: the chapter and section, and the quote copied from the catalog entry. */
 export interface BookSource {
@@ -114,27 +89,12 @@ export interface AiRuleSpec<Options extends unknown[] = unknown[]> extends Omit<
   pattern: AiPattern;
 }
 
-/** The text of one message: the problem, then the book passage, then the refactor. */
-export function bookMessage(message: MessageSpec, book: BookSource): string {
-  return `${message.problem} Clean Code, ${book.chapter}: "${book.passage}" Refactor: ${message.refactor}`;
-}
-
-/** The text of one `ai` message: the problem, then the AI pattern and its harm, then the refactor. */
-export function aiMessage(message: MessageSpec, pattern: AiPattern): string {
-  return `${message.problem} AI pattern ${pattern.entry}, ${pattern.name}: ${pattern.harm} Refactor: ${message.refactor}`;
-}
-
 /**
  * A `typescript`, `node` or `react` rule: report-only, like an `ai` rule, and it names its language book where a book rule names
  * *Clean Code*.
  */
 export interface LanguageRuleSpec<Options extends unknown[] = unknown[]> extends Omit<SpecBase<Options>, "fixable" | "requiresTypeChecking"> {
   source: LanguageSource;
-}
-
-/** The text of one `typescript`, `node` or `react` message: the problem, then the language book's passage, then the refactor. */
-export function languageMessage(message: MessageSpec, source: LanguageSource): string {
-  return `${message.problem} ${source.book}, ${source.section}: "${source.passage}" Refactor: ${message.refactor}`;
 }
 
 interface DocsBase {
@@ -161,26 +121,66 @@ export function defineRule<Options extends unknown[]>(spec: RuleSpec<Options>): 
   return buildRule(spec, docs, (message) => bookMessage(message, spec.book));
 }
 
+/** The text of one message: the problem, then the book passage, then the refactor. */
+export function bookMessage(message: MessageSpec, book: BookSource): string {
+  return `${message.problem} Clean Code, ${book.chapter}: "${book.passage}" Refactor: ${message.refactor}`;
+}
+
+/** Where a rule's doc page is served from: the published package's own `docs/rules/`, so the link moves with the package. */
+export function docsUrl(ruleName: string): string {
+  return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/${ruleName}.md`;
+}
+
 export function defineAiRule<Options extends unknown[]>(spec: AiRuleSpec<Options>): CleanCodeRule {
   const docs: CleanCodeDocs = { description: spec.description, url: aiDocsUrl(spec.name), requiresTypeChecking: false, pattern: spec.pattern };
   return buildRule(spec, docs, (message) => aiMessage(message, spec.pattern));
+}
+
+/** The text of one `ai` message: the problem, then the AI pattern and its harm, then the refactor. */
+export function aiMessage(message: MessageSpec, pattern: AiPattern): string {
+  return `${message.problem} AI pattern ${pattern.entry}, ${pattern.name}: ${pattern.harm} Refactor: ${message.refactor}`;
+}
+
+/** Where an `ai` rule's doc page is served from. */
+export function aiDocsUrl(ruleName: string): string {
+  return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/ai/${ruleName}.md`;
 }
 
 export function defineTypescriptRule<Options extends unknown[]>(spec: LanguageRuleSpec<Options>): CleanCodeRule {
   return defineLanguageRule(spec, typescriptDocsUrl(spec.name));
 }
 
+/** Where a `typescript` rule's doc page is served from. */
+export function typescriptDocsUrl(ruleName: string): string {
+  return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/typescript/${ruleName}.md`;
+}
+
 export function defineNodeRule<Options extends unknown[]>(spec: LanguageRuleSpec<Options>): CleanCodeRule {
   return defineLanguageRule(spec, nodeDocsUrl(spec.name));
+}
+
+/** Where a `node` rule's doc page is served from. */
+export function nodeDocsUrl(ruleName: string): string {
+  return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/node/${ruleName}.md`;
 }
 
 export function defineReactRule<Options extends unknown[]>(spec: LanguageRuleSpec<Options>): CleanCodeRule {
   return defineLanguageRule(spec, reactDocsUrl(spec.name));
 }
 
+/** Where a `react` rule's doc page is served from. */
+export function reactDocsUrl(ruleName: string): string {
+  return `https://unpkg.com/${PACKAGE_NAME}/docs/rules/react/${ruleName}.md`;
+}
+
 function defineLanguageRule<Options extends unknown[]>(spec: LanguageRuleSpec<Options>, url: string): CleanCodeRule {
   const docs: CleanCodeDocs = { description: spec.description, url, requiresTypeChecking: false, source: spec.source };
   return buildRule(spec, docs, (message) => languageMessage(message, spec.source));
+}
+
+/** The text of one `typescript`, `node` or `react` message: the problem, then the language book's passage, then the refactor. */
+export function languageMessage(message: MessageSpec, source: LanguageSource): string {
+  return `${message.problem} ${source.book}, ${source.section}: "${source.passage}" Refactor: ${message.refactor}`;
 }
 
 function buildRule<Options extends unknown[]>(spec: SpecBase<Options>, docs: CleanCodeDocs, write: (message: MessageSpec) => string): CleanCodeRule {

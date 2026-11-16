@@ -15,23 +15,6 @@ interface Run {
 const BOX_DRAWING = /[\u2500-\u257f]/;
 const DIAGRAM_EDGE = new Set(["+", "|"]);
 
-/** Whether the line is part of an ASCII or box-drawing diagram: it starts or ends with `+` or `|`, or draws boxes. */
-function isDiagramLine(text: string): boolean {
-  const trimmed = text.trim();
-  return BOX_DRAWING.test(trimmed) || DIAGRAM_EDGE.has(trimmed[0]) || DIAGRAM_EDGE.has(trimmed.at(-1)!);
-}
-
-/**
- * Whether a run is not a banner: an arrow (`----->`, `<-----`), the edge of a diagram box (`+-----+`, `|=====|`), or
- * part of a longer token such as a URL or base64 (`eyJ2/////ZXJz`), with other characters right on both sides of it.
- */
-function isNotBanner(text: string, start: number, end: number): boolean {
-  const before = text[start - 1];
-  const after = text[end];
-  if (after === ">" || before === "<" || DIAGRAM_EDGE.has(before) || DIAGRAM_EDGE.has(after)) return true;
-  return before !== undefined && after !== undefined && /\S/.test(before) && /\S/.test(after);
-}
-
 /** The runs of one punctuation character in `text` at least `length` long that are banners. */
 function runsIn(text: string, length: number): Run[] {
   if (isDiagramLine(text)) return [];
@@ -45,8 +28,25 @@ function runsIn(text: string, length: number): Run[] {
   return runs;
 }
 
+/**
+ * Whether a run is not a banner: an arrow (`----->`, `<-----`), the edge of a diagram box (`+-----+`, `|=====|`), or
+ * part of a longer token such as a URL or base64 (`eyJ2/////ZXJz`), with other characters right on both sides of it.
+ */
+function isNotBanner(text: string, start: number, end: number): boolean {
+  const before = text[start - 1];
+  const after = text[end];
+  if (after === ">" || before === "<" || DIAGRAM_EDGE.has(before) || DIAGRAM_EDGE.has(after)) return true;
+  return before !== undefined && after !== undefined && /\S/.test(before) && /\S/.test(after);
+}
+
+/** Whether the line is part of an ASCII or box-drawing diagram: it starts or ends with `+` or `|`, or draws boxes. */
+function isDiagramLine(text: string): boolean {
+  const trimmed = text.trim();
+  return BOX_DRAWING.test(trimmed) || DIAGRAM_EDGE.has(trimmed[0]) || DIAGRAM_EDGE.has(trimmed.at(-1)!);
+}
+
 /** A doc comment line that is only a run under a line of text (a Markdown heading underline), or a Markdown table rule. */
-function isMarkdownRule(lines: CommentLine[], index: number, doc: boolean): boolean {
+function isMarkdownRule(lines: CommentLine[], index: number, { doc }: { doc: boolean }): boolean {
   const text = lines[index].content.trim();
   const above = index > 0 ? lines[index - 1].content.trim() : "";
   if (!doc || above === "" || /^(.)\1*$/u.test(above)) return false;
@@ -65,19 +65,6 @@ function linesOf(comment: Comment): { lines: CommentLine[]; movedStar: boolean }
   return { lines, movedStar };
 }
 
-/** `content` with each run and the blank space around it removed, keeping one space between text on both sides. */
-function withoutRuns(content: string, runs: Run[]): string {
-  return runs.reduceRight((text, run) => {
-    let left = run.start;
-    let right = run.end;
-    while (left > 0 && /[ \t]/.test(text[left - 1])) left -= 1;
-    while (right < text.length && /[ \t]/.test(text[right])) right += 1;
-    const before = text.slice(0, left);
-    const after = text.slice(right);
-    return before + (before.trim() !== "" && after.trim() !== "" ? " " : "") + after;
-  }, content);
-}
-
 interface LinePlace {
   first: boolean;
   last: boolean;
@@ -87,7 +74,7 @@ interface LinePlace {
 
 /**
  * One line with its runs removed. Text that a run kept apart from the comment's delimiters stays one space away from
- * them, so `/****** Section ******\/` becomes `/* Section *\/` and `//===== Section` becomes `// Section`.
+ * them, so `/ Section \/` becomes `/* Section *\/` and `// Section` becomes `// Section`.
  */
 function rewriteLine(line: CommentLine, runs: Run[], place: LinePlace): CommentLine {
   let content = withoutRuns(line.content, runs);
@@ -99,6 +86,19 @@ function rewriteLine(line: CommentLine, runs: Run[], place: LinePlace): CommentL
   }
   if (place.block && place.last && runs.at(-1)!.end >= line.content.trimEnd().length && !/[ \t]$/.test(content)) content += " ";
   return { prefix, content };
+}
+
+/** `content` with each run and the blank space around it removed, keeping one space between text on both sides. */
+function withoutRuns(content: string, runs: Run[]): string {
+  return runs.reduceRight((text, run) => {
+    let left = run.start;
+    let right = run.end;
+    while (left > 0 && /[ \t]/.test(text[left - 1])) left -= 1;
+    while (right < text.length && /[ \t]/.test(text[right])) right += 1;
+    const before = text.slice(0, left);
+    const after = text.slice(right);
+    return before + (before.trim() !== "" && after.trim() !== "" ? " " : "") + after;
+  }, content);
 }
 
 export default defineRule<[number]>({
@@ -127,7 +127,7 @@ export default defineRule<[number]>({
         for (const comment of sourceComments(sourceCode)) {
           if (isDirectiveComment(comment)) continue;
           const { lines, movedStar } = linesOf(comment);
-          const runs = lines.map((line, index) => (isMarkdownRule(lines, index, isDocComment(comment)) ? [] : runsIn(line.content, length)));
+          const runs = lines.map((line, index) => (isMarkdownRule(lines, index, { doc: isDocComment(comment) }) ? [] : runsIn(line.content, length)));
           const first = runs.flat()[0];
           if (!first) continue;
           const firstLine = lines[runs.findIndex((found) => found.length > 0)];

@@ -18,16 +18,6 @@ const TERMS = new Set([
 
 const VERSIONED_TERM = /^(es|ecma|es20)\d+$/;
 
-/** The stem of a number-series name (`list` for `list1` and `list_2`), or `null` when the digits are part of a term. */
-function seriesStem(name: string): string | null {
-  const match = NUMBERED.exec(name);
-  if (!match) return null;
-  const stem = match[1];
-  const last = words(name).at(-1) ?? "";
-  if (TERMS.has(last) || VERSIONED_TERM.test(last)) return null;
-  return stem.length > 1 ? stem : null;
-}
-
 /** The series in one scope: each stem with the numbered names, and the bare stem if it is declared too. */
 function seriesIn(variables: VariableT[]): Map<string, VariableT[]> {
   const byStem = new Map<string, VariableT[]>();
@@ -40,6 +30,16 @@ function seriesIn(variables: VariableT[]): Map<string, VariableT[]> {
     if (numbered.length + (names.has(stem) ? 1 : 0) < 2) byStem.delete(stem);
   }
   return byStem;
+}
+
+/** The stem of a number-series name (`list` for `list1` and `list_2`), or `null` when the digits are part of a term. */
+function seriesStem(name: string): string | null {
+  const match = NUMBERED.exec(name);
+  if (!match) return null;
+  const stem = match[1];
+  const last = words(name).at(-1) ?? "";
+  if (TERMS.has(last) || VERSIONED_TERM.test(last)) return null;
+  return stem.length > 1 ? stem : null;
 }
 
 export default defineRule({

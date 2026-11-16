@@ -10,31 +10,16 @@ export type ClassMember = TSESTree.ClassElement;
 
 const SKIPPED_KEYS = new Set(["parent", "loc", "range", "start", "end", "type", "typeAnnotation", "returnType", "typeParameters", "decorators"]);
 
-function isNode(value: unknown): value is Node {
-  return typeof value === "object" && value !== null && typeof (value as { type?: unknown }).type === "string";
+/** The member a `this.x`, `this["x"]`, `this.#x` or `(this as T).x` expression reads, or null for anything else. */
+export function thisMemberName(expression: TSESTree.Node | null | undefined): string | null {
+  const member = expression ? unwrapTs(expression) : null;
+  if (member?.type !== "MemberExpression" || !isThis(member.object)) return null;
+  return keyName(member.property, member.computed);
 }
 
-/** The child nodes of `node`, in no particular order, read from its own keys so it works with either linter's tree. */
-export function childNodes(node: Node): Node[] {
-  const children: Node[] = [];
-  for (const [key, value] of Object.entries(node)) {
-    if (SKIPPED_KEYS.has(key)) continue;
-    if (Array.isArray(value)) children.push(...value.filter(isNode));
-    else if (isNode(value)) children.push(value);
-  }
-  return children;
-}
-
-/**
- * Calls `visit` on every node under `root`. Nested functions and classes are entered only when `intoFunctions` is set,
- * so by default the walk sees exactly the code that runs when `root` runs.
- */
-export function walk(root: Node, visit: (node: Node) => void, intoFunctions = false): void {
-  for (const child of childNodes(root)) {
-    visit(child);
-    const opensScope = isFunction(child) || child.type === "ClassDeclaration" || child.type === "ClassExpression";
-    if (intoFunctions || !opensScope) walk(child, visit, intoFunctions);
-  }
+/** Whether an expression is `this`, also behind `as`, `satisfies`, `!` or an angle-bracket assertion (`return this as this`). */
+export function isThis(expression: TSESTree.Node | null | undefined): boolean {
+  return expression ? unwrapTs(expression).type === "ThisExpression" : false;
 }
 
 /** The name of a non-computed member key: `x`, `"x"`, or `#x` for a private name. */
@@ -44,18 +29,6 @@ export function keyName(key: TSESTree.Node, computed: boolean): string | null {
   if (key.type === "Identifier") return key.name;
   if (key.type === "Literal") return String(key.value);
   return null;
-}
-
-/** Whether an expression is `this`, also behind `as`, `satisfies`, `!` or an angle-bracket assertion (`return this as this`). */
-export function isThis(expression: TSESTree.Node | null | undefined): boolean {
-  return expression ? unwrapTs(expression).type === "ThisExpression" : false;
-}
-
-/** The member a `this.x`, `this["x"]`, `this.#x` or `(this as T).x` expression reads, or null for anything else. */
-export function thisMemberName(expression: TSESTree.Node | null | undefined): string | null {
-  const member = expression ? unwrapTs(expression) : null;
-  if (member?.type !== "MemberExpression" || !isThis(member.object)) return null;
-  return keyName(member.property, member.computed);
 }
 
 /** The name a class is known by: its own id, or the variable it is assigned to. */
@@ -68,19 +41,6 @@ export function className(node: ClassNode): string {
 
 export function classOfBody(body: TSESTree.ClassBody): ClassNode {
   return body.parent as ClassNode;
-}
-
-/** A field or method's name, when it has a static, non-computed one. */
-export function memberName(member: ClassMember): string | null {
-  if (member.type === "StaticBlock" || member.type === "TSIndexSignature") return null;
-  return keyName(member.key, member.computed);
-}
-
-/** The function a class member runs: a method's body, or a field initialised with a function. */
-export function memberFunction(member: ClassMember): FunctionNode | null {
-  if (member.type === "MethodDefinition" && member.value.type === "FunctionExpression") return member.value;
-  if (member.type === "PropertyDefinition" && isFunction(member.value)) return member.value;
-  return null;
 }
 
 /** Whether a member is non-public: TypeScript `private` or `protected`, or a `#private` name. */
@@ -96,6 +56,12 @@ export function isPrivateField(member: ClassMember): boolean {
   return member.accessibility === "private" || member.key.type === "PrivateIdentifier";
 }
 
+/** The TypeScript parameter properties of a constructor (`constructor(private x: number)`). */
+export function parameterProperties(body: TSESTree.ClassBody): TSESTree.TSParameterProperty[] {
+  const constructor = constructorOf(body);
+  return (constructor?.params ?? []).filter((param): param is TSESTree.TSParameterProperty => param.type === "TSParameterProperty");
+}
+
 /** The constructor of a class body, if it has one with a body. */
 export function constructorOf(body: TSESTree.ClassBody): TSESTree.FunctionExpression | null {
   for (const member of body.body) {
@@ -104,15 +70,21 @@ export function constructorOf(body: TSESTree.ClassBody): TSESTree.FunctionExpres
   return null;
 }
 
-/** The TypeScript parameter properties of a constructor (`constructor(private x: number)`). */
-export function parameterProperties(body: TSESTree.ClassBody): TSESTree.TSParameterProperty[] {
-  const constructor = constructorOf(body);
-  return (constructor?.params ?? []).filter((param): param is TSESTree.TSParameterProperty => param.type === "TSParameterProperty");
-}
-
 export function parameterPropertyName(param: TSESTree.TSParameterProperty): string | null {
   const binding = param.parameter.type === "AssignmentPattern" ? param.parameter.left : param.parameter;
   return binding.type === "Identifier" ? binding.name : null;
+}
+
+/** Whether a method is a fluent setter: it returns, and every `return` returns `this` (also `this as this`, `this!`). */
+export function returnsOnlyThis(fn: FunctionNode): boolean {
+  const values = returnedValues(fn);
+  return values.length > 0 && values.every(isThis);
+}
+
+/** The values a function returns: each `return`'s argument, or the body of an arrow function with an expression body. */
+export function returnedValues(fn: FunctionNode): Array<TSESTree.Expression | null> {
+  if (fn.body && fn.body.type !== "BlockStatement") return [fn.body];
+  return returnStatements(fn).map((statement) => statement.argument);
 }
 
 /** The `return` statements of a function itself, not of the functions nested in it. */
@@ -125,16 +97,31 @@ export function returnStatements(fn: FunctionNode): TSESTree.ReturnStatement[] {
   return returns;
 }
 
-/** The values a function returns: each `return`'s argument, or the body of an arrow function with an expression body. */
-export function returnedValues(fn: FunctionNode): Array<TSESTree.Expression | null> {
-  if (fn.body && fn.body.type !== "BlockStatement") return [fn.body];
-  return returnStatements(fn).map((statement) => statement.argument);
+/**
+ * Calls `visit` on every node under `root`. Nested functions and classes are entered only when `intoFunctions` is set,
+ * so by default the walk sees exactly the code that runs when `root` runs.
+ */
+export function walk(root: Node, visit: (node: Node) => void, intoFunctions = false): void {
+  for (const child of childNodes(root)) {
+    visit(child);
+    const opensScope = isFunction(child) || child.type === "ClassDeclaration" || child.type === "ClassExpression";
+    if (intoFunctions || !opensScope) walk(child, visit, intoFunctions);
+  }
 }
 
-/** Whether a method is a fluent setter: it returns, and every `return` returns `this` (also `this as this`, `this!`). */
-export function returnsOnlyThis(fn: FunctionNode): boolean {
-  const values = returnedValues(fn);
-  return values.length > 0 && values.every(isThis);
+/** The child nodes of `node`, in no particular order, read from its own keys so it works with either linter's tree. */
+export function childNodes(node: Node): Node[] {
+  const children: Node[] = [];
+  for (const [key, value] of Object.entries(node)) {
+    if (SKIPPED_KEYS.has(key)) continue;
+    if (Array.isArray(value)) children.push(...value.filter(isNode));
+    else if (isNode(value)) children.push(value);
+  }
+  return children;
+}
+
+function isNode(value: unknown): value is Node {
+  return typeof value === "object" && value !== null && typeof (value as { type?: unknown }).type === "string";
 }
 
 /** The class member whose code a node runs in, and that member's class body, as `this` sees it. */
@@ -178,6 +165,19 @@ export function findMethod(owner: ThisOwner, name: string): FunctionNode | null 
     if (fn) return fn;
   }
   return null;
+}
+
+/** The function a class member runs: a method's body, or a field initialised with a function. */
+export function memberFunction(member: ClassMember): FunctionNode | null {
+  if (member.type === "MethodDefinition" && member.value.type === "FunctionExpression") return member.value;
+  if (member.type === "PropertyDefinition" && isFunction(member.value)) return member.value;
+  return null;
+}
+
+/** A field or method's name, when it has a static, non-computed one. */
+export function memberName(member: ClassMember): string | null {
+  if (member.type === "StaticBlock" || member.type === "TSIndexSignature") return null;
+  return keyName(member.key, member.computed);
 }
 
 /** Removes the wrappers that do not change which value an expression has: `x!`, `x as T`, `<T>x`, `x satisfies T`. */

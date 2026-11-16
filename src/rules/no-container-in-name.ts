@@ -21,14 +21,9 @@ function containerWord(name: string): Container | null {
   return (word.charAt(0) + word.slice(1).toLowerCase()) as Container;
 }
 
-/**
- * Array-like: an array, a tuple, or anything indexed by number with a `length` (`NodeList`, `Uint8Array`,
- * `ArrayLike<T>`). A string has both, but is not a list.
- */
-function isArrayLike(checker: ts.TypeChecker, type: ts.Type): boolean {
-  if (checker.isArrayLikeType(type)) return true;
-  if (checker.isTypeAssignableTo(type, checker.getStringType())) return false;
-  return type.getNumberIndexType() !== undefined && type.getProperty("length") !== undefined;
+function isContainer(checker: ts.TypeChecker, type: ts.Type, word: Container): boolean {
+  if (word === "List" || word === "Array") return isArrayLike(checker, type) || isNamedContainer(checker, type, word);
+  return isNamedContainer(checker, type, word);
 }
 
 /**
@@ -45,9 +40,14 @@ function isNamedContainer(checker: ts.TypeChecker, type: ts.Type, word: Containe
   return directSupertypes(checker, owner.symbol).some((base) => isNamedContainer(checker, base, word, seen));
 }
 
-function isContainer(checker: ts.TypeChecker, type: ts.Type, word: Container): boolean {
-  if (word === "List" || word === "Array") return isArrayLike(checker, type) || isNamedContainer(checker, type, word);
-  return isNamedContainer(checker, type, word);
+/**
+ * Array-like: an array, a tuple, or anything indexed by number with a `length` (`NodeList`, `Uint8Array`,
+ * `ArrayLike<T>`). A string has both, but is not a list.
+ */
+function isArrayLike(checker: ts.TypeChecker, type: ts.Type): boolean {
+  if (checker.isArrayLikeType(type)) return true;
+  if (checker.isTypeAssignableTo(type, checker.getStringType())) return false;
+  return type.getNumberIndexType() !== undefined && type.getProperty("length") !== undefined;
 }
 
 /** The type to judge, or `null` when there is nothing to judge: `any`, `unknown`, an unconstrained type parameter, or a function (named for what it does, NAM-16). */

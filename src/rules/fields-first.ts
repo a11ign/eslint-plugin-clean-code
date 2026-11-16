@@ -7,10 +7,6 @@ import { blockOf, crossesDirective, guardedBefore, mergeAdjacent, removeBlock, t
 type Member = TSESTree.ClassElement;
 type Field = TSESTree.PropertyDefinition | TSESTree.TSAbstractPropertyDefinition;
 
-function isField(member: Member): member is Field {
-  return member.type === "PropertyDefinition" || member.type === "TSAbstractPropertyDefinition";
-}
-
 /** Methods, accessors, constructors and `static {}` blocks; an index signature is neither a field nor one of these. */
 function isNonField(member: Member): boolean {
   return member.type === "MethodDefinition" || member.type === "TSAbstractMethodDefinition" || member.type === "AccessorProperty" || member.type === "StaticBlock";
@@ -21,42 +17,6 @@ function memberName(sourceCode: SourceCode, member: Member): string {
   if (member.type === "TSIndexSignature") return "the index signature";
   const key = sourceCode.getText(member.key as never);
   return member.computed ? `[${key}]` : key;
-}
-
-function className(body: TSESTree.ClassBody): string | null {
-  const owner = body.parent as TSESTree.ClassDeclaration | TSESTree.ClassExpression;
-  if (owner.id) return owner.id.name;
-  const parent = owner.parent;
-  return parent?.type === "VariableDeclarator" && parent.id.type === "Identifier" ? parent.id.name : null;
-}
-
-/** Whether a field's initializer names the class, or uses `this` where `this` is the class (a static field). */
-function refersToClass(sourceCode: SourceCode, field: Field, name: string | null): boolean {
-  if (!field.value) return false;
-  return (sourceCode.getTokens(field.value as never) as Token[]).some(
-    (token) => (token.type === "Identifier" && token.value === name) || (field.static && token.type === "Keyword" && token.value === "this"),
-  );
-}
-
-/**
- * Whether moving the fields keeps the order everything runs in. Computed keys of the moved fields, decorators, `static {}`
- * blocks and auto-accessors all run in source order, and so may initializers that refer to the class.
- */
-function canMove(sourceCode: SourceCode, body: TSESTree.ClassBody, moved: Field[]): boolean {
-  if (moved.some((field) => field.computed)) return false;
-  const name = className(body);
-  return body.body.every((member) => {
-    if (member.type === "StaticBlock" || member.type === "AccessorProperty") return false;
-    if (((member as { decorators?: unknown[] }).decorators ?? []).length > 0) return false;
-    return !isField(member) || !refersToClass(sourceCode, member, name);
-  });
-}
-
-/** Whether a blank line is directly above the line at `lineStart`. */
-function blankAbove(text: string, lineStart: number): boolean {
-  if (lineStart === 0) return false;
-  const previousStart = text.lastIndexOf("\n", lineStart - 2) + 1;
-  return text.slice(previousStart, lineStart).trim() === "";
 }
 
 function moveFix(sourceCode: SourceCode, body: TSESTree.ClassBody, first: Member, moved: Field[]): Rule.ReportFixer | null {
@@ -75,6 +35,46 @@ function moveFix(sourceCode: SourceCode, body: TSESTree.ClassBody, first: Member
   const gap = blankAbove(sourceCode.text, target.lines[0]) ? "\n" : "";
   const inserted = `${texts.join("\n")}\n${gap}`;
   return (fixer) => [fixer.insertTextBeforeRange([target.lines[0], target.lines[0]], inserted), ...mergeAdjacent(sourceCode, fieldBlocks).flatMap((run) => removeBlock(fixer, sourceCode, run))];
+}
+
+/** Whether a blank line is directly above the line at `lineStart`. */
+function blankAbove(text: string, lineStart: number): boolean {
+  if (lineStart === 0) return false;
+  const previousStart = text.lastIndexOf("\n", lineStart - 2) + 1;
+  return text.slice(previousStart, lineStart).trim() === "";
+}
+
+/**
+ * Whether moving the fields keeps the order everything runs in. Computed keys of the moved fields, decorators, `static {}`
+ * blocks and auto-accessors all run in source order, and so may initializers that refer to the class.
+ */
+function canMove(sourceCode: SourceCode, body: TSESTree.ClassBody, moved: Field[]): boolean {
+  if (moved.some((field) => field.computed)) return false;
+  const name = className(body);
+  return body.body.every((member) => {
+    if (member.type === "StaticBlock" || member.type === "AccessorProperty") return false;
+    if (((member as { decorators?: unknown[] }).decorators ?? []).length > 0) return false;
+    return !isField(member) || !refersToClass(sourceCode, member, name);
+  });
+}
+
+function isField(member: Member): member is Field {
+  return member.type === "PropertyDefinition" || member.type === "TSAbstractPropertyDefinition";
+}
+
+function className(body: TSESTree.ClassBody): string | null {
+  const owner = body.parent as TSESTree.ClassDeclaration | TSESTree.ClassExpression;
+  if (owner.id) return owner.id.name;
+  const parent = owner.parent;
+  return parent?.type === "VariableDeclarator" && parent.id.type === "Identifier" ? parent.id.name : null;
+}
+
+/** Whether a field's initializer names the class, or uses `this` where `this` is the class (a static field). */
+function refersToClass(sourceCode: SourceCode, field: Field, name: string | null): boolean {
+  if (!field.value) return false;
+  return (sourceCode.getTokens(field.value as never) as Token[]).some(
+    (token) => (token.type === "Identifier" && token.value === name) || (field.static && token.type === "Keyword" && token.value === "this"),
+  );
 }
 
 export default defineRule({

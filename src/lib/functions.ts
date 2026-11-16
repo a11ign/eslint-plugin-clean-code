@@ -107,26 +107,6 @@ export function classOf(member: Node): TSESTree.ClassDeclaration | TSESTree.Clas
   return body.parent as TSESTree.ClassDeclaration | TSESTree.ClassExpression;
 }
 
-/** The `const` declarator a function is the whole initializer of: `const f = () => …`. */
-export function constDeclaratorOf(fn: FunctionNode): TSESTree.VariableDeclarator | null {
-  const declarator = fn.parent;
-  if (declarator?.type !== "VariableDeclarator" || declarator.init !== fn || declarator.id.type !== "Identifier") return null;
-  const declaration = declarator.parent;
-  return declaration?.type === "VariableDeclaration" && declaration.kind === "const" ? declarator : null;
-}
-
-/** The statement that declares a named function: the declaration itself, or the `const` declaration holding it. */
-function declaringStatement(fn: FunctionNode): Node | null {
-  if (fn.type === "FunctionDeclaration") return fn;
-  return constDeclaratorOf(fn)?.parent ?? null;
-}
-
-/** Whether the function is exported where it is declared (`export function f`, `export const f`, `export default function`). */
-export function isExportedDeclaration(fn: FunctionNode): boolean {
-  const parent = declaringStatement(fn)?.parent;
-  return parent?.type === "ExportNamedDeclaration" || parent?.type === "ExportDefaultDeclaration";
-}
-
 /** Whether the function is exported, where it is declared or later by name (`export { f }`, `export default f`). */
 export function isExported(sourceCode: SourceCode, fn: FunctionNode): boolean {
   if (isExportedDeclaration(fn)) return true;
@@ -135,6 +115,26 @@ export function isExported(sourceCode: SourceCode, fn: FunctionNode): boolean {
     const parent = (reference.identifier as Node).parent;
     return parent?.type === "ExportSpecifier" || parent?.type === "ExportDefaultDeclaration";
   });
+}
+
+/** Whether the function is exported where it is declared (`export function f`, `export const f`, `export default function`). */
+export function isExportedDeclaration(fn: FunctionNode): boolean {
+  const parent = declaringStatement(fn)?.parent;
+  return parent?.type === "ExportNamedDeclaration" || parent?.type === "ExportDefaultDeclaration";
+}
+
+/** The statement that declares a named function: the declaration itself, or the `const` declaration holding it. */
+function declaringStatement(fn: FunctionNode): Node | null {
+  if (fn.type === "FunctionDeclaration") return fn;
+  return constDeclaratorOf(fn)?.parent ?? null;
+}
+
+/** The `const` declarator a function is the whole initializer of: `const f = () => …`. */
+export function constDeclaratorOf(fn: FunctionNode): TSESTree.VariableDeclarator | null {
+  const declarator = fn.parent;
+  if (declarator?.type !== "VariableDeclarator" || declarator.init !== fn || declarator.id.type !== "Identifier") return null;
+  const declaration = declarator.parent;
+  return declaration?.type === "VariableDeclaration" && declaration.kind === "const" ? declarator : null;
 }
 
 /** The variable a function is called by: a function declaration's name, or the `const` it is assigned to. */

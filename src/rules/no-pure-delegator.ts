@@ -15,14 +15,6 @@ function delegatedCall(fn: TSESTree.FunctionDeclaration): { call: TSESTree.CallE
   return null;
 }
 
-/** The name a parameter binds when it is a single name: `a`, `a: T`, `a = 1` or `...a`. */
-function parameterName(parameter: Parameter): string | null {
-  if (parameter.type === "Identifier") return parameter.name;
-  if (parameter.type === "AssignmentPattern" && parameter.left.type === "Identifier") return parameter.left.name;
-  if (parameter.type === "RestElement" && parameter.argument.type === "Identifier") return parameter.argument.name;
-  return null;
-}
-
 /** Whether the call passes the function's own parameters, unchanged and in order, and nothing else. */
 function passesOwnParameters(params: Parameter[], call: TSESTree.CallExpression): boolean {
   if (params.length !== call.arguments.length) return false;
@@ -33,6 +25,14 @@ function passesOwnParameters(params: Parameter[], call: TSESTree.CallExpression)
     if (parameter.type === "RestElement") return argument.type === "SpreadElement" && argument.argument.type === "Identifier" && argument.argument.name === name;
     return argument.type === "Identifier" && argument.name === name;
   });
+}
+
+/** The name a parameter binds when it is a single name: `a`, `a: T`, `a = 1` or `...a`. */
+function parameterName(parameter: Parameter): string | null {
+  if (parameter.type === "Identifier") return parameter.name;
+  if (parameter.type === "AssignmentPattern" && parameter.left.type === "Identifier") return parameter.left.name;
+  if (parameter.type === "RestElement" && parameter.argument.type === "Identifier") return parameter.argument.name;
+  return null;
 }
 
 /** The function declaration a variable names, when it is a function declared in this file. */
@@ -48,26 +48,27 @@ function declaredFunction(variable: Scope.Variable | null): Node | null {
   return null;
 }
 
-/** The doc comment directly above a function, which goes with it; `null` when there is none. */
-function docCommentOf(sourceCode: SourceCode, fn: Node): Comment | null {
-  const before = sourceCode.getCommentsBefore(fn as never) as Comment[];
-  const last = before.at(-1);
-  if (!last || !isDocComment(last) || isDirectiveComment(last)) return null;
-  return sourceCode.text.slice(last.range![1], fn.range[0]).trim() === "" ? last : null;
-}
-
-/** Whether any comment inside or directly above the delegator is a directive, which no fix may remove or move. */
-function touchesDirective(sourceCode: SourceCode, fn: TSESTree.FunctionDeclaration): boolean {
-  const inside = sourceCode.getAllComments().filter((comment) => comment.range![0] >= fn.range[0] && comment.range![1] <= fn.range[1]) as Comment[];
-  const above = (sourceCode.getCommentsBefore(fn as never) as Comment[]).at(-1);
-  return [...inside, ...(above ? [above] : [])].some(isDirectiveComment);
-}
-
 interface Delegation {
   fn: TSESTree.FunctionDeclaration;
   call: TSESTree.CallExpression;
   returns: boolean;
   target: Scope.Variable;
+}
+
+function fixFor(sourceCode: SourceCode, delegation: Delegation, self: Scope.Variable): Rule.ReportFixer | null {
+  if (!canFix(sourceCode, delegation, self)) return null;
+  const { fn, target } = delegation;
+  const start = docCommentOf(sourceCode, fn)?.range![0] ?? fn.range[0];
+  return (fixer) => [
+    removeRange(fixer, sourceCode, [start, fn.range[1]]),
+    ...self.references.map((reference) => fixer.replaceText(reference.identifier as never, target.name)),
+  ];
+}
+
+/** Whether every condition of the catalog's fix holds (ONE-02). */
+function canFix(sourceCode: SourceCode, delegation: Delegation, self: Scope.Variable): boolean {
+  if (!canRemoveDelegator(sourceCode, delegation) || !isStableTarget(delegation.target) || hasOtherDeclarations(self)) return false;
+  return self.references.every((reference) => canRedirect(sourceCode, delegation, reference));
 }
 
 /** Whether the delegator itself can go: a plain function with plain parameters, not overloaded, not a script global. */
@@ -79,9 +80,27 @@ function canRemoveDelegator(sourceCode: SourceCode, { fn, call }: Delegation): b
   return !touchesDirective(sourceCode, fn);
 }
 
+/** Whether any comment inside or directly above the delegator is a directive, which no fix may remove or move. */
+function touchesDirective(sourceCode: SourceCode, fn: TSESTree.FunctionDeclaration): boolean {
+  const inside = sourceCode.getAllComments().filter((comment) => comment.range![0] >= fn.range[0] && comment.range![1] <= fn.range[1]) as Comment[];
+  const above = (sourceCode.getCommentsBefore(fn as never) as Comment[]).at(-1);
+  return [...inside, ...(above ? [above] : [])].some(isDirectiveComment);
+}
+
 /** Whether the target is a hoisted function declaration that is never reassigned, so calling it directly reads the same function. */
 function isStableTarget(target: Scope.Variable): boolean {
   return target.defs[0].type === "FunctionName" && !target.references.some((reference) => reference.isWrite());
+}
+
+/** Whether a reference to the delegator can call the target instead and do the same thing. */
+function canRedirect(sourceCode: SourceCode, { fn, returns, target }: Delegation, reference: Scope.Reference): boolean {
+  const site = directCall(reference.identifier as Node);
+  if (!site || hasSpread(site) || site.arguments.length !== fn.params.length || site.typeArguments) return false;
+  const annotated = fn.params.some((parameter) => parameter.type === "Identifier" && parameter.typeAnnotation);
+  if (annotated && site.arguments.some((argument) => isContextuallyTyped(argument))) return false;
+  if (resolveAt(sourceCode, site, target.name) !== target) return false;
+  const statement = site.parent?.type === "ChainExpression" ? site.parent.parent : site.parent;
+  return returns || statement?.type === "ExpressionStatement";
 }
 
 /**
@@ -107,31 +126,12 @@ function isContextuallyTyped(argument: Node): boolean {
   }
 }
 
-/** Whether a reference to the delegator can call the target instead and do the same thing. */
-function canRedirect(sourceCode: SourceCode, { fn, returns, target }: Delegation, reference: Scope.Reference): boolean {
-  const site = directCall(reference.identifier as Node);
-  if (!site || hasSpread(site) || site.arguments.length !== fn.params.length || site.typeArguments) return false;
-  const annotated = fn.params.some((parameter) => parameter.type === "Identifier" && parameter.typeAnnotation);
-  if (annotated && site.arguments.some((argument) => isContextuallyTyped(argument))) return false;
-  if (resolveAt(sourceCode, site, target.name) !== target) return false;
-  const statement = site.parent?.type === "ChainExpression" ? site.parent.parent : site.parent;
-  return returns || statement?.type === "ExpressionStatement";
-}
-
-/** Whether every condition of the catalog's fix holds (ONE-02). */
-function canFix(sourceCode: SourceCode, delegation: Delegation, self: Scope.Variable): boolean {
-  if (!canRemoveDelegator(sourceCode, delegation) || !isStableTarget(delegation.target) || hasOtherDeclarations(self)) return false;
-  return self.references.every((reference) => canRedirect(sourceCode, delegation, reference));
-}
-
-function fixFor(sourceCode: SourceCode, delegation: Delegation, self: Scope.Variable): Rule.ReportFixer | null {
-  if (!canFix(sourceCode, delegation, self)) return null;
-  const { fn, target } = delegation;
-  const start = docCommentOf(sourceCode, fn)?.range![0] ?? fn.range[0];
-  return (fixer) => [
-    removeRange(fixer, sourceCode, [start, fn.range[1]]),
-    ...self.references.map((reference) => fixer.replaceText(reference.identifier as never, target.name)),
-  ];
+/** The doc comment directly above a function, which goes with it; `null` when there is none. */
+function docCommentOf(sourceCode: SourceCode, fn: Node): Comment | null {
+  const before = sourceCode.getCommentsBefore(fn as never) as Comment[];
+  const last = before.at(-1);
+  if (!last || !isDocComment(last) || isDirectiveComment(last)) return null;
+  return sourceCode.text.slice(last.range![1], fn.range[0]).trim() === "" ? last : null;
 }
 
 export default defineRule({

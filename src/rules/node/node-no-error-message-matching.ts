@@ -11,12 +11,6 @@ function isMessageOf(node: Node | null | undefined, error: TSESTree.Identifier):
   return node?.type === "MemberExpression" && node.object === error && !node.computed && node.property.type === "Identifier" && node.property.name === "message";
 }
 
-/** Whether `node` is a regular expression: a literal, or `new RegExp(…)` / `RegExp(…)`. */
-function isRegExp(node: Node): boolean {
-  if (node.type === "Literal") return "regex" in node && Boolean(node.regex);
-  return (node.type === "NewExpression" || node.type === "CallExpression") && node.callee.type === "Identifier" && node.callee.name === "RegExp";
-}
-
 /** Whether `message` (an `error.message`) is tested against text: `message.includes(…)`, `message === …` or `/re/.test(message)`. */
 function isTextTest(message: TSESTree.MemberExpression): boolean {
   const parent = message.parent;
@@ -27,6 +21,12 @@ function isTextTest(message: TSESTree.MemberExpression): boolean {
   if (parent.type !== "CallExpression" || parent.arguments[0] !== message) return false;
   const { callee } = parent;
   return methodName(parent) === "test" && callee.type === "MemberExpression" && isRegExp(callee.object);
+}
+
+/** Whether `node` is a regular expression: a literal, or `new RegExp(…)` / `RegExp(…)`. */
+function isRegExp(node: Node): boolean {
+  if (node.type === "Literal") return "regex" in node && Boolean(node.regex);
+  return (node.type === "NewExpression" || node.type === "CallExpression") && node.callee.type === "Identifier" && node.callee.name === "RegExp";
 }
 
 /** The error parameter of a `catch` clause, or of a function passed to `.catch(…)`, when it is a plain identifier. */

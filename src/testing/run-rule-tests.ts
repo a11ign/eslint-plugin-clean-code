@@ -56,16 +56,26 @@ EslintRuleTester.it = it;
 OxlintRuleTester.describe = describe;
 OxlintRuleTester.it = it as never;
 
-function languageOptions(testCase: CaseBase) {
-  return {
-    parser: tsParser,
-    sourceType: testCase.sourceType ?? "module",
-    parserOptions: { ecmaFeatures: { jsx: /\.[jt]sx$/.test(testCase.filename ?? DEFAULT_FILENAME) } },
-  };
+/** Runs `cases` for the rule under both linters, with the fix checks above. */
+export function runRuleTests(ruleName: string, rule: Rule.RuleModule, cases: RuleCases): void {
+  const extra = fixedOutputCases(cases.invalid);
+  const all = { valid: [...cases.valid.map(normalise), ...extra.valid], invalid: [...cases.invalid, ...extra.invalid] };
+  const { eslint, oxlint } = both(all);
+  describe(`${ruleName} under ESLint`, () => {
+    new EslintRuleTester().run(ruleName, rule, eslint as never);
+  });
+  describe(`${ruleName} under Oxlint`, () => {
+    new OxlintRuleTester({ eslintCompat: true }).run(ruleName, rule as never, oxlint as never);
+  });
+  behaviourTests(ruleName, cases.invalid);
 }
 
-function normalise(testCase: ValidCase): CaseBase {
-  return typeof testCase === "string" ? { code: testCase } : testCase;
+function both(cases: { valid: CaseBase[]; invalid: InvalidCase[] }) {
+  const keep = (c: CaseBase) => !c.eslintOnlyBecause;
+  return {
+    eslint: { valid: cases.valid.map(eslintCase), invalid: cases.invalid.map((c) => invalidFor(eslintCase, c)) },
+    oxlint: { valid: cases.valid.filter(keep).map(oxlintCase), invalid: cases.invalid.filter(keep).map((c) => invalidFor(oxlintCase, c)) },
+  };
 }
 
 function eslintCase(testCase: CaseBase): Record<string, unknown> {
@@ -76,6 +86,14 @@ function eslintCase(testCase: CaseBase): Record<string, unknown> {
     ...(options ? { options } : {}),
     filename: testCase.filename ?? DEFAULT_FILENAME,
     languageOptions: languageOptions(testCase),
+  };
+}
+
+function languageOptions(testCase: CaseBase) {
+  return {
+    parser: tsParser,
+    sourceType: testCase.sourceType ?? "module",
+    parserOptions: { ecmaFeatures: { jsx: /\.[jt]sx$/.test(testCase.filename ?? DEFAULT_FILENAME) } },
   };
 }
 
@@ -92,33 +110,6 @@ function oxlintCase(testCase: CaseBase): Record<string, unknown> {
 
 function invalidFor(make: (c: CaseBase) => Record<string, unknown>, testCase: InvalidCase) {
   return { ...make(testCase), errors: testCase.errors, output: testCase.output };
-}
-
-/** The cases each fix adds: its output reports nothing (or only `outputErrors`, with no further fix). */
-function fixedOutputCases(invalid: InvalidCase[]): { valid: CaseBase[]; invalid: InvalidCase[] } {
-  const valid: CaseBase[] = [];
-  const stillInvalid: InvalidCase[] = [];
-  for (const testCase of invalid) {
-    if (testCase.output === null) continue;
-    const fixed = { ...testCase, code: testCase.output, name: `fixed output of: ${testCase.name ?? testCase.code}` };
-    if (testCase.outputErrors === undefined) valid.push(fixed);
-    else stillInvalid.push({ ...fixed, errors: testCase.outputErrors, output: null, outputErrors: undefined });
-  }
-  return { valid, invalid: stillInvalid };
-}
-
-function runnable(code: string, filename: string): string {
-  const js = /\.tsx?$/.test(filename) ? stripTypeScriptTypes(code, { mode: "strip" }) : code;
-  return js.replace(/^(\s*)export\s+(default\s+)?/gm, "$1");
-}
-
-function evaluate(code: string, expression: string): string {
-  try {
-    const value = vm.runInNewContext(`${code}\n;(${expression})`, {}, { timeout: 1000 });
-    return `value ${JSON.stringify(value)}`;
-  } catch (error) {
-    return `throws ${(error as Error).message}`;
-  }
 }
 
 function behaviourTests(ruleName: string, invalid: InvalidCase[]): void {
@@ -139,24 +130,33 @@ function behaviourTests(ruleName: string, invalid: InvalidCase[]): void {
   });
 }
 
-function both(cases: { valid: CaseBase[]; invalid: InvalidCase[] }) {
-  const keep = (c: CaseBase) => !c.eslintOnlyBecause;
-  return {
-    eslint: { valid: cases.valid.map(eslintCase), invalid: cases.invalid.map((c) => invalidFor(eslintCase, c)) },
-    oxlint: { valid: cases.valid.filter(keep).map(oxlintCase), invalid: cases.invalid.filter(keep).map((c) => invalidFor(oxlintCase, c)) },
-  };
+function runnable(code: string, filename: string): string {
+  const js = /\.tsx?$/.test(filename) ? stripTypeScriptTypes(code, { mode: "strip" }) : code;
+  return js.replace(/^(\s*)export\s+(default\s+)?/gm, "$1");
 }
 
-/** Runs `cases` for the rule under both linters, with the fix checks above. */
-export function runRuleTests(ruleName: string, rule: Rule.RuleModule, cases: RuleCases): void {
-  const extra = fixedOutputCases(cases.invalid);
-  const all = { valid: [...cases.valid.map(normalise), ...extra.valid], invalid: [...cases.invalid, ...extra.invalid] };
-  const { eslint, oxlint } = both(all);
-  describe(`${ruleName} under ESLint`, () => {
-    new EslintRuleTester().run(ruleName, rule, eslint as never);
-  });
-  describe(`${ruleName} under Oxlint`, () => {
-    new OxlintRuleTester({ eslintCompat: true }).run(ruleName, rule as never, oxlint as never);
-  });
-  behaviourTests(ruleName, cases.invalid);
+function evaluate(code: string, expression: string): string {
+  try {
+    const value = vm.runInNewContext(`${code}\n;(${expression})`, {}, { timeout: 1000 });
+    return `value ${JSON.stringify(value)}`;
+  } catch (error) {
+    return `throws ${(error as Error).message}`;
+  }
+}
+
+/** The cases each fix adds: its output reports nothing (or only `outputErrors`, with no further fix). */
+function fixedOutputCases(invalid: InvalidCase[]): { valid: CaseBase[]; invalid: InvalidCase[] } {
+  const valid: CaseBase[] = [];
+  const stillInvalid: InvalidCase[] = [];
+  for (const testCase of invalid) {
+    if (testCase.output === null) continue;
+    const fixed = { ...testCase, code: testCase.output, name: `fixed output of: ${testCase.name ?? testCase.code}` };
+    if (testCase.outputErrors === undefined) valid.push(fixed);
+    else stillInvalid.push({ ...fixed, errors: testCase.outputErrors, output: null, outputErrors: undefined });
+  }
+  return { valid, invalid: stillInvalid };
+}
+
+function normalise(testCase: ValidCase): CaseBase {
+  return typeof testCase === "string" ? { code: testCase } : testCase;
 }

@@ -25,17 +25,17 @@ const EXPECTED = ["max-params", "clean-code-book/return-boolean-directly"];
 const packageName = "eslint-plugin-clean-code-book";
 const CONFIG_FILES = new Set(["eslint.config.js", "oxlint.config.ts"]);
 
-/** The reports on the project's source files, leaving out the config file the README asks for. */
-function sourceReports(reports: Report[]): Report[] {
-  return reports.filter((report) => !CONFIG_FILES.has(report.file));
-}
-
 function assertRecommendedReportsEveryLanguage(reports: Report[]): void {
   assert.deepEqual(sourceReports(reports).map((report) => report.file).sort(), Object.keys(FILES).sort());
   for (const report of sourceReports(reports)) {
     for (const rule of EXPECTED) assert.ok(report.rules.includes(rule), `${report.file}: ${rule} not reported; got ${report.rules.join(", ")}`);
     assert.ok(!report.rules.some((rule) => rule.startsWith("fatal")), `${report.file}: ${report.rules.join(", ")}`);
   }
+}
+
+/** The reports on the project's source files, leaving out the config file the README asks for. */
+function sourceReports(reports: Report[]): Report[] {
+  return reports.filter((report) => !CONFIG_FILES.has(report.file));
 }
 
 /**

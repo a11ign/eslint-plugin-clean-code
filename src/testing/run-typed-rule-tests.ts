@@ -24,11 +24,6 @@ export interface TypedInvalidCase extends TypedCase {
   output?: string | null;
 }
 
-function toCase(testCase: TypedCase | string) {
-  const c = typeof testCase === "string" ? { code: testCase } : testCase;
-  return { ...c, filename: `${FIXTURE_DIR}file.ts` };
-}
-
 export function runTypedRuleTests(ruleName: string, rule: Rule.RuleModule, cases: { valid: Array<TypedCase | string>; invalid: TypedInvalidCase[] }): void {
   const tester = new RuleTester({
     languageOptions: {
@@ -42,6 +37,11 @@ export function runTypedRuleTests(ruleName: string, rule: Rule.RuleModule, cases
       invalid: cases.invalid.map((c) => ({ ...toCase(c), output: c.output ?? null })) as never,
     });
   });
+}
+
+function toCase(testCase: TypedCase | string) {
+  const c = typeof testCase === "string" ? { code: testCase } : testCase;
+  return { ...c, filename: `${FIXTURE_DIR}file.ts` };
 }
 
 /**

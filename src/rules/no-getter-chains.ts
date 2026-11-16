@@ -12,6 +12,12 @@ interface Options {
   chainLength?: number;
 }
 
+/** The getter call whose result `call` is made on: `a.getB()` for `a.getB().getC()`. */
+function previousGetter(call: TSESTree.CallExpression): TSESTree.CallExpression | null {
+  const object = unwrapTs((call.callee as TSESTree.MemberExpression).object);
+  return getterName(object) ? (object as TSESTree.CallExpression) : null;
+}
+
 /** The getter name of a call such as `x.getOptions()` with no arguments, or null when the call is not a getter call. */
 function getterName(node: Node): string | null {
   if (node.type !== "CallExpression" || node.arguments.length > 0) return null;
@@ -19,12 +25,6 @@ function getterName(node: Node): string | null {
   if (callee.type !== "MemberExpression" || callee.computed || callee.property.type !== "Identifier") return null;
   const name = callee.property.name;
   return GETTER.test(name) && !GET_OR.test(name) ? name : null;
-}
-
-/** The getter call whose result `call` is made on: `a.getB()` for `a.getB().getC()`. */
-function previousGetter(call: TSESTree.CallExpression): TSESTree.CallExpression | null {
-  const object = unwrapTs((call.callee as TSESTree.MemberExpression).object);
-  return getterName(object) ? (object as TSESTree.CallExpression) : null;
 }
 
 /** The getter call made on the result of `call`, which continues the chain. */

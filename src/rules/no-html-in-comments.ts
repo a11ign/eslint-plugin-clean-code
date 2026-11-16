@@ -11,22 +11,16 @@ const ENTITY = /&(?:lt|gt|amp|quot|#39|nbsp);/g;
 const BLOCK_TAG = /^<\/?(?:p|br|pre|ul|ol|li)\b/;
 const DECODED: Record<string, string> = { "&lt;": "<", "&gt;": ">", "&amp;": "&", "&quot;": '"', "&#39;": "'", "&nbsp;": " " };
 
-/** The parts of a comment that show code, not formatting: an `@example` section, a fenced block and a backtick span. */
-function codeRanges(value: string): [number, number][] {
-  const ranges: [number, number][] = [];
-  for (const match of value.matchAll(/@example\b[\s\S]*?(?=\n[ \t]*\*?[ \t]*@\w|$)|```[\s\S]*?(?:```|$)|`[^`\n]+`/g)) {
-    ranges.push([match.index, match.index + match[0].length]);
-  }
-  return ranges;
-}
-
 /** A capitalised element (`<List>`, `<Foo.Bar `): the line is a JSX example, so its tags and entities are JSX. */
 const JSX_ELEMENT = /<\p{Lu}[\w.]*[\s/>]/u;
 
-function onJsxLine(value: string, index: number): boolean {
-  const start = value.lastIndexOf("\n", index) + 1;
-  const end = value.indexOf("\n", index);
-  return JSX_ELEMENT.test(value.slice(start, end === -1 ? value.length : end));
+/** The HTML formatting tags and the entities of `value`, outside its code and its JSX examples, in order. */
+function htmlIn(value: string): RegExpExecArray[] {
+  const code = codeRanges(value);
+  const outside = (match: RegExpExecArray) => !code.some(([start, end]) => match.index >= start && match.index < end) && !onJsxLine(value, match.index);
+  const tags = formattingTags([...value.matchAll(TAG)].filter(outside));
+  const entities = [...value.matchAll(ENTITY)].filter(outside);
+  return [...tags, ...entities].sort((left, right) => left.index - right.index);
 }
 
 /**
@@ -50,25 +44,23 @@ function formattingTags(tags: RegExpExecArray[]): RegExpExecArray[] {
   return tags.filter((tag) => formatting.has(tag));
 }
 
-/** The HTML formatting tags and the entities of `value`, outside its code and its JSX examples, in order. */
-function htmlIn(value: string): RegExpExecArray[] {
-  const code = codeRanges(value);
-  const outside = (match: RegExpExecArray) => !code.some(([start, end]) => match.index >= start && match.index < end) && !onJsxLine(value, match.index);
-  const tags = formattingTags([...value.matchAll(TAG)].filter(outside));
-  const entities = [...value.matchAll(ENTITY)].filter(outside);
-  return [...tags, ...entities].sort((left, right) => left.index - right.index);
+function onJsxLine(value: string, index: number): boolean {
+  const start = value.lastIndexOf("\n", index) + 1;
+  const end = value.indexOf("\n", index);
+  return JSX_ELEMENT.test(value.slice(start, end === -1 ? value.length : end));
+}
+
+/** The parts of a comment that show code, not formatting: an `@example` section, a fenced block and a backtick span. */
+function codeRanges(value: string): [number, number][] {
+  const ranges: [number, number][] = [];
+  for (const match of value.matchAll(/@example\b[\s\S]*?(?=\n[ \t]*\*?[ \t]*@\w|$)|```[\s\S]*?(?:```|$)|`[^`\n]+`/g)) {
+    ranges.push([match.index, match.index + match[0].length]);
+  }
+  return ranges;
 }
 
 /** Every tag-shaped text in `value`, formatting or not, to tell whether decoding an entity made a new one. */
 const tagCount = (value: string) => [...value.matchAll(TAG)].length;
-
-function replacement(value: string, match: RegExpExecArray): string {
-  const html = match[0];
-  if (html.startsWith("&")) return DECODED[html];
-  const before = value[match.index - 1] ?? " ";
-  const after = value[match.index + html.length] ?? " ";
-  return BLOCK_TAG.test(html) && /\S/.test(before) && /\S/.test(after) ? " " : "";
-}
 
 /** The comment's text with its tags removed and its entities decoded, one level, with the blank space left at line ends trimmed. */
 function plainText(comment: Comment, found: RegExpExecArray[]): string {
@@ -81,6 +73,14 @@ function plainText(comment: Comment, found: RegExpExecArray[]): string {
   const original = comment.value.split(lineBreak);
   const last = lines.length - 1;
   return lines.map((line, index) => (line !== original[index] && !(comment.type === "Block" && index === last) ? line.trimEnd() : line)).join(lineBreak);
+}
+
+function replacement(value: string, match: RegExpExecArray): string {
+  const html = match[0];
+  if (html.startsWith("&")) return DECODED[html];
+  const before = value[match.index - 1] ?? " ";
+  const after = value[match.index + html.length] ?? " ";
+  return BLOCK_TAG.test(html) && /\S/.test(before) && /\S/.test(after) ? " " : "";
 }
 
 export default defineRule({

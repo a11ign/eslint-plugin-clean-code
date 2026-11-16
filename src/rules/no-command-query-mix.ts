@@ -17,6 +17,38 @@ interface TypeServices {
   tsNodeToESTreeNodeMap: { get(node: ts.Node): Node | undefined };
 }
 
+/** The first write in `fn` (including the functions nested in it) to state outside `fn`. */
+function outerWrite(sourceCode: SourceCode, fn: FunctionNode): Node | null {
+  let found: Node | null = null;
+  walk(
+    fn,
+    (node) => {
+      if (found) return;
+      const target = node.type === "AssignmentExpression" ? node.left : node.type === "UpdateExpression" ? node.argument : null;
+      if (target && changesOuterState(sourceCode, target, fn)) found = target;
+    },
+    true,
+  );
+  return found;
+}
+
+/**
+ * Whether writing to `target` from inside `fn` changes state outside `fn`: a member of `this`, of a parameter or of an
+ * outer variable, or an outer variable itself. Writing to a local variable, or to a member of a local, does not.
+ */
+function changesOuterState(sourceCode: SourceCode, target: Node, fn: FunctionNode): boolean {
+  const unwrapped = unwrapTs(target);
+  const root = rootOf(unwrapped);
+  if (root.type === "ThisExpression") return true;
+  if (root.type !== "Identifier") return unwrapped.type === "MemberExpression";
+  const variable = findVariable(sourceCode.getScope(root as never), root.name);
+  const definition = variable?.defs[0];
+  if (!definition) return true;
+  const declaredInside = isInside(definition.name as Node, fn);
+  if (unwrapped.type === "MemberExpression") return !declaredInside || definition.type === "Parameter";
+  return !declaredInside;
+}
+
 function findVariable(scope: Scope.Scope | null, name: string): Scope.Variable | null {
   for (let current = scope; current; current = current.upper) {
     const variable = current.variables.find((candidate) => candidate.name === name);
@@ -37,38 +69,6 @@ function rootOf(expression: Node): Node {
   return current;
 }
 
-/**
- * Whether writing to `target` from inside `fn` changes state outside `fn`: a member of `this`, of a parameter or of an
- * outer variable, or an outer variable itself. Writing to a local variable, or to a member of a local, does not.
- */
-function changesOuterState(sourceCode: SourceCode, target: Node, fn: FunctionNode): boolean {
-  const unwrapped = unwrapTs(target);
-  const root = rootOf(unwrapped);
-  if (root.type === "ThisExpression") return true;
-  if (root.type !== "Identifier") return unwrapped.type === "MemberExpression";
-  const variable = findVariable(sourceCode.getScope(root as never), root.name);
-  const definition = variable?.defs[0];
-  if (!definition) return true;
-  const declaredInside = isInside(definition.name as Node, fn);
-  if (unwrapped.type === "MemberExpression") return !declaredInside || definition.type === "Parameter";
-  return !declaredInside;
-}
-
-/** The first write in `fn` (including the functions nested in it) to state outside `fn`. */
-function outerWrite(sourceCode: SourceCode, fn: FunctionNode): Node | null {
-  let found: Node | null = null;
-  walk(
-    fn,
-    (node) => {
-      if (found) return;
-      const target = node.type === "AssignmentExpression" ? node.left : node.type === "UpdateExpression" ? node.argument : null;
-      if (target && changesOuterState(sourceCode, target, fn)) found = target;
-    },
-    true,
-  );
-  return found;
-}
-
 function isBooleanAnswer(value: TSESTree.Expression | null): boolean {
   if (!value) return false;
   const expression = unwrapTs(value);
@@ -86,16 +86,6 @@ function declaredFunction(variable: Scope.Variable | null): FunctionNode | null 
   return null;
 }
 
-/** The function an ESTree node for a declaration runs: the node itself, or a method's or property's value. */
-function functionOfDeclaration(node: Node | undefined): FunctionNode | null {
-  if (!node) return null;
-  if (isFunction(node)) return node;
-  if (node.type === "MethodDefinition" || node.type === "Property" || node.type === "PropertyDefinition") {
-    return isFunction(node.value as Node) ? (node.value as FunctionNode) : null;
-  }
-  return null;
-}
-
 /** `obj.method` resolved through the type of `obj`, when the method is declared in the file being linted. */
 function typedMethod(services: TypeServices, callee: TSESTree.MemberExpression): FunctionNode | null {
   if (callee.computed || callee.property.type !== "Identifier") return null;
@@ -108,6 +98,16 @@ function typedMethod(services: TypeServices, callee: TSESTree.MemberExpression):
     if (declaration.getSourceFile() !== sourceFile) continue;
     const fn = functionOfDeclaration(services.tsNodeToESTreeNodeMap.get(declaration));
     if (fn) return fn;
+  }
+  return null;
+}
+
+/** The function an ESTree node for a declaration runs: the node itself, or a method's or property's value. */
+function functionOfDeclaration(node: Node | undefined): FunctionNode | null {
+  if (!node) return null;
+  if (isFunction(node)) return node;
+  if (node.type === "MethodDefinition" || node.type === "Property" || node.type === "PropertyDefinition") {
+    return isFunction(node.value as Node) ? (node.value as FunctionNode) : null;
   }
   return null;
 }
@@ -160,9 +160,16 @@ export default defineRule<[Options]>({
     const services = checkMethodCalls ? typeServices(sourceCode) : null;
     const verdicts = new WeakMap<FunctionNode, Node | null>();
 
-    function commandWrite(fn: FunctionNode): Node | null {
-      if (!verdicts.has(fn)) verdicts.set(fn, returnedValues(fn).some(isBooleanAnswer) ? outerWrite(sourceCode, fn) : null);
-      return verdicts.get(fn) ?? null;
+    function check(test: Node) {
+      const call = conditionCall(test);
+      const fn = call && resolve(call);
+      const write = fn && commandWrite(fn);
+      if (!call || !write) return;
+      context.report({
+        node: call as never,
+        messageId: "commandAsQuery",
+        data: { callee: sourceCode.getText(call.callee as never), state: sourceCode.getText(write as never) },
+      });
     }
 
     function resolve(call: TSESTree.CallExpression): FunctionNode | null {
@@ -177,16 +184,9 @@ export default defineRule<[Options]>({
       return services ? typedMethod(services, callee) : null;
     }
 
-    function check(test: Node) {
-      const call = conditionCall(test);
-      const fn = call && resolve(call);
-      const write = fn && commandWrite(fn);
-      if (!call || !write) return;
-      context.report({
-        node: call as never,
-        messageId: "commandAsQuery",
-        data: { callee: sourceCode.getText(call.callee as never), state: sourceCode.getText(write as never) },
-      });
+    function commandWrite(fn: FunctionNode): Node | null {
+      if (!verdicts.has(fn)) verdicts.set(fn, returnedValues(fn).some(isBooleanAnswer) ? outerWrite(sourceCode, fn) : null);
+      return verdicts.get(fn) ?? null;
     }
 
     return {

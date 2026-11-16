@@ -23,34 +23,6 @@ export interface Report {
   warnings: string[];
 }
 
-/** A fresh directory under `test/work/` holding `files`, removed by `dispose`. */
-export function workDirectory(files: Record<string, string>): { dir: string; dispose: () => void } {
-  mkdirSync(WORK, { recursive: true });
-  const dir = mkdtempSync(join(WORK, "case-"));
-  for (const [name, text] of Object.entries(files)) {
-    mkdirSync(join(dir, name, ".."), { recursive: true });
-    writeFileSync(join(dir, name), text);
-  }
-  return { dir, dispose: () => rmSync(dir, { recursive: true, force: true }) };
-}
-
-/** A copy of a fixture directory under `test/work/`. */
-export function copyFixtures(fixtureDir: string): { dir: string; dispose: () => void } {
-  const work = workDirectory({});
-  cpSync(fixtureDir, work.dir, { recursive: true });
-  return work;
-}
-
-export function readTree(dir: string): Record<string, string> {
-  const files: Record<string, string> = {};
-  for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
-    if (!entry.isFile()) continue;
-    const path = join(entry.parentPath, entry.name);
-    files[relative(dir, path)] = readFileSync(path, "utf8");
-  }
-  return files;
-}
-
 export const OXLINT_CONFIG = `import { recommended } from "eslint-plugin-clean-code-book/oxlint";\n\nexport default { extends: [recommended] };\n`;
 
 /** Runs Oxlint with `config` (by default this package's `recommended`) on every source file in `dir`, and returns what it reported per file. */
@@ -75,6 +47,16 @@ export function runOxlint(dir: string, extraArgs: string[] = [], config = OXLINT
     byFile.set(diagnostic.filename, report);
   }
   return [...byFile.values()];
+}
+
+export function readTree(dir: string): Record<string, string> {
+  const files: Record<string, string> = {};
+  for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const path = join(entry.parentPath, entry.name);
+    files[relative(dir, path)] = readFileSync(path, "utf8");
+  }
+  return files;
 }
 
 /** `eslint(max-params)` gives `max-params`, `clean-code-book(stepdown-order)` gives `clean-code-book/stepdown-order`. */
@@ -133,6 +115,24 @@ export async function onFixtures<T>(
   } finally {
     work.dispose();
   }
+}
+
+/** A copy of a fixture directory under `test/work/`. */
+export function copyFixtures(fixtureDir: string): { dir: string; dispose: () => void } {
+  const work = workDirectory({});
+  cpSync(fixtureDir, work.dir, { recursive: true });
+  return work;
+}
+
+/** A fresh directory under `test/work/` holding `files`, removed by `dispose`. */
+export function workDirectory(files: Record<string, string>): { dir: string; dispose: () => void } {
+  mkdirSync(WORK, { recursive: true });
+  const dir = mkdtempSync(join(WORK, "case-"));
+  for (const [name, text] of Object.entries(files)) {
+    mkdirSync(join(dir, name, ".."), { recursive: true });
+    writeFileSync(join(dir, name), text);
+  }
+  return { dir, dispose: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
 /** The rules matching `related` that each file got, sorted, leaving out the files that got none. */

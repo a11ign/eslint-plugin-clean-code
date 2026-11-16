@@ -169,16 +169,6 @@ export const REACT_RULES = ["react-no-state-mutation", "react-no-untyped-empty-s
 export const REACT_HOOKS_RULES = ["rules-of-hooks", "exhaustive-deps"] as const;
 export const REACT_JSX_RULES = ["jsx-key", "no-array-index-key"] as const;
 
-/** `rules` under `plugin`'s name, each `"error"`: `pluginRules("react", ["jsx-key"])` gives `{ "react/jsx-key": "error" }`. */
-export function pluginRules(plugin: string, rules: readonly string[]): Record<string, "error"> {
-  return Object.fromEntries(rules.map((name) => [`${plugin}/${name}`, "error"]));
-}
-
-/** `rules`' settings under `plugin`'s name: `pluginSettings("typescript", { "no-explicit-any": "error" })` gives `{ "typescript/no-explicit-any": "error" }`. */
-export function pluginSettings(plugin: string, rules: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(rules).map(([name, setting]) => [`${plugin}/${name}`, setting]));
-}
-
 /** The files `react` and the `react/` rules of `react-extended` apply to. */
 export const REACT_FILES = ["**/*.{jsx,tsx}"];
 /** The files the hooks rules apply to: `REACT_FILES`, and a custom hook in a `.js` or `.ts` file such as `useChecked.ts`. */
@@ -202,6 +192,16 @@ export function prefixed(names: readonly string[]): Record<string, "error"> {
   return pluginRules(PLUGIN_PREFIX, names);
 }
 
+/** `rules` under `plugin`'s name, each `"error"`: `pluginRules("react", ["jsx-key"])` gives `{ "react/jsx-key": "error" }`. */
+export function pluginRules(plugin: string, rules: readonly string[]): Record<string, "error"> {
+  return Object.fromEntries(rules.map((name) => [`${plugin}/${name}`, "error"]));
+}
+
 export function prefixedOptions(rules: Record<string, readonly unknown[]>): Record<string, unknown> {
   return pluginSettings(PLUGIN_PREFIX, rules);
+}
+
+/** `rules`' settings under `plugin`'s name: `pluginSettings("typescript", { "no-explicit-any": "error" })` gives `{ "typescript/no-explicit-any": "error" }`. */
+export function pluginSettings(plugin: string, rules: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(rules).map(([name, setting]) => [`${plugin}/${name}`, setting]));
 }

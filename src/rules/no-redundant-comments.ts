@@ -14,28 +14,8 @@ const contentWords = (text: string) => proseWords(text).filter((word) => !IGNORE
 
 type Named = { type: string; name?: string; value?: unknown };
 
-function keyName(key: Named, computed: boolean): string | null {
-  if (computed) return null;
-  if (key.type === "Identifier" || key.type === "PrivateIdentifier") return key.name ?? null;
-  return key.type === "Literal" && typeof key.value === "string" ? key.value : null;
-}
-
 /** Declarations named by their `id`. */
 const NAMED_BY_ID = new Set(["FunctionDeclaration", "TSDeclareFunction", "ClassDeclaration", "TSInterfaceDeclaration", "TSTypeAliasDeclaration", "TSEnumDeclaration", "TSEnumMember"]);
-
-/** The name of a declaration, or `null` when it has none this rule can compare (a computed key, a destructuring). */
-function declarationName(node: TSESTree.Node): string | null {
-  if (NAMED_BY_ID.has(node.type)) {
-    const id = (node as { id?: Named | null }).id;
-    return id ? keyName(id, false) : null;
-  }
-  if (node.type === "VariableDeclaration") {
-    const [only, ...rest] = node.declarations;
-    return rest.length === 0 && only.id.type === "Identifier" ? only.id.name : null;
-  }
-  if ("key" in node && node.key) return keyName(node.key as Named, Boolean((node as { computed?: boolean }).computed));
-  return null;
-}
 
 /** The words a declaration's doc comment may repeat: its name's, and for a constructor its class's name and "default constructor". */
 function declarationWords(node: TSESTree.Node): string[] | null {
@@ -47,10 +27,24 @@ function declarationWords(node: TSESTree.Node): string[] | null {
   return name === null ? null : nameWords(name);
 }
 
-/** The node a declaration's doc comment sits above: the `export` around it, if any. */
-function anchorOf(node: TSESTree.Node): TSESTree.Node {
-  const parent = node.parent;
-  return parent?.type === "ExportNamedDeclaration" || parent?.type === "ExportDefaultDeclaration" ? parent : node;
+/** The name of a declaration, or `null` when it has none this rule can compare (a computed key, a destructuring). */
+function declarationName(node: TSESTree.Node): string | null {
+  if (NAMED_BY_ID.has(node.type)) {
+    const id = (node as { id?: Named | null }).id;
+    return id ? keyName(id, { computed: false }) : null;
+  }
+  if (node.type === "VariableDeclaration") {
+    const [only, ...rest] = node.declarations;
+    return rest.length === 0 && only.id.type === "Identifier" ? only.id.name : null;
+  }
+  if ("key" in node && node.key) return keyName(node.key as Named, { computed: Boolean((node as { computed?: boolean }).computed) });
+  return null;
+}
+
+function keyName(key: Named, { computed }: { computed: boolean }): string | null {
+  if (computed) return null;
+  if (key.type === "Identifier" || key.type === "PrivateIdentifier") return key.name ?? null;
+  return key.type === "Literal" && typeof key.value === "string" ? key.value : null;
 }
 
 /** The doc comment directly above `node`, if any. */
@@ -61,10 +55,10 @@ function docCommentOf(sourceCode: SourceCode, node: TSESTree.Node): Comment | nu
   return comment.loc!.end.line >= anchor.loc.start.line - 1 ? comment : null;
 }
 
-/** Whether every content word of `text` is a word of the name. A text with no content words is not reported. */
-function restatesName(text: string, words: string[]): boolean {
-  const found = contentWords(text);
-  return found.length > 0 && found.every((word) => words.includes(word));
+/** The node a declaration's doc comment sits above: the `export` around it, if any. */
+function anchorOf(node: TSESTree.Node): TSESTree.Node {
+  const parent = node.parent;
+  return parent?.type === "ExportNamedDeclaration" || parent?.type === "ExportDefaultDeclaration" ? parent : node;
 }
 
 interface DocParts {
@@ -76,14 +70,20 @@ interface DocParts {
   redundantParams: { name: string; lines: number[] }[];
 }
 
-/** The tags of a doc comment, each as the indexes of its lines: the line it starts on and the lines continuing it. */
-function tagSections(lines: CommentLine[]): number[][] {
-  const sections: number[][] = [];
-  lines.forEach((line, index) => {
-    if (line.content.trimStart().startsWith("@")) sections.push([index]);
-    else if (sections.length > 0 && line.content.trim() !== "") sections.at(-1)!.push(index);
-  });
-  return sections;
+function paramsFix(sourceCode: SourceCode, comment: Comment, parts: DocParts, words: string[] | null) {
+  return (fixer: Rule.RuleFixer) => {
+    const drop = new Set(parts.redundantParams.flatMap((param) => param.lines));
+    const value = remainingText(comment, parts.lines, drop);
+    const left = docParts({ ...comment, value } as Comment);
+    if (words && !left.hasTags && restatesName(left.description, words)) return removeComment(fixer, sourceCode, comment);
+    return replaceCommentText(fixer, sourceCode, comment, value);
+  };
+}
+
+/** The text left after dropping `drop`, with the blank lines it would leave before the comment's end dropped too. */
+function remainingText(comment: Comment, lines: CommentLine[], drop: Set<number>): string {
+  for (let index = lines.length - 2; index > 0 && (drop.has(index) || lines[index].content.trim() === ""); index -= 1) drop.add(index);
+  return joinLines(comment, withoutLines(comment, lines, drop));
 }
 
 function docParts(comment: Comment): DocParts {
@@ -102,20 +102,20 @@ function docParts(comment: Comment): DocParts {
   return { lines, description, hasTags: sections.length > 0 || description.includes("@"), redundantParams };
 }
 
-/** The text left after dropping `drop`, with the blank lines it would leave before the comment's end dropped too. */
-function remainingText(comment: Comment, lines: CommentLine[], drop: Set<number>): string {
-  for (let index = lines.length - 2; index > 0 && (drop.has(index) || lines[index].content.trim() === ""); index -= 1) drop.add(index);
-  return joinLines(comment, withoutLines(comment, lines, drop));
+/** The tags of a doc comment, each as the indexes of its lines: the line it starts on and the lines continuing it. */
+function tagSections(lines: CommentLine[]): number[][] {
+  const sections: number[][] = [];
+  lines.forEach((line, index) => {
+    if (line.content.trimStart().startsWith("@")) sections.push([index]);
+    else if (sections.length > 0 && line.content.trim() !== "") sections.at(-1)!.push(index);
+  });
+  return sections;
 }
 
-function paramsFix(sourceCode: SourceCode, comment: Comment, parts: DocParts, words: string[] | null) {
-  return (fixer: Rule.RuleFixer) => {
-    const drop = new Set(parts.redundantParams.flatMap((param) => param.lines));
-    const value = remainingText(comment, parts.lines, drop);
-    const left = docParts({ ...comment, value } as Comment);
-    if (words && !left.hasTags && restatesName(left.description, words)) return removeComment(fixer, sourceCode, comment);
-    return replaceCommentText(fixer, sourceCode, comment, value);
-  };
+/** Whether every content word of `text` is a word of the name. A text with no content words is not reported. */
+function restatesName(text: string, words: string[]): boolean {
+  const found = contentWords(text);
+  return found.length > 0 && found.every((word) => words.includes(word));
 }
 
 const DECLARATIONS = [

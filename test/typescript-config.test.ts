@@ -18,6 +18,16 @@ const FIXTURES = join(ROOT, "test", "fixtures", "typescript");
  */
 const TYPESCRIPT_RELATED = /^(clean-code-book\/ts-|eqeqeq$|@typescript-eslint\/|promise\/|no-unused-vars$)/;
 
+/** `typescript-extended` adds the type assertion, the `lib` directive, and the `.then()` with a rejection callback in a `.js` file. */
+function extendedExpected(unusedVars: string): Record<string, string[]> {
+  return {
+    ...typescriptExpected(unusedVars),
+    "src/assertion.ts": ["@typescript-eslint/consistent-type-assertions"],
+    "src/dom.ts": ["@typescript-eslint/triple-slash-reference"],
+    "src/fetch.js": ["promise/prefer-catch"],
+  };
+}
+
 /** What `recommended` and `typescript` report in each fixture file, under either linter, with HRM-01's rule by its name there. */
 function typescriptExpected(unusedVars: string): Record<string, string[]> {
   return {
@@ -26,16 +36,6 @@ function typescriptExpected(unusedVars: string): Record<string, string[]> {
     "src/express.ts": ["clean-code-book/ts-no-module-augmentation"],
     "src/handler.ts": [unusedVars],
     "src/legacy.ts": ["clean-code-book/ts-no-amd-dependency"],
-  };
-}
-
-/** `typescript-extended` adds the type assertion, the `lib` directive, and the `.then()` with a rejection callback in a `.js` file. */
-function extendedExpected(unusedVars: string): Record<string, string[]> {
-  return {
-    ...typescriptExpected(unusedVars),
-    "src/assertion.ts": ["@typescript-eslint/consistent-type-assertions"],
-    "src/dom.ts": ["@typescript-eslint/triple-slash-reference"],
-    "src/fetch.js": ["promise/prefer-catch"],
   };
 }
 

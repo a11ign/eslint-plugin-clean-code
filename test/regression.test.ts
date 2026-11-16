@@ -22,26 +22,26 @@ function sourceFiles(tree: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(tree).filter(([name]) => name !== "oxlint.config.ts"));
 }
 
-/** Runs the module text with its `export`s dropped, then `expression`, and returns the JSON of the result. */
-function evaluate(code: string, expression: string): string {
-  const script = code.replace(/^export\s+/gm, "");
-  return JSON.stringify(vm.runInNewContext(`${script}\n;(${expression})`, {}));
-}
-
 const SEMICOLON_CHECKS: Record<string, string> = {
   "no-semicolons.js": "[run(), count(3), log]",
   "field-after-generator.js": "[...new Bag().values()]",
 };
-
-function leadingSemicolons(text: string): number {
-  return text.split("\n").filter((line) => line.trimStart().startsWith(";")).length;
-}
 
 function checkSemicolons(before: Record<string, string>, after: Record<string, string>): void {
   for (const [name, expression] of Object.entries(SEMICOLON_CHECKS)) {
     assert.ok(leadingSemicolons(after[name]) >= leadingSemicolons(before[name]), `${name}: a leading ; was removed:\n${after[name]}`);
     assert.equal(evaluate(after[name], expression), evaluate(before[name], expression), `${name} behaves differently after the fixes:\n${after[name]}`);
   }
+}
+
+function leadingSemicolons(text: string): number {
+  return text.split("\n").filter((line) => line.trimStart().startsWith(";")).length;
+}
+
+/** Runs the module text with its `export`s dropped, then `expression`, and returns the JSON of the result. */
+function evaluate(code: string, expression: string): string {
+  const script = code.replace(/^export\s+/gm, "");
+  return JSON.stringify(vm.runInNewContext(`${script}\n;(${expression})`, {}));
 }
 
 describe("regression cases under ESLint with --fix", () => {
