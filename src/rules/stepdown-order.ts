@@ -425,9 +425,17 @@ function listGraph(siblings: Siblings): ListGraph {
 function addDeclaration(siblings: Siblings, graph: ListGraph, callee: number): void {
   const declaration = unwrap(siblings.statements[callee]);
   for (const variable of siblings.sourceCode.getDeclaredVariables(declaration as never)) {
-    if (declaration.type === "FunctionDeclaration") graph.variables.set(callee, variable);
+    if (isOwnName(declaration, variable)) graph.variables.set(callee, variable);
     for (const caller of siblingCallers(siblings, variable, callee)) addEdge(graph.edges, caller, callee);
   }
+}
+
+/**
+ * Whether `variable` is the name a function declaration declares. ESLint lists a function's parameters among its declared
+ * variables too, after its name, so the name has to be picked out rather than taken as the last one.
+ */
+function isOwnName(declaration: Node, variable: Scope.Variable): boolean {
+  return declaration.type === "FunctionDeclaration" && variable.name === declaration.id?.name;
 }
 
 /** The indexes of the sibling functions, other than `callee` itself, that call `declared`. */

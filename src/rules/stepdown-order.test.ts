@@ -28,6 +28,18 @@ runRuleTests("stepdown-order", rule, {
   ],
   invalid: [
     {
+      name: "a function that a `var` of the same name also declares is not moved, without parameters",
+      code: "export function outer() {\n  function helper() { return 1; }\n  function main() { return helper(); }\n  var helper;\n  return main();\n}",
+      output: null,
+      errors: report,
+    },
+    {
+      name: "a function that a `var` of the same name also declares is not moved, with parameters too",
+      code: "export function outer() {\n  function helper(x) { return x; }\n  function main() { return helper(1); }\n  var helper;\n  return main();\n}",
+      output: null,
+      errors: report,
+    },
+    {
       name: "a function moves below its first caller",
       code: "function b() {\n  return 2;\n}\n\nexport function a() {\n  return b() + 1;\n}\n",
       output: "export function a() {\n  return b() + 1;\n}\n\nfunction b() {\n  return 2;\n}\n",
