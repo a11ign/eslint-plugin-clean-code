@@ -24,13 +24,19 @@ export const BUILT_IN_RULES = {
   "id-denylist": ["error", "l", "O", "I", "klass", "clazz"], // NAM-06, NAM-07: owner sign-off for `I`
 } as const;
 
+/**
+ * TS-09: a parameter prefixed with `_` is unused on purpose, and only a parameter. `reportUsedIgnorePattern` reports one that
+ * is used after all, because its prefix then says something untrue. ESLint core, typescript-eslint and Oxlint all support it.
+ */
+export const UNUSED_PARAMETER_OPTIONS = { argsIgnorePattern: "^_", reportUsedIgnorePattern: true } as const;
+
 /** HRM-01 in JavaScript: ESLint core's `no-unused-vars` has suggestions and no fix. */
-export const JS_UNUSED_VARS = { "no-unused-vars": "error" } as const;
+export const JS_UNUSED_VARS = { "no-unused-vars": ["error", UNUSED_PARAMETER_OPTIONS] } as const;
 
 /** HRM-01 in TypeScript: typescript-eslint's version, with its import removal under `--fix` turned off explicitly. */
 export const TS_UNUSED_VARS = {
   "no-unused-vars": "off",
-  "@typescript-eslint/no-unused-vars": ["error", { enableAutofixRemoval: { imports: false } }],
+  "@typescript-eslint/no-unused-vars": ["error", { ...UNUSED_PARAMETER_OPTIONS, enableAutofixRemoval: { imports: false } }],
 } as const;
 
 /** CD-04: typescript-eslint's rule, which needs no type information and runs on JavaScript too. */
