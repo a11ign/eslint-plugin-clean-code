@@ -32,7 +32,7 @@ Approving this pull request approves the items below.
 
 1. **The entries and their classes**, TS-01 to TS-16, as listed in [The rule set at a glance](#the-rule-set-at-a-glance): three custom `syntax` rules (TS-04, TS-14, TS-15), one `built-in` (TS-06), seven `third-party` (TS-01, TS-02, TS-03, TS-10, TS-11, TS-13, TS-16), two `covered` (TS-07, TS-08), two `conflicts` (TS-09, TS-12) and one `not lintable` (TS-05).
 2. **typescript-eslint as `third-party`.** The ticket's acceptance says a practice typescript-eslint already lints is `third-party`, and this catalog follows it. `catalog.md` instead calls typescript-eslint rules `built-in`, and `recommended` turns one on (CD-04). typescript-eslint is already an optional peer dependency, so the owner may instead move TS-01, TS-02, TS-03 and TS-13 into the plain `typescript` config without adding a dependency. This catalog does not, so that the plain config stays ESLint core plus this plugin.
-3. **The conflict resolutions** in [Conflicts with `recommended` and `ai`](#conflicts-with-recommended-and-ai): TS-09's `argsIgnorePattern: "^_"`, which changes `recommended` in text only and would be built in a follow-up, and TS-12's drop.
+3. **The conflict resolutions** in [Conflicts with `recommended` and `ai`](#conflicts-with-recommended-and-ai): TS-09's `argsIgnorePattern: "^_"`, which is built in `recommended`, and TS-12's drop.
 4. **Settings the books do not state.** Each is marked **Owner sign-off** in its entry: TS-02 (`assertionStyle: "never"`), TS-06 (`eqeqeq` `"always"`, so `x == null` is reported too) and TS-13 (`lib: "never"`).
 5. **The extended configs and their final name.** `typescript-extended` and `typescript-extended-type-checked`, listed in [Extended configs](#extended-configs). `-extended` is a working name. It is not an established suffix in the ESLint ecosystem (typescript-eslint's `strict` and `all` mean other things), so the owner chooses the final suffix. The same suffix should be used by `react-extended` and `node-extended`.
 6. **New optional peer dependencies.** `eslint-plugin-promise`, for TS-11 only. It is a fifth plugin beyond the four the ticket names. If the owner declines it, TS-11 leaves `typescript-extended` and stays a recommendation in this catalog. typescript-eslint is already an optional peer dependency.
@@ -51,7 +51,7 @@ Approving this pull request approves the items below.
 | `eqeqeq` | TS-06 | typescript | built-in | built-in fix (ESLint; Oxlint's is dangerous-only) |
 | `no-fallthrough` | TS-07 | recommended | covered (CLS-05) | — |
 | `no-unused-vars`, `@typescript-eslint/no-unused-vars` | TS-08 | recommended | covered (HRM-01) | — |
-| `argsIgnorePattern` on HRM-01's rules | TS-09 | recommended (proposed) | conflicts | — |
+| `argsIgnorePattern` on HRM-01's rules | TS-09 | recommended (built) | conflicts | — |
 | `@typescript-eslint/no-floating-promises` | TS-10 | typescript-extended-type-checked | third-party | none |
 | `promise/prefer-catch` | TS-11 | typescript-extended | third-party | none |
 | — (log-only `.catch()`) | TS-12 | — | conflicts (AI-02) | — |
@@ -130,7 +130,7 @@ Approving this pull request approves the items below.
 
 - **Source:** `programming-typescript` chunk 20, Appendix F (Table F-1).
 - **Quote:** "Prefix your parameter name with `_` to ignore this error." (the row for `noUnusedParameters`)
-- **Class:** conflicts, with HRM-01 in `recommended`. Checked on 2026-11-06: `recommended`'s `@typescript-eslint/no-unused-vars` reports `_unused` in `function last(a: number, _unused: number)`, because it sets no `argsIgnorePattern`. A parameter a caller's signature requires (an Express handler's `_req`, say) cannot be removed, and the book's convention for it is reported.
+- **Class:** conflicts, with HRM-01 in `recommended`. Checked on 2026-11-06, before it was built: `recommended`'s `@typescript-eslint/no-unused-vars` reported `_unused` in `function last(a: number, _unused: number)`, because it set no `argsIgnorePattern`. A parameter a caller's signature requires (an Express handler's `_req`, say) cannot be removed, and the book's convention for it is reported.
 - **Resolution:** see [Conflicts](#conflicts-with-recommended-and-ai), item 1.
 
 ### Asynchronous code
@@ -194,9 +194,9 @@ Approving this pull request approves the items below.
 
 ## Conflicts with `recommended` and `ai`
 
-Each clash this catalog found, with one proposed resolution. The cases the plan asked to check that turned out not to clash are listed after them, with what was checked.
+Each clash this catalog found, with its resolution. The cases the plan asked to check that turned out not to clash are listed after them, with what was checked.
 
-1. **TS-09 against HRM-01 (`no-unused-vars`).** The book's convention for a parameter that must exist but is not used is a `_` prefix; `recommended` reports it. **Resolution: an option on the existing rule.** `recommended` sets `argsIgnorePattern: "^_"` on `no-unused-vars` (JavaScript), `@typescript-eslint/no-unused-vars` (TypeScript) and Oxlint's `no-unused-vars`. This is a change to `recommended`, proposed here in text only, as the ticket allows. It is built in a follow-up ticket once approved, with a line added to HRM-01 in `catalog.md` citing this entry. Clean Code's HRM-01 does not argue against a marked parameter, and a parameter that a caller's signature requires cannot be deleted, so the option loses no check the book asks for. If the owner declines, TS-09 is dropped and `recommended` stays as it is.
+1. **TS-09 against HRM-01 (`no-unused-vars`).** The book's convention for a parameter that must exist but is not used is a `_` prefix; `recommended` reported it. **Resolution: an option on the existing rule.** `recommended` sets `argsIgnorePattern: "^_"` on `no-unused-vars` (JavaScript), `@typescript-eslint/no-unused-vars` (TypeScript) and Oxlint's `no-unused-vars`. **Built in `recommended`** (A11-463, approved by the owner on 2026-11-16), with a line in HRM-01 of `catalog.md` citing this entry. Each rule also sets `reportUsedIgnorePattern: true`, so a `_` parameter that is read is reported; only parameters are exempt, not variables, destructured elements or caught errors. Clean Code's HRM-01 does not argue against a marked parameter, and a parameter that a caller's signature requires cannot be deleted, so the option loses no check the book asks for.
 2. **TS-12 against AI-02 (`ai-no-ceremonial-catch`).** The book's promise example logs the error and carries on, which is the log-and-swallow habit AI-02 reports in a `catch` clause. **Resolution: drop the entry.** `typescript` adopts no practice from the example and proposes no rule for it. AI-02 checks `catch` clauses only, and extending it to `.catch()` callbacks is a question for `catalog-ai.md`, not for this catalog.
 
 Checked, no clash:

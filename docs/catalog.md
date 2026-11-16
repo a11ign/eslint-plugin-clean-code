@@ -47,7 +47,7 @@ Approving this pull request approves the items below. Each one is a choice the b
 | `no-param-reassign` | FH-03 | recommended | `props: true`, accumulators exempt (owner sign-off) | built-in: none |
 | `no-fallthrough` | CLS-05 | recommended | none | built-in: none |
 | `no-unreachable` | HRM-01 | recommended | none | built-in: none |
-| `no-unused-vars`, `@typescript-eslint/no-unused-vars` | HRM-01 | recommended | import and variable fixes off | built-in: none |
+| `no-unused-vars`, `@typescript-eslint/no-unused-vars` | HRM-01 | recommended | `_` parameters ignored (TS-09); import and variable fixes off | built-in: none |
 | `no-empty` | FH-08 | recommended | `allowEmptyCatch: false` | built-in: none |
 | `id-denylist` | NAM-06, NAM-07 | recommended | `l`, `O`, `I` (owner sign-off), `klass`, `clazz` | built-in: none |
 | `@typescript-eslint/prefer-for-of` | CD-04 | recommended | none | built-in: none |
@@ -1089,6 +1089,7 @@ These rules apply to test files only. `recommended` scopes them with `files` glo
   - **Oxlint 1.92:** its `no-unused-vars` fixes are suggestions by default, and `--fix-suggestions` applies them. In a check on 2026-11-06, that turned `import type { A, B }` into `import type { B }` and deleted an unused value import outright, dropping its side effects. `recommended` for Oxlint sets the rule's `fix` option to `{ imports: "off", variables: "off" }`.
   
   Oxlint's schema marks that option experimental. The Oxlint release pinned in CI must support it, or this guard is lost.
+- **Parameters marked as unused on purpose (TS-09 in [`catalog-typescript.md`](catalog-typescript.md)):** `recommended` sets `argsIgnorePattern: "^_"` on all three rules, so a parameter such as an Express handler's `_req`, which the caller's signature requires, is not reported. Only parameters are exempt: an unused `_x` variable, destructured `_y` or caught `_e` is still reported. `reportUsedIgnorePattern: true` reports a `_` parameter that is read, because its prefix then says something untrue; ESLint 10, typescript-eslint 8.72 and Oxlint 1.92 all support it.
 - A function declaration after a `return` is hoisted and reachable. Core `no-unreachable` does not report it. A regression test covers it.
 
 #### HRM-02 · Avoid global variables
