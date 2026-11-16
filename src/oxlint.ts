@@ -18,7 +18,7 @@
 import {
   AI_RULES, AI_TEST_FILE_OFF, BUILT_IN_RULES, CALLBACK_ERROR_PATTERN, JSDOC_SYNTAX_RULES, NODE_RULES, OXLINT_JSDOC_RULES, PLUGIN_PREFIX, PROMISE_RULES, REACT_FILES, REACT_HOOKS_RULES, REACT_HOOK_FILES,
   REACT_JSX_RULES, REACT_RULES, SYNTAX_RULES, TEST_FILES, TEST_FILE_OFF, TEST_FILE_RULES, TS_FILES, TYPESCRIPT_BUILT_IN_RULES, TYPESCRIPT_EXTENDED_RULES, TYPESCRIPT_RULES,
-  pluginRules, pluginSettings, prefixed,
+  UNUSED_PARAMETER_OPTIONS, pluginRules, pluginSettings, prefixed,
 } from "./configs.ts";
 import { PACKAGE_NAME } from "./lib/define-rule.ts";
 
@@ -27,7 +27,7 @@ import { PACKAGE_NAME } from "./lib/define-rule.ts";
  * `--fix-suggestions` applies, and in a check on 2026-11-06 that rewrote `import type { A, B }` and deleted a value import
  * with its side effects. Both fixes are turned off.
  */
-const OXLINT_UNUSED_VARS = { "no-unused-vars": ["error", { fix: { imports: "off", variables: "off" } }] };
+const OXLINT_UNUSED_VARS = { "no-unused-vars": ["error", { ...UNUSED_PARAMETER_OPTIONS, fix: { imports: "off", variables: "off" } }] };
 
 export const recommended = {
   jsPlugins: [{ name: PLUGIN_PREFIX, specifier: `${PACKAGE_NAME}/plugin` }],

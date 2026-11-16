@@ -129,7 +129,7 @@ import { recommended, typescript } from "eslint-plugin-clean-code-book/oxlint";
 export default { extends: [recommended, typescript] };
 ```
 
-`typescript` does not change `recommended`'s `no-unused-vars`, so a parameter named with a leading `_`, such as `_event`, is still reported.
+`recommended`'s `no-unused-vars` does not report a parameter named with a leading `_`, such as `_event`, which a signature may require but the body never reads (TS-09). It still reports a `_` parameter that is read, and an unused variable, destructured element or caught error with the prefix.
 
 ### `typescript-extended`
 
@@ -519,7 +519,7 @@ Everything in `typescript-extended`, and, under ESLint only:
 | `no-param-reassign` | `props: true`, except `acc` and `accumulator` | FH-03 |
 | `no-fallthrough` | on | CLS-05 |
 | `no-unreachable` | on | HRM-01 |
-| `no-unused-vars` | fixes off; `@typescript-eslint/no-unused-vars` in TypeScript under ESLint | HRM-01 |
+| `no-unused-vars` | `argsIgnorePattern: "^_"` (TS-09), fixes off; `@typescript-eslint/no-unused-vars` in TypeScript under ESLint | HRM-01 |
 | `no-empty` | `allowEmptyCatch: false` | FH-08 |
 | `id-denylist` | `l`, `O`, `I`, `klass`, `clazz` | NAM-06, NAM-07 |
 | `@typescript-eslint/prefer-for-of` | on; `typescript/prefer-for-of` in Oxlint | CD-04 |
