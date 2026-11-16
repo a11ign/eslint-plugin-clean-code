@@ -10,7 +10,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { Linter } from "eslint";
-import { readmeBlock, runEslint, runEslintWithConfigFile, runOxlint, workDirectory, type Report } from "./support.ts";
+import { assertNoParseErrors, readmeBlock, runEslint, runEslintWithConfigFile, runOxlint, workDirectory, type Report } from "./support.ts";
 
 const BODY = `export function add(a, b, c, d) {\n  return a + b + c + d;\n}\n\nexport function isBig(n) {\n  if (n > 9) {\n    return true;\n  }\n  return false;\n}\n`;
 const TYPED_BODY = BODY.replace("(a, b, c, d)", "(a: number, b: number, c: number, d: number)").replace("(n)", "(n: number)");
@@ -25,17 +25,17 @@ const EXPECTED = ["max-params", "clean-code-book/return-boolean-directly"];
 const packageName = "eslint-plugin-clean-code-book";
 const CONFIG_FILES = new Set(["eslint.config.js", "oxlint.config.ts"]);
 
-/** The reports on the project's source files, leaving out the config file the README asks for. */
-function sourceReports(reports: Report[]): Report[] {
-  return reports.filter((report) => !CONFIG_FILES.has(report.file));
-}
-
 function assertRecommendedReportsEveryLanguage(reports: Report[]): void {
   assert.deepEqual(sourceReports(reports).map((report) => report.file).sort(), Object.keys(FILES).sort());
   for (const report of sourceReports(reports)) {
     for (const rule of EXPECTED) assert.ok(report.rules.includes(rule), `${report.file}: ${rule} not reported; got ${report.rules.join(", ")}`);
     assert.ok(!report.rules.some((rule) => rule.startsWith("fatal")), `${report.file}: ${report.rules.join(", ")}`);
   }
+}
+
+/** The reports on the project's source files, leaving out the config file the README asks for. */
+function sourceReports(reports: Report[]): Report[] {
+  return reports.filter((report) => !CONFIG_FILES.has(report.file));
 }
 
 /**
@@ -64,8 +64,23 @@ function changedRulesReported(reports: Report[]): string[] {
   const [report] = sourceReports(reports);
   return CHANGED_RULES.filter((rule) => report.rules.includes(rule)).map((rule) => `${rule} (${report.warnings.includes(rule) ? "warning" : "error"})`);
 }
+
 const ALL_ERRORS = CHANGED_RULES.map((rule) => `${rule} (error)`);
 const AFTER_CHANGE = ["clean-code-book/no-flag-argument (warning)"];
+
+/** Each `max-lines-per-function` report on the project's source files. */
+function maxLinesPerFunctionReports(reports: Report[]): string[] {
+  return sourceReports(reports).flatMap((report) => report.rules).filter((rule) => rule === "max-lines-per-function");
+}
+
+/** `shapes.ts` got the type-aware `predicate-returns-boolean`, `plain.js` got `return-boolean-directly`, and no file failed to parse. */
+function assertTypeAwareAndPlainRulesReported(reports: Report[]): void {
+  const shapes = reports.find((report) => report.file === "shapes.ts");
+  assert.ok(shapes?.rules.includes("clean-code-book/predicate-returns-boolean"), shapes?.rules.join(", "));
+  const plain = reports.find((report) => report.file === "plain.js");
+  assert.ok(plain?.rules.includes("clean-code-book/return-boolean-directly"), plain?.rules.join(", "));
+  assertNoParseErrors(reports);
+}
 
 describe("the README setup", () => {
   it("ESLint 10 flat config: the README's eslint.config.js loads recommended and reports on JS, JSX, TS and TSX", async () => {
@@ -81,7 +96,7 @@ describe("the README setup", () => {
     const plugin = (await import(packageName)).default as { configs: Record<string, Linter.Config[]> };
     const work = workDirectory({ "legacy.cjs": "var package = 1;\nmodule.exports = { value: package + 010 };\n" });
     try {
-      const eslintReports = await runEslint(work.dir, plugin.configs.recommended, false, ["**/*.cjs"]);
+      const eslintReports = await runEslint(work.dir, plugin.configs.recommended, ["**/*.cjs"]);
       assert.deepEqual(eslintReports.flatMap((report) => report.rules.filter((rule) => rule.startsWith("fatal"))), []);
     } finally {
       work.dispose();
@@ -105,12 +120,7 @@ describe("the README setup", () => {
       "plain.js": BODY,
     });
     try {
-      const reports = await runEslintWithConfigFile(work.dir);
-      const shapes = reports.find((report) => report.file === "shapes.ts");
-      assert.ok(shapes?.rules.includes("clean-code-book/predicate-returns-boolean"), shapes?.rules.join(", "));
-      const plain = reports.find((report) => report.file === "plain.js");
-      assert.ok(plain?.rules.includes("clean-code-book/return-boolean-directly"), plain?.rules.join(", "));
-      for (const report of reports) assert.ok(!report.rules.some((rule) => rule.startsWith("fatal")), `${report.file}: ${report.rules.join(", ")}`);
+      assertTypeAwareAndPlainRulesReported(await runEslintWithConfigFile(work.dir));
     } finally {
       work.dispose();
     }
@@ -132,9 +142,8 @@ describe("the README setup", () => {
     const eslintWork = workDirectory({ "long.test.ts": LONG_TEST_FILE, "eslint.config.js": readmeBlock("eslint-changed") });
     const oxlintWork = workDirectory({ "long.test.ts": LONG_TEST_FILE });
     try {
-      const rulesOn = (reports: Report[]) => sourceReports(reports).flatMap((report) => report.rules).filter((rule) => rule === "max-lines-per-function");
-      assert.deepEqual(rulesOn(await runEslintWithConfigFile(eslintWork.dir)), []);
-      assert.deepEqual(rulesOn(runOxlint(oxlintWork.dir, [], readmeBlock("oxlint-changed"))), []);
+      assert.deepEqual(maxLinesPerFunctionReports(await runEslintWithConfigFile(eslintWork.dir)), []);
+      assert.deepEqual(maxLinesPerFunctionReports(runOxlint(oxlintWork.dir, [], readmeBlock("oxlint-changed"))), []);
     } finally {
       eslintWork.dispose();
       oxlintWork.dispose();

@@ -23,32 +23,69 @@ interface Line {
   content: string;
 }
 
+/** Reports a comment group that is a change log of at least `threshold` entries. */
+function reportJournal(context: Rule.RuleContext, group: Comment[], threshold: number): void {
+  if (isDirectiveComment(group[0])) return;
+  const journal = journalEntries(groupLines(group));
+  if (journal.length < threshold) return;
+  const entries = new Set(journal.flat());
+  context.report({
+    loc: groupLocation(group),
+    messageId: "journal",
+    data: { count: String(journal.length) },
+    fix: journalFix(context.sourceCode, group, entries),
+  });
+}
+
+function groupLines(group: Comment[]): Line[] {
+  return group[0].type === "Block" ? blockLines(group[0]) : runLines(group);
+}
+
 /**
  * The entries of a change log in the comment: each dated line whose entry reads as a change, with the lines that
  * continue the entry (the lines right after it that are indented further than its date and are not dated). None when
  * the text line above the first dated line is a header that names something other than a change log.
  */
 function journalEntries(lines: Line[]): number[][] {
-  const entries: number[][] = [];
-  let entryIndent: number | null = null;
-  lines.forEach((line, index) => {
+  const entries = datedEntries(lines);
+  if (entries.length === 0 || !isUnderJournalHeader(lines, entries[0][0])) return [];
+  return entries.filter((entry) => recordsChange(lines, entry));
+}
+
+/** Each dated line, with the lines that continue its entry. */
+function datedEntries(lines: Line[]): number[][] {
+  const collector = new EntryCollector();
+  lines.forEach((line, index) => collector.add(line, index));
+  return collector.entries;
+}
+
+/** Collects the dated entries line by line, remembering the indent of the date of the entry that is still open. */
+class EntryCollector {
+  readonly entries: number[][] = [];
+  private openIndent: number | null = null;
+
+  add(line: Line, index: number): void {
     const text = line.content.trim();
     if (DATED_LINE.test(text)) {
-      entries.push([index]);
-      entryIndent = line.indent;
-    } else if (entryIndent !== null && text !== "" && line.indent > entryIndent) {
-      entries.at(-1)!.push(index);
+      this.entries.push([index]);
+      this.openIndent = line.indent;
+    } else if (this.openIndent !== null && text !== "" && line.indent > this.openIndent) {
+      this.entries.at(-1)!.push(index);
     } else {
-      entryIndent = null;
+      this.openIndent = null;
     }
-  });
-  if (entries.length === 0) return [];
-  const header = lines.slice(0, entries[0][0]).map((line) => line.content.trim()).filter(Boolean).at(-1);
-  if (header !== undefined && !JOURNAL_HEADER.test(header)) return [];
-  return entries.filter((entry) => {
-    const text = entry.map((index) => lines[index].content).join(" ");
-    return CHANGE_WORD.test(text) || AUTHOR.test(text);
-  });
+  }
+}
+
+/** True when there is no text line above the first dated line, or that line is a header that names a change log. */
+function isUnderJournalHeader(lines: Line[], firstDated: number): boolean {
+  const header = lines.slice(0, firstDated).map((line) => line.content.trim()).filter(Boolean).at(-1);
+  return header === undefined || JOURNAL_HEADER.test(header);
+}
+
+function recordsChange(lines: Line[], entry: number[]): boolean {
+  const text = entry.map((index) => lines[index].content).join(" ");
+  return CHANGE_WORD.test(text) || AUTHOR.test(text);
 }
 
 /** A block comment's lines, each with the column its text starts at, so that entries and their continuations compare. */
@@ -65,9 +102,11 @@ function runLines(run: Comment[]) {
   return run.map((comment) => ({ indent: comment.loc!.start.column + 2 + indentation(comment.value), content: comment.value }));
 }
 
-function blockFix(fixer: Rule.RuleFixer, sourceCode: SourceCode, comment: Comment, entries: Set<number>): Rule.Fix | null {
-  const lines = commentLines(comment);
-  return replaceCommentText(fixer, sourceCode, comment, joinLines(comment, withoutLines(comment, lines, entries)));
+/** Deletes the entries' lines from the block comment, or the entries' comments from the run of line comments. */
+function journalFix(sourceCode: SourceCode, group: Comment[], entries: Set<number>): Rule.ReportFixer {
+  if (group[0].type !== "Block") return (fixer) => keepInRun({ fixer, sourceCode }, group, (_, index) => !entries.has(index));
+  const comment = group[0];
+  return (fixer) => replaceCommentText({ fixer, sourceCode }, comment, joinLines(comment, withoutLines(comment, commentLines(comment), entries)));
 }
 
 export default defineRule<[number]>({
@@ -89,25 +128,10 @@ export default defineRule<[number]>({
     },
   },
   create(context) {
-    const sourceCode = context.sourceCode;
     const threshold = (context.options[0] as number | undefined) ?? DEFAULT_DATED_LINES;
     return {
       Program() {
-        for (const group of commentGroups(sourceCode, isDirectiveComment)) {
-          if (isDirectiveComment(group[0])) continue;
-          const block = group[0].type === "Block";
-          const lines = block ? blockLines(group[0]) : runLines(group);
-          const journal = journalEntries(lines);
-          if (journal.length < threshold) continue;
-          const dated = journal.length;
-          const entries = new Set(journal.flat());
-          context.report({
-            loc: groupLocation(group),
-            messageId: "journal",
-            data: { count: String(dated) },
-            fix: (fixer) => (block ? blockFix(fixer, sourceCode, group[0], entries) : keepInRun(fixer, sourceCode, group, (_, index) => !entries.has(index))),
-          });
-        }
+        for (const group of commentGroups(context.sourceCode, isDirectiveComment)) reportJournal(context, group, threshold);
       },
     };
   },

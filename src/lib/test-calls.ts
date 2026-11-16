@@ -37,21 +37,6 @@ export interface TestCall {
   callback: FunctionNode | null;
 }
 
-/** Reads `it`, `it.skip`, `it.each(table)`, `it.concurrent.only` … into a base and its modifiers, or `null`. */
-function readCallee(callee: TSESTree.Node): { base: TSESTree.Identifier; modifiers: TSESTree.Identifier[] } | null {
-  if (callee.type === "Identifier") return BASES.has(callee.name) ? { base: callee, modifiers: [] } : null;
-  if (callee.type === "CallExpression") {
-    const inner = readCallee(callee.callee);
-    const last = inner?.modifiers.at(-1);
-    return last && CALLED_MODIFIERS.has(last.name) ? inner : null;
-  }
-  if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier" && MODIFIERS.has(callee.property.name)) {
-    const inner = readCallee(callee.object);
-    return inner ? { base: inner.base, modifiers: [...inner.modifiers, callee.property] } : null;
-  }
-  return null;
-}
-
 /** The test call `node` is, or `null` when it is any other call. `it.each(table)` alone is not a test call; the call it returns is. */
 export function readTestCall(node: unknown): TestCall | null {
   const call = asTs<TSESTree.Node>(node);
@@ -65,19 +50,68 @@ export function readTestCall(node: unknown): TestCall | null {
   return { call, kind, ...read, options, callback: isFunction(last) ? last : null };
 }
 
-/** The value of a plain (non-computed, non-spread) property `name` in an options object. */
-export function optionProperty(options: TSESTree.ObjectExpression | null, name: string): TSESTree.Property | null {
-  if (!options) return null;
-  for (const property of options.properties) {
-    if (property.type !== "Property" || property.computed) continue;
-    const key = property.key.type === "Identifier" ? property.key.name : property.key.type === "Literal" ? String(property.key.value) : null;
-    if (key === name) return property;
-  }
+/** Reads `it`, `it.skip`, `it.each(table)`, `it.concurrent.only` … into a base and its modifiers, or `null`. */
+function readCallee(callee: TSESTree.Node): CalleeParts | null {
+  if (callee.type === "Identifier") return BASES.has(callee.name) ? { base: callee, modifiers: [] } : null;
+  if (callee.type === "CallExpression") return readCalledCallee(callee);
+  if (isModifierAccess(callee)) return withModifier(readCallee(callee.object), callee.property);
   return null;
 }
 
-function isTrueLiteral(property: TSESTree.Property | null): boolean {
-  return property?.value.type === "Literal" && property.value.value === true;
+/** A test callee's base name and its modifiers, in order. */
+interface CalleeParts {
+  base: TSESTree.Identifier;
+  modifiers: TSESTree.Identifier[];
+}
+
+/** Reads `it.each(table)` as a callee: only a call to a modifier that returns the test function, such as `each`. */
+function readCalledCallee(callee: TSESTree.CallExpression): CalleeParts | null {
+  const inner = readCallee(callee.callee);
+  const last = inner?.modifiers.at(-1);
+  return last && CALLED_MODIFIERS.has(last.name) ? inner : null;
+}
+
+/** Whether a node reads a known modifier by name: `.skip`, `.only`, `.each` … */
+function isModifierAccess(node: TSESTree.Node): node is TSESTree.MemberExpression & { property: TSESTree.Identifier } {
+  if (node.type !== "MemberExpression" || node.computed) return false;
+  return node.property.type === "Identifier" && MODIFIERS.has(node.property.name);
+}
+
+/** The callee `inner` with `modifier` added after its modifiers, or `null` when `inner` is not a test callee. */
+function withModifier(inner: CalleeParts | null, modifier: TSESTree.Identifier): CalleeParts | null {
+  return inner ? { base: inner.base, modifiers: [...inner.modifiers, modifier] } : null;
+}
+
+/** Whether the test is marked as a to-do: `.todo`, or `{ todo: true }` / `{ todo: "reason" }`. */
+export function isTodo(test: TestCall): boolean {
+  if (test.modifiers.some((modifier) => modifier.name === "todo")) return true;
+  const option = optionProperty(test.options, "todo");
+  return option !== null && !(option.value.type === "Literal" && (option.value.value === false || option.value.value === null || option.value.value === ""));
+}
+
+/** The value of a plain (non-computed, non-spread) property `name` in an options object. */
+export function optionProperty(options: TSESTree.ObjectExpression | null, name: string): TSESTree.Property | null {
+  if (!options) return null;
+  return options.properties.find((property): property is TSESTree.Property => isPlainPropertyNamed(property, name)) ?? null;
+}
+
+/** Whether `property` is a plain (non-computed, non-spread) property whose key spells `name`. */
+function isPlainPropertyNamed(property: TSESTree.ObjectLiteralElement, name: string): boolean {
+  if (property.type !== "Property" || property.computed) return false;
+  return plainKeyName(property.key) === name;
+}
+
+/** The name an identifier or literal key spells, or `null` for any other key. */
+function plainKeyName(key: TSESTree.PropertyName): string | null {
+  if (key.type === "Identifier") return key.name;
+  return key.type === "Literal" ? String(key.value) : null;
+}
+
+/** Whether the test is skipped in any way: disabled, or `{ skip: "reason" }`, which `node:test` reads as skip with a message. */
+export function isSkipped(test: TestCall): boolean {
+  if (disablingNode(test)) return true;
+  const option = optionProperty(test.options, "skip");
+  return option?.value.type === "Literal" && typeof option.value.value === "string" && option.value.value !== "";
 }
 
 /** How a test is disabled: the node that disables it, or `null` when it runs. `.todo` is not counted as disabled. */
@@ -89,18 +123,8 @@ export function disablingNode(test: TestCall): TSESTree.Node | null {
   return isTrueLiteral(option) ? option : null;
 }
 
-/** Whether the test is marked as a to-do: `.todo`, or `{ todo: true }` / `{ todo: "reason" }`. */
-export function isTodo(test: TestCall): boolean {
-  if (test.modifiers.some((modifier) => modifier.name === "todo")) return true;
-  const option = optionProperty(test.options, "todo");
-  return option !== null && !(option.value.type === "Literal" && (option.value.value === false || option.value.value === null || option.value.value === ""));
-}
-
-/** Whether the test is skipped in any way: disabled, or `{ skip: "reason" }`, which `node:test` reads as skip with a message. */
-export function isSkipped(test: TestCall): boolean {
-  if (disablingNode(test)) return true;
-  const option = optionProperty(test.options, "skip");
-  return option?.value.type === "Literal" && typeof option.value.value === "string" && option.value.value !== "";
+function isTrueLiteral(property: TSESTree.Property | null): boolean {
+  return property?.value.type === "Literal" && property.value.value === true;
 }
 
 /** The inline callback of a hook call (such as `beforeEach(() => { … })`) when `node` is a call to one of `names`. */

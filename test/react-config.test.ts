@@ -9,7 +9,7 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync } from "node:fs";
 import { join } from "node:path";
 import { ESLint } from "eslint";
-import { ROOT, assertNoParseErrors, onFixtures, readmeBlock, relatedReports, runEslintWithConfigFile, runOxlint, type Report } from "./support.ts";
+import { ROOT, assertErrorsWithoutFixOrSuggestion, assertNoParseErrors, onFixtures, readmeBlock, relatedReports, runEslintWithConfigFile, runOxlint, type Report } from "./support.ts";
 
 const FIXTURES = join(ROOT, "test", "fixtures", "react");
 
@@ -98,7 +98,7 @@ console.log(JSON.stringify({ lengths, recommendedLint, extendedLint }));
 
 describe("the react config", () => {
   it("ESLint: the README's react setup reports the state mutation, the untyped empty state and the 20-line component", async () => {
-    const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, readmeBlock("eslint-react"));
+    const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, { eslintConfig: readmeBlock("eslint-react") });
     assertNoParseErrors(reports);
     assert.deepEqual(reactReports(reports), REACT_EXPECTED);
   });
@@ -114,21 +114,17 @@ describe("the react config", () => {
       const results = await new ESLint({ cwd: dir }).lintFiles(["src/*.{ts,tsx}"]);
       const messages = results.flatMap((result) => result.messages).filter((message) => message.ruleId?.startsWith("clean-code-book/react-"));
       assert.equal(messages.length, 2);
-      for (const message of messages) {
-        assert.equal(message.severity, 2, message.ruleId ?? "");
-        assert.equal(message.fix, undefined, `${message.ruleId} has a fix`);
-        assert.equal(message.suggestions, undefined, `${message.ruleId} has a suggestion`);
-      }
+      assertErrorsWithoutFixOrSuggestion(messages);
       assert.equal(messages.find((message) => message.ruleId === "clean-code-book/react-no-state-mutation")?.line, 6);
       const panel = results.find((result) => result.filePath.endsWith("Panel.tsx"))?.messages.find((message) => message.ruleId === "max-lines-per-function");
       assert.match(panel?.message ?? "", /has too many lines \(20\)\. Maximum allowed is 12\./);
-    }, readmeBlock("eslint-react"));
+    }, { eslintConfig: readmeBlock("eslint-react") });
   });
 
   it("ESLint and Oxlint: a plain .ts file is not checked by any react- rule, though the same code in a .tsx file is", async () => {
     const control = renamed("src/store.ts", "src/store.tsx");
-    const eslintReports = await onFixtures(FIXTURES, runEslintWithConfigFile, readmeBlock("eslint-react"), control);
-    const oxlintReports = await onFixtures(FIXTURES, (dir) => runOxlint(dir, [], readmeBlock("oxlint-react")), undefined, control);
+    const eslintReports = await onFixtures(FIXTURES, runEslintWithConfigFile, { eslintConfig: readmeBlock("eslint-react"), prepare: control });
+    const oxlintReports = await onFixtures(FIXTURES, (dir) => runOxlint(dir, [], readmeBlock("oxlint-react")), { prepare: control });
     assert.ok(eslintReports.some((report) => report.file === "src/store.ts"), "ESLint did not lint store.ts, so this check could not fail");
     for (const reports of [eslintReports, oxlintReports]) {
       assert.deepEqual(rulesIn(reports, "src/store.ts").filter((rule) => rule.includes("react")), []);
@@ -140,7 +136,7 @@ describe("the react config", () => {
   });
 
   it("ESLint and Oxlint: a project on recommended alone gets no react report, and still the 12-line limit on the component", async () => {
-    const eslintReports = await onFixtures(FIXTURES, runEslintWithConfigFile, readmeBlock("eslint"));
+    const eslintReports = await onFixtures(FIXTURES, runEslintWithConfigFile, { eslintConfig: readmeBlock("eslint") });
     const oxlintReports = await onFixtures(FIXTURES, (dir) => runOxlint(dir, [], readmeBlock("oxlint")));
     assert.deepEqual(reactReports(eslintReports), { "src/Panel.tsx": ["max-lines-per-function"] });
     assert.deepEqual(reactReports(oxlintReports), { "src/Panel.tsx": ["max-lines-per-function"] });
@@ -159,7 +155,7 @@ describe("the react config", () => {
 
 describe("the react-extended config", () => {
   it("ESLint: the rules of hooks, exhaustive-deps and the list-key rules report each scenario", async () => {
-    const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, readmeBlock("eslint-react-extended"));
+    const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, { eslintConfig: readmeBlock("eslint-react-extended") });
     assertNoParseErrors(reports);
     assert.deepEqual(reactReports(reports), EXTENDED_EXPECTED);
     assert.deepEqual(reactWarnings(reports), [], "exhaustive-deps is an error, not the preset's warning");
@@ -174,8 +170,8 @@ describe("the react-extended config", () => {
 
   it("ESLint and Oxlint: useOrders.ts is not checked by any react/ rule, though the same code in a .tsx file is", async () => {
     const control = renamed("src/useOrders.ts", "src/useOrders.tsx");
-    const eslintReports = await onFixtures(FIXTURES, runEslintWithConfigFile, readmeBlock("eslint-react-extended"), control);
-    const oxlintReports = await onFixtures(FIXTURES, (dir) => runOxlint(dir, [], readmeBlock("oxlint-react-extended")), undefined, control);
+    const eslintReports = await onFixtures(FIXTURES, runEslintWithConfigFile, { eslintConfig: readmeBlock("eslint-react-extended"), prepare: control });
+    const oxlintReports = await onFixtures(FIXTURES, (dir) => runOxlint(dir, [], readmeBlock("oxlint-react-extended")), { prepare: control });
     for (const reports of [eslintReports, oxlintReports]) {
       assert.deepEqual(rulesIn(reports, "src/useOrders.ts").filter((rule) => rule.startsWith("react/")), []);
       assert.deepEqual(rulesIn(reports, "src/useOrders.tsx").filter((rule) => rule.startsWith("react/")), ["react/no-array-index-key"]);

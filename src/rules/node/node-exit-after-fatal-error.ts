@@ -1,3 +1,4 @@
+import type { SourceCode } from "eslint";
 import { defineNodeRule } from "../../lib/define-rule.ts";
 import { asTs, type FunctionNode, type Node, type TSESTree } from "../../lib/ast.ts";
 import { enclosingFunctions, isMemberNamed, isMethodCall, passedFunction } from "./node-calls.ts";
@@ -24,6 +25,31 @@ function endsProcess(node: Node): boolean {
   return node.type === "CallExpression" && isMethodCall(node, PROCESS, ENDING_METHODS);
 }
 
+/** What the rule learns as it walks the file: the fatal-error handlers registered on `process`, and the functions that end it. */
+class FatalErrorHandlers {
+  /** Each handler function, mapped to the argument that passed it, which is where a report goes. */
+  readonly #handlers = new Map<FunctionNode, Node>();
+  readonly #ending = new Set<FunctionNode>();
+
+  /** Notes a call: it may end the process, and it may register a handler for a fatal error. */
+  noteCall(sourceCode: SourceCode, call: TSESTree.CallExpression): void {
+    this.noteEnding(call);
+    const argument = fatalErrorHandler(call);
+    const handler = argument && passedFunction(sourceCode, argument);
+    if (handler && argument) this.#handlers.set(handler, argument);
+  }
+
+  /** Notes every function `node` sits in as ending the process, when `node` ends it. */
+  noteEnding(node: Node): void {
+    if (endsProcess(node)) for (const fn of enclosingFunctions(node)) this.#ending.add(fn);
+  }
+
+  /** The arguments that passed a handler which never ends the process. */
+  keepingRunning(): Node[] {
+    return [...this.#handlers].filter(([handler]) => !this.#ending.has(handler)).map(([, argument]) => argument);
+  }
+}
+
 export default defineNodeRule({
   name: "node-exit-after-fatal-error",
   type: "problem",
@@ -41,30 +67,13 @@ export default defineNodeRule({
     },
   },
   create(context) {
-    const handlers = new Map<FunctionNode, Node>();
-    const ending = new Set<FunctionNode>();
-    function noteEnding(node: Node): void {
-      if (endsProcess(node)) for (const fn of enclosingFunctions(node)) ending.add(fn);
-    }
+    const handlers = new FatalErrorHandlers();
+    const noteEnding = (node: unknown) => handlers.noteEnding(asTs(node));
     return {
-      CallExpression(node) {
-        const call = asTs<TSESTree.CallExpression>(node);
-        noteEnding(call);
-        const argument = fatalErrorHandler(call);
-        const handler = argument && passedFunction(context.sourceCode, argument);
-        if (handler && argument) handlers.set(handler, argument);
-      },
-      AssignmentExpression(node) {
-        noteEnding(asTs(node));
-      },
-      ThrowStatement(node) {
-        noteEnding(asTs(node));
-      },
-      "Program:exit"() {
-        for (const [handler, argument] of handlers) {
-          if (!ending.has(handler)) context.report({ node: argument as never, messageId: "keepsRunning" });
-        }
-      },
+      CallExpression: (node) => handlers.noteCall(context.sourceCode, asTs<TSESTree.CallExpression>(node)),
+      AssignmentExpression: noteEnding,
+      ThrowStatement: noteEnding,
+      "Program:exit": () => handlers.keepingRunning().forEach((argument) => context.report({ node: argument as never, messageId: "keepsRunning" })),
     };
   },
 });

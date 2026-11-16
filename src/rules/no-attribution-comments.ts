@@ -14,8 +14,23 @@ const BYLINE = new RegExp(String.raw`\b(?:[Aa]dded|[Cc]reated|[Mm]odified)[ \t]+
 const LEADING_BYLINE = new RegExp(String.raw`^${BYLINE.source}`, "u");
 const AUTHOR_TAG = /(?:^|\s)@author\b/;
 
+/** Whether a line of the comment is a byline. Directive comments (`eslint-disable`, `@ts-…`) are never reported. */
+function hasByline(comment: Comment): boolean {
+  return !isDirectiveComment(comment) && commentLines(comment).some((line) => isByline(line.content.trim()));
+}
+
 function isByline(text: string): boolean {
   return AUTHOR_TAG.test(text) || BYLINE.test(text);
+}
+
+/** Reports the comment, with a fix that deletes it when it holds nothing but bylines. */
+function reportByline(context: Rule.RuleContext, comment: Comment): void {
+  const sourceCode = context.sourceCode;
+  context.report({
+    loc: comment.loc!,
+    messageId: "byline",
+    ...(isOnlyBylines(comment) ? { fix: (fixer: Rule.RuleFixer) => removeComment(fixer, sourceCode, comment) } : {}),
+  });
 }
 
 /** Whether every line of the comment with text on it is a byline, so deleting the comment loses nothing else. */
@@ -41,18 +56,9 @@ export default defineRule({
     },
   },
   create(context) {
-    const sourceCode = context.sourceCode;
     return {
       Program() {
-        for (const comment of sourceComments(sourceCode)) {
-          if (isDirectiveComment(comment)) continue;
-          if (!commentLines(comment).some((line) => isByline(line.content.trim()))) continue;
-          context.report({
-            loc: comment.loc!,
-            messageId: "byline",
-            ...(isOnlyBylines(comment) ? { fix: (fixer: Rule.RuleFixer) => removeComment(fixer, sourceCode, comment) } : {}),
-          });
-        }
+        for (const comment of sourceComments(context.sourceCode).filter(hasByline)) reportByline(context, comment);
       },
     };
   },

@@ -1,4 +1,5 @@
 import type ts from "typescript";
+import type { Rule } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs, type Node, type TSESTree } from "../lib/ast.ts";
 import { classOrInterfaceOf, directSupertypes, isTopType, nonNullableTypeAt, unionMembers, type TypeServices, typeServices } from "../lib/types.ts";
@@ -14,11 +15,83 @@ const LIBRARY_CONTAINERS: Record<"Map" | "Set", string[]> = {
   Set: ["Set", "ReadonlySet", "WeakSet"],
 };
 
+type NameCheck = (identifier: Node) => void;
+
+/** Visits every name a declaration binds: variables, parameters, `catch` parameters and class fields. */
+function bindingVisitors(check: NameCheck): Rule.RuleListener {
+  return {
+    VariableDeclarator(node) {
+      checkPattern(check, asTs<TSESTree.VariableDeclarator>(node).id);
+    },
+    ...functionVisitors(check),
+    CatchClause: (node) => checkPattern(check, asTs<TSESTree.CatchClause>(node).param),
+    PropertyDefinition: (node) => checkFieldName(check, asTs<TSESTree.PropertyDefinition>(node)),
+  };
+}
+
+function functionVisitors(check: NameCheck): Rule.RuleListener {
+  const checkFunction = (node: unknown): void => asTs<TSESTree.FunctionLike>(node).params.forEach((param) => checkPattern(check, param));
+  return { FunctionDeclaration: checkFunction, FunctionExpression: checkFunction, ArrowFunctionExpression: checkFunction };
+}
+
+function checkPattern(check: NameCheck, pattern: Node | null | undefined): void {
+  boundIdentifiers(pattern).forEach(check);
+}
+
+/** The identifiers a pattern binds: `a`, `{ a, b: c }`, `[d, ...e]`, `f = 1`. */
+function boundIdentifiers(pattern: Node | null | undefined): TSESTree.Identifier[] {
+  if (!pattern) return [];
+  if (pattern.type === "Identifier") return [pattern];
+  if (pattern.type === "ObjectPattern") return pattern.properties.flatMap((property) => boundIdentifiers(property.type === "Property" ? property.value : property));
+  if (pattern.type === "ArrayPattern") return pattern.elements.flatMap((element) => boundIdentifiers(element));
+  return boundIdentifiers(wrappedPattern(pattern));
+}
+
+/** The pattern a rest element, a default value or a parameter property wraps, or `null` for any other node. */
+function wrappedPattern(pattern: Node): Node | null {
+  if (pattern.type === "RestElement") return pattern.argument;
+  if (pattern.type === "AssignmentPattern") return pattern.left;
+  return pattern.type === "TSParameterProperty" ? pattern.parameter : null;
+}
+
+function checkFieldName(check: NameCheck, property: TSESTree.PropertyDefinition): void {
+  if (!property.computed) check(property.key);
+}
+
+/** Reports a name that ends in a container word when its type is not that container. */
+function nameChecker(context: Rule.RuleContext, services: TypeServices): NameCheck {
+  return (identifier) => {
+    if (identifier.type !== "Identifier") return;
+    const word = containerWord(identifier.name);
+    const type = word ? falseContainerType(services, identifier, word) : null;
+    if (word && type) context.report({ node: identifier as never, messageId: "falseContainer", data: { name: identifier.name, word, type: services.checker.typeToString(type) } });
+  };
+}
+
 function containerWord(name: string): Container | null {
   const match = CONTAINER_SUFFIX.exec(name);
   if (!match) return null;
   const word = match[1] ?? match[2];
   return (word.charAt(0) + word.slice(1).toLowerCase()) as Container;
+}
+
+/** The type of `identifier` when some member of it is not the container `word` names, or `null`. */
+function falseContainerType(services: TypeServices, identifier: Node, word: Container): ts.Type | null {
+  const type = judgedType(services, identifier);
+  if (!type || unionMembers(type).every((member) => isContainer(services.checker, member, word))) return null;
+  return type;
+}
+
+/** The type to judge, or `null` when there is nothing to judge: `any`, `unknown`, an unconstrained type parameter, or a function (named for what it does, NAM-16). */
+function judgedType(services: TypeServices, node: Node): ts.Type | null {
+  const type = nonNullableTypeAt(services, node);
+  const isFunction = type.getCallSignatures().length > 0;
+  return isFunction || type.isTypeParameter() || isTopType(services.checker, type) ? null : type;
+}
+
+function isContainer(checker: ts.TypeChecker, type: ts.Type, word: Container): boolean {
+  if (word === "List" || word === "Array") return isArrayLike(checker, type) || isNamedContainer(checker, type, word);
+  return isNamedContainer(checker, type, word);
 }
 
 /**
@@ -36,46 +109,30 @@ function isArrayLike(checker: ts.TypeChecker, type: ts.Type): boolean {
  * for the container (`LinkedList`, `HashMap`). A type alias does not count: `type AccountMap = Record<string, Account>` is
  * still a plain object.
  */
-function isNamedContainer(checker: ts.TypeChecker, type: ts.Type, word: Container, seen = new Set<ts.Symbol>()): boolean {
+function isNamedContainer(checker: ts.TypeChecker, type: ts.Type, word: Container): boolean {
+  return classAndSupertypeNames(checker, type).some((name) => isContainerName(name, word));
+}
+
+/** The names of the class or interface of `type` and of all its supertypes, each once. */
+function classAndSupertypeNames(checker: ts.TypeChecker, type: ts.Type): string[] {
+  const seen = new Set<ts.Symbol>();
+  collectClassAndSupertypes(checker, type, seen);
+  return [...seen].map((symbol) => symbol.getName());
+}
+
+function collectClassAndSupertypes(checker: ts.TypeChecker, type: ts.Type, seen: Set<ts.Symbol>): void {
   const owner = classOrInterfaceOf(checker, type);
-  if (!owner || seen.has(owner.symbol)) return false;
+  if (!owner || seen.has(owner.symbol)) return;
   seen.add(owner.symbol);
-  const name = owner.symbol.getName();
-  if (name.endsWith(word) || (word === "Map" || word === "Set" ? LIBRARY_CONTAINERS[word].includes(name) : false)) return true;
-  return directSupertypes(checker, owner.symbol).some((base) => isNamedContainer(checker, base, word, seen));
+  for (const base of directSupertypes(checker, owner.symbol)) collectClassAndSupertypes(checker, base, seen);
 }
 
-function isContainer(checker: ts.TypeChecker, type: ts.Type, word: Container): boolean {
-  if (word === "List" || word === "Array") return isArrayLike(checker, type) || isNamedContainer(checker, type, word);
-  return isNamedContainer(checker, type, word);
+function isContainerName(name: string, word: Container): boolean {
+  return name.endsWith(word) || isLibraryContainer(name, word);
 }
 
-/** The type to judge, or `null` when there is nothing to judge: `any`, `unknown`, an unconstrained type parameter, or a function (named for what it does, NAM-16). */
-function judgedType(services: TypeServices, node: Node): ts.Type | null {
-  const type = nonNullableTypeAt(services, node);
-  const isFunction = type.getCallSignatures().length > 0;
-  return isFunction || type.isTypeParameter() || isTopType(services.checker, type) ? null : type;
-}
-
-/** The identifiers a pattern binds: `a`, `{ a, b: c }`, `[d, ...e]`, `f = 1`. */
-function boundIdentifiers(pattern: Node | null | undefined): TSESTree.Identifier[] {
-  if (!pattern) return [];
-  switch (pattern.type) {
-    case "Identifier":
-      return [pattern];
-    case "ObjectPattern":
-      return pattern.properties.flatMap((property) => boundIdentifiers(property.type === "Property" ? property.value : property));
-    case "ArrayPattern":
-      return pattern.elements.flatMap((element) => boundIdentifiers(element));
-    case "RestElement":
-      return boundIdentifiers(pattern.argument);
-    case "AssignmentPattern":
-      return boundIdentifiers(pattern.left);
-    case "TSParameterProperty":
-      return boundIdentifiers(pattern.parameter);
-    default:
-      return [];
-  }
+function isLibraryContainer(name: string, word: Container): boolean {
+  return word === "Map" || word === "Set" ? LIBRARY_CONTAINERS[word].includes(name) : false;
 }
 
 export default defineRule({
@@ -97,37 +154,6 @@ export default defineRule({
   create(context) {
     const services = typeServices(context);
     if (!services) return {};
-
-    const check = (identifier: Node): void => {
-      if (identifier.type !== "Identifier") return;
-      const word = containerWord(identifier.name);
-      if (!word) return;
-      const type = judgedType(services, identifier);
-      if (!type || unionMembers(type).every((member) => isContainer(services.checker, member, word))) return;
-      context.report({
-        node: identifier as never,
-        messageId: "falseContainer",
-        data: { name: identifier.name, word, type: services.checker.typeToString(type) },
-      });
-    };
-    const checkFunction = (node: unknown): void => {
-      for (const param of asTs<TSESTree.FunctionLike>(node).params) boundIdentifiers(param).forEach(check);
-    };
-
-    return {
-      VariableDeclarator(node) {
-        boundIdentifiers(asTs<TSESTree.VariableDeclarator>(node).id).forEach(check);
-      },
-      FunctionDeclaration: checkFunction,
-      FunctionExpression: checkFunction,
-      ArrowFunctionExpression: checkFunction,
-      CatchClause(node) {
-        boundIdentifiers(asTs<TSESTree.CatchClause>(node).param).forEach(check);
-      },
-      PropertyDefinition(node) {
-        const property = asTs<TSESTree.PropertyDefinition>(node);
-        if (!property.computed) check(property.key);
-      },
-    };
+    return bindingVisitors(nameChecker(context, services));
   },
 });

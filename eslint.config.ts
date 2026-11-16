@@ -1,28 +1,18 @@
-// This repository's own lint. It uses the size limits the projects that will adopt this plugin use today, not the plugin's
-// `recommended`: switching those projects (and this one) to `recommended` is follow-up work, done project by project.
-import js from "@eslint/js";
-import tseslint from "typescript-eslint";
+/**
+ * This repository's own lint: the plugin's own `recommended-type-checked`, `typescript` and `ai`, read from the source, so a
+ * change to a rule is linted by that change. A report here is either a defect in the code or a defect in the rule; the rule
+ * is fixed when it is wrong, and no rule is turned off or weakened for this repository.
+ */
+import type { Linter } from "eslint";
 import globals from "globals";
+import cleanCode from "./src/index.ts";
 
-export default tseslint.config(
+const config: Linter.Config[] = [
   { ignores: ["node_modules/**", "dist/**", "src/testing/typed-fixture/**", "test/fixtures/**", "test/work/**"] },
-  js.configs.recommended,
-  ...tseslint.configs.recommended,
-  {
-    files: ["**/*.ts"],
-    languageOptions: { ecmaVersion: 2023, sourceType: "module", globals: { ...globals.node } },
-    rules: {
-      "max-lines-per-function": ["error", { max: 70, skipBlankLines: true, skipComments: true }],
-      "complexity": ["error", 15],
-      "max-depth": ["error", 3],
-      "max-params": ["error", 4],
-      "no-empty": ["error", { allowEmptyCatch: false }],
-      "@typescript-eslint/no-explicit-any": "error",
-    },
-  },
-  {
-    // A test file is a list of cases, not a function to keep short.
-    files: ["**/*.test.ts"],
-    rules: { "max-lines-per-function": "off" },
-  },
-);
+  ...cleanCode.configs["recommended-type-checked"],
+  ...cleanCode.configs.typescript,
+  ...cleanCode.configs.ai,
+  { files: ["**/*.ts"], languageOptions: { ecmaVersion: 2023, sourceType: "module", globals: { ...globals.node } } },
+];
+
+export default config;

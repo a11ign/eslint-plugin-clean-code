@@ -17,12 +17,15 @@ runRuleTests("no-position-markers", rule, {
     { name: "four characters are under the threshold", code: "// ---- setup ----\nrun();" },
     { name: "an arrow", code: "// [A] -----> [B] <===== [C]\nrun();" },
     { name: "a Markdown heading underline in a doc comment", code: "/**\n * Usage\n * =====\n *\n * Details\n * -------\n */\nexport function f() {}" },
+    { name: "a run inside a Markdown code span in a doc comment quotes code", code: "/**\n * Removes the runs, so `/****** Section ******\\/` becomes `/* Section *\\/` and `//===== Section` becomes `// Section`.\n */\nexport function f() {}" },
     { name: "a Markdown table rule in a doc comment", code: "/**\n * | Name  | Value |\n * | ----- | ----- |\n * | a     | 1     |\n */\nexport function f() {}" },
     { name: "a directive comment is never changed", code: "/*! ========== v1.0.0 ========== */\nrun();" },
     { name: "directive comments are left alone", code: "// eslint-disable-next-line no-console\nconsole.log(1);" },
     { name: "a longer threshold", options: [8], code: "// ------ setup ------\nrun();" },
   ],
   invalid: [
+    { name: "in a doc comment, a run outside a code span is still a banner", code: "/**\n * `code` ===== Section =====\n */\nexport function f() {}", output: "/**\n * `code` Section\n */\nexport function f() {}", errors: 1 },
+    { name: "outside a doc comment, backticks do not make a code span", code: "// `====== Section ======`\nexport const g = 1;", output: "// ` Section `\nexport const g = 1;", errors: 1 },
     {
       name: "the book's train of slashes",
       code: "// Actions //////////////////////////////////\nexport const a = 1;",

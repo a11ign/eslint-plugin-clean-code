@@ -56,16 +56,26 @@ EslintRuleTester.it = it;
 OxlintRuleTester.describe = describe;
 OxlintRuleTester.it = it as never;
 
-function languageOptions(testCase: CaseBase) {
-  return {
-    parser: tsParser,
-    sourceType: testCase.sourceType ?? "module",
-    parserOptions: { ecmaFeatures: { jsx: /\.[jt]sx$/.test(testCase.filename ?? DEFAULT_FILENAME) } },
-  };
+/** Runs `cases` for the rule under both linters, with the fix checks above. */
+export function runRuleTests(ruleName: string, rule: Rule.RuleModule, cases: RuleCases): void {
+  const extra = fixedOutputCases(cases.invalid);
+  const all = { valid: [...cases.valid.map(normalise), ...extra.valid], invalid: [...cases.invalid, ...extra.invalid] };
+  const { eslint, oxlint } = both(all);
+  describe(`${ruleName} under ESLint`, () => {
+    new EslintRuleTester().run(ruleName, rule, eslint as never);
+  });
+  describe(`${ruleName} under Oxlint`, () => {
+    new OxlintRuleTester({ eslintCompat: true }).run(ruleName, rule as never, oxlint as never);
+  });
+  behaviourTests(ruleName, cases.invalid);
 }
 
-function normalise(testCase: ValidCase): CaseBase {
-  return typeof testCase === "string" ? { code: testCase } : testCase;
+function both(cases: { valid: CaseBase[]; invalid: InvalidCase[] }) {
+  const keep = (c: CaseBase) => !c.eslintOnlyBecause;
+  return {
+    eslint: { valid: cases.valid.map(eslintCase), invalid: cases.invalid.map((c) => invalidFor(eslintCase, c)) },
+    oxlint: { valid: cases.valid.filter(keep).map(oxlintCase), invalid: cases.invalid.filter(keep).map((c) => invalidFor(oxlintCase, c)) },
+  };
 }
 
 function eslintCase(testCase: CaseBase): Record<string, unknown> {
@@ -76,6 +86,14 @@ function eslintCase(testCase: CaseBase): Record<string, unknown> {
     ...(options ? { options } : {}),
     filename: testCase.filename ?? DEFAULT_FILENAME,
     languageOptions: languageOptions(testCase),
+  };
+}
+
+function languageOptions(testCase: CaseBase) {
+  return {
+    parser: tsParser,
+    sourceType: testCase.sourceType ?? "module",
+    parserOptions: { ecmaFeatures: { jsx: /\.[jt]sx$/.test(testCase.filename ?? DEFAULT_FILENAME) } },
   };
 }
 
@@ -94,17 +112,25 @@ function invalidFor(make: (c: CaseBase) => Record<string, unknown>, testCase: In
   return { ...make(testCase), errors: testCase.errors, output: testCase.output };
 }
 
-/** The cases each fix adds: its output reports nothing (or only `outputErrors`, with no further fix). */
-function fixedOutputCases(invalid: InvalidCase[]): { valid: CaseBase[]; invalid: InvalidCase[] } {
-  const valid: CaseBase[] = [];
-  const stillInvalid: InvalidCase[] = [];
-  for (const testCase of invalid) {
-    if (testCase.output === null) continue;
-    const fixed = { ...testCase, code: testCase.output, name: `fixed output of: ${testCase.name ?? testCase.code}` };
-    if (testCase.outputErrors === undefined) valid.push(fixed);
-    else stillInvalid.push({ ...fixed, errors: testCase.outputErrors, output: null, outputErrors: undefined });
-  }
-  return { valid, invalid: stillInvalid };
+function behaviourTests(ruleName: string, invalid: InvalidCase[]): void {
+  const withBehaviour = invalid.filter((testCase) => testCase.behaviour && testCase.output !== null);
+  if (withBehaviour.length === 0) return;
+  describe(`${ruleName}: a fix keeps behaviour`, () => {
+    for (const testCase of withBehaviour) {
+      it(testCase.name ?? testCase.code, () => {
+        for (const expression of [testCase.behaviour].flat() as string[]) assertSameValueAfterFix(testCase, expression);
+      });
+    }
+  });
+}
+
+/** Asserts that `expression` runs on the case's code, and gives the same result on its fixed output. */
+function assertSameValueAfterFix(testCase: InvalidCase, expression: string): void {
+  const filename = testCase.filename ?? DEFAULT_FILENAME;
+  const before = evaluate(runnable(testCase.code, filename), expression);
+  const after = evaluate(runnable(testCase.output as string, filename), expression);
+  assert.equal(after, before, `${expression} gave a different result after the fix`);
+  assert.doesNotMatch(before, /is not defined/, `${expression} could not run on the code before the fix`);
 }
 
 function runnable(code: string, filename: string): string {
@@ -121,42 +147,22 @@ function evaluate(code: string, expression: string): string {
   }
 }
 
-function behaviourTests(ruleName: string, invalid: InvalidCase[]): void {
-  const withBehaviour = invalid.filter((testCase) => testCase.behaviour && testCase.output !== null);
-  if (withBehaviour.length === 0) return;
-  describe(`${ruleName}: a fix keeps behaviour`, () => {
-    for (const testCase of withBehaviour) {
-      it(testCase.name ?? testCase.code, () => {
-        const filename = testCase.filename ?? DEFAULT_FILENAME;
-        for (const expression of [testCase.behaviour].flat() as string[]) {
-          const before = evaluate(runnable(testCase.code, filename), expression);
-          const after = evaluate(runnable(testCase.output as string, filename), expression);
-          assert.equal(after, before, `${expression} gave a different result after the fix`);
-          assert.doesNotMatch(before, /is not defined/, `${expression} could not run on the code before the fix`);
-        }
-      });
-    }
-  });
+/** The cases each fix adds: its output reports nothing (or only `outputErrors`, with no further fix). */
+function fixedOutputCases(invalid: InvalidCase[]): { valid: CaseBase[]; invalid: InvalidCase[] } {
+  const valid: CaseBase[] = [];
+  const stillInvalid: InvalidCase[] = [];
+  for (const testCase of invalid.filter(hasFix)) {
+    const fixed = { ...testCase, code: testCase.output, name: `fixed output of: ${testCase.name ?? testCase.code}` };
+    if (testCase.outputErrors === undefined) valid.push(fixed);
+    else stillInvalid.push({ ...fixed, errors: testCase.outputErrors, output: null, outputErrors: undefined });
+  }
+  return { valid, invalid: stillInvalid };
 }
 
-function both(cases: { valid: CaseBase[]; invalid: InvalidCase[] }) {
-  const keep = (c: CaseBase) => !c.eslintOnlyBecause;
-  return {
-    eslint: { valid: cases.valid.map(eslintCase), invalid: cases.invalid.map((c) => invalidFor(eslintCase, c)) },
-    oxlint: { valid: cases.valid.filter(keep).map(oxlintCase), invalid: cases.invalid.filter(keep).map((c) => invalidFor(oxlintCase, c)) },
-  };
+function hasFix(testCase: InvalidCase): testCase is InvalidCase & { output: string } {
+  return testCase.output !== null;
 }
 
-/** Runs `cases` for the rule under both linters, with the fix checks above. */
-export function runRuleTests(ruleName: string, rule: Rule.RuleModule, cases: RuleCases): void {
-  const extra = fixedOutputCases(cases.invalid);
-  const all = { valid: [...cases.valid.map(normalise), ...extra.valid], invalid: [...cases.invalid, ...extra.invalid] };
-  const { eslint, oxlint } = both(all);
-  describe(`${ruleName} under ESLint`, () => {
-    new EslintRuleTester().run(ruleName, rule, eslint as never);
-  });
-  describe(`${ruleName} under Oxlint`, () => {
-    new OxlintRuleTester({ eslintCompat: true }).run(ruleName, rule as never, oxlint as never);
-  });
-  behaviourTests(ruleName, cases.invalid);
+function normalise(testCase: ValidCase): CaseBase {
+  return typeof testCase === "string" ? { code: testCase } : testCase;
 }

@@ -21,44 +21,48 @@ type Body = TSESTree.ClassBody;
  * `declare`, which only types a field and creates nothing at run time.
  */
 function declaredPublicFields(body: Body): string[] {
-  const names: string[] = [];
-  for (const member of body.body) {
-    if (member.type !== "PropertyDefinition" || member.static || member.readonly || member.declare || isHidden(member) || isFunction(member.value)) continue;
-    const name = memberName(member);
-    if (name) names.push(name);
-  }
-  for (const param of parameterProperties(body)) {
-    const name = parameterPropertyName(param);
-    if (name && !param.readonly && !isHidden(param)) names.push(name);
-  }
-  return names;
+  const fields = body.body.filter(isPublicDataField).map((member) => memberName(member));
+  const parameters = parameterProperties(body).filter((param) => !param.readonly && !isHidden(param)).map((param) => parameterPropertyName(param));
+  return [...fields, ...parameters].filter((name): name is string => Boolean(name));
+}
+
+function isPublicDataField(member: TSESTree.ClassElement): member is TSESTree.PropertyDefinition {
+  return member.type === "PropertyDefinition" && isMutableInstanceField(member) && isPublicData(member);
+}
+
+function isMutableInstanceField(member: TSESTree.PropertyDefinition): boolean {
+  return !member.static && !member.readonly && !member.declare;
+}
+
+/** Not hidden (`private`, `#`, `protected`), and holding data rather than a function. */
+function isPublicData(member: TSESTree.PropertyDefinition): boolean {
+  return !isHidden(member) && !isFunction(member.value);
 }
 
 /** Fields the constructor creates with `this.x = …` without declaring them. */
 function undeclaredConstructorFields(body: Body): string[] {
   const constructor = constructorOf(body);
   if (!constructor) return [];
-  const declared = new Set(body.body.map((member) => memberName(member)));
-  for (const param of parameterProperties(body)) declared.add(parameterPropertyName(param));
-  const names: string[] = [];
+  const declared = new Set([...body.body.map((member) => memberName(member)), ...parameterProperties(body).map((param) => parameterPropertyName(param))]);
+  const names = new Set<string>();
   walk(constructor.body, (node) => {
-    if (node.type !== "AssignmentExpression") return;
-    const name = thisMemberName(node.left);
-    if (name && !name.startsWith("#") && !declared.has(name) && !names.includes(name)) names.push(name);
+    const name = node.type === "AssignmentExpression" ? thisMemberName(node.left) : null;
+    if (name && !name.startsWith("#") && !declared.has(name)) names.add(name);
   });
-  return names;
+  return [...names];
 }
 
 /** The first instance method with behaviour: not the constructor, an accessor, or a method whose every `return` returns `this`. */
 function behaviourMethod(body: Body): string | null {
-  for (const member of body.body) {
-    if (member.type === "StaticBlock" || member.type === "TSIndexSignature" || member.static) continue;
-    if (member.type === "MethodDefinition" && member.kind !== "method") continue;
-    const fn = memberFunction(member);
-    if (!fn || returnsOnlyThis(fn)) continue;
-    return memberName(member) ?? "(computed)";
-  }
-  return null;
+  const method = body.body.find(isBehaviourMethod);
+  return method ? (memberName(method) ?? "(computed)") : null;
+}
+
+function isBehaviourMethod(member: TSESTree.ClassElement): boolean {
+  if (member.type === "StaticBlock" || member.type === "TSIndexSignature" || member.static) return false;
+  if (member.type === "MethodDefinition" && member.kind !== "method") return false;
+  const fn = memberFunction(member);
+  return fn ? !returnsOnlyThis(fn) : false;
 }
 
 export default defineRule({
@@ -81,9 +85,8 @@ export default defineRule({
       ClassBody(node) {
         const body = asTs<Body>(node);
         const field = declaredPublicFields(body)[0] ?? undeclaredConstructorFields(body)[0];
-        if (!field) return;
-        const method = behaviourMethod(body);
-        if (!method) return;
+        const method = field ? behaviourMethod(body) : null;
+        if (!field || !method) return;
         const owner = classOfBody(body);
         context.report({ node: (owner.id ?? owner) as never, messageId: "hybrid", data: { name: className(owner), field, method } });
       },

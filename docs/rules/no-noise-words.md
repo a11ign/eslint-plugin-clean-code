@@ -18,7 +18,7 @@ Leave noise words out of names: `variable`, a suffix that repeats the declared t
 
 ## What it reports
 
-- A variable, parameter, catch parameter or property (class field, interface property, parameter property or object literal property) whose name has the camel-case or snake-case word `variable` (`myVariable`, `ENV_VARIABLE`).
+- A variable, parameter, catch parameter or property (class field, interface property, parameter property or object literal property) whose name ends in the camel-case or snake-case word `variable` after another word (`myVariable`, `ENV_VARIABLE`).
 - A variable, parameter or property whose name ends in the word `String` or `Object` when its type annotation is that type: `string` or `String` for `String`, `object` or `Object` for `Object` (`nameString: string`).
 - A class whose name has `Manager`, `Processor`, `Data` or `Info` as a separate camel-case or snake-case word (`UserManager`, `CustomerData`, `HTTP_Info_Cache`).
 
@@ -28,6 +28,7 @@ It does not report:
 - other words that contain these letters: `variables`, `invariable`, `Database`, `Metadata`, `Information`;
 - a suffix with no annotation, or an annotation of another type (`nameString` alone, `idObject: number`): without the type, the word may mean something else;
 - a name that is only the type's word (`string: string`), which has nothing to drop;
+- `variable` alone, or as a word inside a longer name (`variable`, `variableWord`, `VARIABLE_DEFS`): it names the thing itself, which in code about code is a variable, and has nothing to drop. *Use Solution Domain Names* (chapter 4): "go ahead and use computer science (CS) terms". A trailing `variable` after a CS term (`loopVariable`) is still reported, because without types the rule cannot tell it from `nameVariable`;
 - function names, methods, imported names and destructuring keys, which name something declared elsewhere.
 
 ## Examples

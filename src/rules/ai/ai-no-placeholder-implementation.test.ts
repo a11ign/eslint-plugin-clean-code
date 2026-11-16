@@ -15,7 +15,7 @@ runRuleTests("ai-no-placeholder-implementation", rule, {
     { name: "an arrow with an expression body", code: "const f = () => null; // TODO" },
   ],
   invalid: [
-    { name: "throw new Error(\"Not implemented\")", code: "function exportInvoices() { throw new Error(\"Not implemented\"); }", output: null, errors: [{ messageId: "placeholder", line: 1 }] },
+    { name: "throw new Error(\"Not implemented\")", code: "function exportInvoices() { throw new Error(\"Not implemented\"); }", output: null, errors: [{ messageId: "stubImplementation", line: 1 }] },
     { name: "a method that throws \"not yet implemented\"", code: "class Exporter { run() { throw new Error(\"Not yet implemented\"); } }", output: null, errors: 1 },
     { name: "an arrow that throws a TODO error", code: "const f = () => { throw new TypeError(`TODO`); };", output: null, errors: 1 },
     { name: "a custom error class and \"implement me\"", code: "function f() { throw new NotImplementedError(\"implement me\"); }", output: null, errors: 1 },

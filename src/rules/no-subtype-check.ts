@@ -1,7 +1,48 @@
+import type { Rule } from "eslint";
 import type ts from "typescript";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs, type Node, type TSESTree } from "../lib/ast.ts";
 import { classOrInterfaceOf, inheritsFrom, isProjectDeclaration, isTopType, type TypeServices, typeServices } from "../lib/types.ts";
+
+export default defineRule({
+  name: "no-subtype-check",
+  type: "suggestion",
+  description: "Do not test whether a value is a particular subtype of its declared type.",
+  book: {
+    entry: "SOL-03",
+    chapter: "19 The SOLID Principles § LSP",
+    passage: "Since the behavior of the `User` depends on the types it uses, those types are not substitutable.",
+  },
+  requiresTypeChecking: true,
+  messages: {
+    subtypeCheck: {
+      problem: "`instanceof {{subtype}}` special-cases one subtype of `{{type}}`, so this code depends on which `{{type}}` it is given.",
+      refactor: "move the behaviour that varies into the subtypes, as a method of `{{type}}` that each subtype implements, and call that method instead of testing the type.",
+    },
+  },
+  create(context) {
+    const services = typeServices(context);
+    if (!services) return {};
+    return {
+      BinaryExpression(node) {
+        const test = asTs<TSESTree.BinaryExpression>(node);
+        if (test.operator === "instanceof") checkInstanceof(context, services, test);
+      },
+    };
+  },
+});
+
+function checkInstanceof(context: Rule.RuleContext, services: TypeServices, test: TSESTree.BinaryExpression): void {
+  const supertype = projectSupertype(services, declaredType(services, test.left));
+  const subtype = testedClass(services, test.right);
+  if (!supertype || !subtype || !isProperSubtype(services, subtype, supertype)) return;
+  context.report({ node: test as never, messageId: "subtypeCheck", data: { subtype: subtype.getName(), type: supertype.getName() } });
+}
+
+/** Whether `subtype` is a class that inherits from `supertype`, not `supertype` itself. */
+function isProperSubtype(services: TypeServices, subtype: ts.Symbol, supertype: ts.Symbol): boolean {
+  return subtype !== supertype && inheritsFrom(services.checker, subtype, supertype);
+}
 
 /**
  * The declared type of the checked value: a variable's, parameter's or property's own declared type, not the type it
@@ -32,35 +73,3 @@ function testedClass(services: TypeServices, node: Node): ts.Symbol | null {
   if (!construct) return null;
   return checker.getReturnTypeOfSignature(construct).getSymbol() ?? null;
 }
-
-export default defineRule({
-  name: "no-subtype-check",
-  type: "suggestion",
-  description: "Do not test whether a value is a particular subtype of its declared type.",
-  book: {
-    entry: "SOL-03",
-    chapter: "19 The SOLID Principles § LSP",
-    passage: "Since the behavior of the `User` depends on the types it uses, those types are not substitutable.",
-  },
-  requiresTypeChecking: true,
-  messages: {
-    subtypeCheck: {
-      problem: "`instanceof {{subtype}}` special-cases one subtype of `{{type}}`, so this code depends on which `{{type}}` it is given.",
-      refactor: "move the behaviour that varies into the subtypes, as a method of `{{type}}` that each subtype implements, and call that method instead of testing the type.",
-    },
-  },
-  create(context) {
-    const services = typeServices(context);
-    if (!services) return {};
-    return {
-      BinaryExpression(node) {
-        const test = asTs<TSESTree.BinaryExpression>(node);
-        if (test.operator !== "instanceof") return;
-        const supertype = projectSupertype(services, declaredType(services, test.left));
-        const subtype = testedClass(services, test.right);
-        if (!supertype || !subtype || subtype === supertype || !inheritsFrom(services.checker, subtype, supertype)) return;
-        context.report({ node: node as never, messageId: "subtypeCheck", data: { subtype: subtype.getName(), type: supertype.getName() } });
-      },
-    };
-  },
-});

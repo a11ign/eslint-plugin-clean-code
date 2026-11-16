@@ -1,10 +1,52 @@
+import type { Rule } from "eslint";
 import type ts from "typescript";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs, functionName, type FunctionNode, type Node } from "../lib/ast.ts";
-import { isTopType, typeServices } from "../lib/types.ts";
+import { isTopType, typeServices, type TypeServices } from "../lib/types.ts";
 
 /** The predicate prefixes of NAM-12, followed by the start of the next camel-case word: `isEmpty`, `hasItems`, `canRetry`, `shouldStop`. */
 const PREDICATE_NAME = /^(is|has|can|should)[A-Z]/;
+
+export default defineRule({
+  name: "predicate-returns-boolean",
+  type: "suggestion",
+  description: "A function named as a question (`is`, `has`, `can`, `should`) returns a boolean.",
+  book: {
+    entry: "NAM-12",
+    chapter: "4 Meaningful Names § Method Names; Appendix, The Clean Code Debate",
+    passage: "If a reader trusts the name `isMultipleOfNthPrimeFactor` (which suggests a predicate with no side effects) and doesn't bother to read its code, they will not realize that it has side effects",
+  },
+  requiresTypeChecking: true,
+  messages: {
+    notBoolean: {
+      problem: "`{{name}}` is named as a predicate, but it returns `{{type}}`, not a boolean.",
+      refactor: "name the function for the value it returns (`findUser`, `countItems`), or make it answer the question with `true` or `false`; a reader who trusts the predicate's name will not read its body.",
+    },
+  },
+  create(context) {
+    const services = typeServices(context);
+    if (!services) return {};
+    const check = (node: unknown): void => checkFunction(context, services, asTs<FunctionNode>(node));
+    return { FunctionDeclaration: check, FunctionExpression: check, ArrowFunctionExpression: check };
+  },
+});
+
+function checkFunction(context: Rule.RuleContext, services: TypeServices, fn: FunctionNode): void {
+  const name = functionName(fn);
+  if (!name || !PREDICATE_NAME.test(name) || isSetter(fn)) return;
+  const returnType = returnTypeOf(services, fn);
+  if (!returnType || isBooleanResult(services.checker, returnType)) return;
+  context.report({
+    node: nameNode(fn) as never,
+    messageId: "notBoolean",
+    data: { name, type: services.checker.typeToString(returnType) },
+  });
+}
+
+function returnTypeOf(services: TypeServices, fn: FunctionNode): ts.Type | null {
+  const signature = services.checker.getSignatureFromDeclaration(services.tsNode(fn) as ts.SignatureDeclaration);
+  return signature ? services.checker.getReturnTypeOfSignature(signature) : null;
+}
 
 /** A setter's name is the property's, not a question the function answers. */
 function isSetter(node: FunctionNode): boolean {
@@ -27,40 +69,3 @@ function nameNode(node: FunctionNode): Node {
   if (parent?.type === "MethodDefinition" || parent?.type === "Property" || parent?.type === "PropertyDefinition") return parent.key;
   return node;
 }
-
-export default defineRule({
-  name: "predicate-returns-boolean",
-  type: "suggestion",
-  description: "A function named as a question (`is`, `has`, `can`, `should`) returns a boolean.",
-  book: {
-    entry: "NAM-12",
-    chapter: "4 Meaningful Names § Method Names; Appendix, The Clean Code Debate",
-    passage: "If a reader trusts the name `isMultipleOfNthPrimeFactor` (which suggests a predicate with no side effects) and doesn't bother to read its code, they will not realize that it has side effects",
-  },
-  requiresTypeChecking: true,
-  messages: {
-    notBoolean: {
-      problem: "`{{name}}` is named as a predicate, but it returns `{{type}}`, not a boolean.",
-      refactor: "name the function for the value it returns (`findUser`, `countItems`), or make it answer the question with `true` or `false`; a reader who trusts the predicate's name will not read its body.",
-    },
-  },
-  create(context) {
-    const services = typeServices(context);
-    if (!services) return {};
-    const check = (node: unknown): void => {
-      const fn = asTs<FunctionNode>(node);
-      const name = functionName(fn);
-      if (!name || !PREDICATE_NAME.test(name) || isSetter(fn)) return;
-      const signature = services.checker.getSignatureFromDeclaration(services.tsNode(fn) as ts.SignatureDeclaration);
-      if (!signature) return;
-      const returnType = services.checker.getReturnTypeOfSignature(signature);
-      if (isBooleanResult(services.checker, returnType)) return;
-      context.report({
-        node: nameNode(fn) as never,
-        messageId: "notBoolean",
-        data: { name, type: services.checker.typeToString(returnType) },
-      });
-    };
-    return { FunctionDeclaration: check, FunctionExpression: check, ArrowFunctionExpression: check };
-  },
-});
