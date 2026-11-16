@@ -6,22 +6,17 @@ const SHAPE = "interface Shape { area(): number }\nclass Circle implements Shape
 
 runTypedRuleTests("no-subtype-check", rule, {
   valid: [
-    // Regression case (catalog row 7): a discriminated union's tag is a data structure's tag, not a subtype test.
-    "type Shape = { kind: 'circle'; r: number } | { kind: 'square'; side: number };\nfunction area(shape: Shape) { if (shape.kind === 'circle') return shape.r ** 2; return shape.side ** 2; }",
-    "type Shape = { kind: 'circle'; r: number } | { kind: 'square'; side: number };\nfunction area(shape: Shape) { switch (shape.kind) { case 'circle': return 3; case 'square': return 1; } }",
-    // A check against a type unrelated to the declared type, or against the declared type itself.
-    `${RECTANGLE}\nclass Circle {}\nfunction f(r: Rectangle) { return r instanceof Circle; }`,
-    `${RECTANGLE}\nfunction f(r: Rectangle) { return r instanceof Rectangle; }`,
-    // `unknown`, `any` and unions: there is no single declared supertype.
-    "function f(error: unknown) { return error instanceof Error; }",
-    `${RECTANGLE}\nfunction f(x: any) { return x instanceof Square; }`,
-    `${RECTANGLE}\nfunction f(x: Square | Date) { return x instanceof Square; }`,
-    "try { JSON.parse('x'); } catch (error) { if (error instanceof SyntaxError) throw error; }",
-    // A library supertype: `Error` subclasses are the platform's, not the project's.
-    "function f(e: Error) { return e instanceof TypeError; }",
-    "class AppError extends Error {}\nfunction f(e: Error) { return e instanceof AppError; }",
-    // A right-hand side that is not a class.
-    `${RECTANGLE}\ndeclare const Ctor: any;\nfunction f(r: Rectangle) { return r instanceof Ctor; }`,
+    { name: "catalog row 7 regression: a discriminated union's tag tested in an `if` is a data structure's tag, not a subtype test", code: "type Shape = { kind: 'circle'; r: number } | { kind: 'square'; side: number };\nfunction area(shape: Shape) { if (shape.kind === 'circle') return shape.r ** 2; return shape.side ** 2; }" },
+    { name: "catalog row 7 regression: a discriminated union's tag in a `switch` is a data structure's tag, not a subtype test", code: "type Shape = { kind: 'circle'; r: number } | { kind: 'square'; side: number };\nfunction area(shape: Shape) { switch (shape.kind) { case 'circle': return 3; case 'square': return 1; } }" },
+    { name: "a check against a type unrelated to the declared type", code: `${RECTANGLE}\nclass Circle {}\nfunction f(r: Rectangle) { return r instanceof Circle; }` },
+    { name: "a check against the declared type itself", code: `${RECTANGLE}\nfunction f(r: Rectangle) { return r instanceof Rectangle; }` },
+    { name: "`unknown` has no single declared supertype", code: "function f(error: unknown) { return error instanceof Error; }" },
+    { name: "`any` has no single declared supertype", code: `${RECTANGLE}\nfunction f(x: any) { return x instanceof Square; }` },
+    { name: "a union has no single declared supertype", code: `${RECTANGLE}\nfunction f(x: Square | Date) { return x instanceof Square; }` },
+    { name: "a caught error is `unknown` or `any`: no single declared supertype", code: "try { JSON.parse('x'); } catch (error) { if (error instanceof SyntaxError) throw error; }" },
+    { name: "a library supertype: `Error` subclasses are the platform's, not the project's", code: "function f(e: Error) { return e instanceof TypeError; }" },
+    { name: "a project's own `Error` subclass, checked against the platform's `Error` supertype", code: "class AppError extends Error {}\nfunction f(e: Error) { return e instanceof AppError; }" },
+    { name: "a right-hand side that is not a class", code: `${RECTANGLE}\ndeclare const Ctor: any;\nfunction f(r: Rectangle) { return r instanceof Ctor; }` },
   ],
   invalid: [
     {

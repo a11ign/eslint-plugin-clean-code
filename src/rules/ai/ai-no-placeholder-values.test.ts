@@ -12,7 +12,7 @@ runRuleTests("ai-no-placeholder-values", rule, {
     { name: "a real-looking key", code: "const key = \"sk-live-4f9a\";" },
   ],
   invalid: [
-    { name: "\"YOUR_API_KEY\"", code: "const apiKey = \"YOUR_API_KEY\";", output: null, errors: [{ messageId: "placeholder", data: { text: "YOUR_API_KEY" } }] },
+    { name: "\"YOUR_API_KEY\"", code: "const apiKey = \"YOUR_API_KEY\";", output: null, errors: [{ messageId: "placeholderValue", data: { text: "YOUR_API_KEY" } }] },
     { name: "\"<insert token>\"", code: "const token = \"<insert token>\";", output: null, errors: 1 },
     { name: "\"<your email>\" and \"<enter password>\"", code: "login(\"<your email>\", \"<enter password>\");", output: null, errors: 2 },
     { name: "\"your-api-key-here\" and \"your_token_here\"", code: "send(\"your-api-key-here\", \"your_token_here\");", output: null, errors: 2 },

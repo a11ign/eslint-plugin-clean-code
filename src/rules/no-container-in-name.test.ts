@@ -5,30 +5,25 @@ const ACCOUNT = "interface Account { id: number }";
 
 runTypedRuleTests("no-container-in-name", rule, {
   valid: [
-    // The name tells the truth.
-    `${ACCOUNT}\nconst accountList: Account[] = [];`,
-    `${ACCOUNT}\nconst accountArray: readonly Account[] = [];`,
-    "const pairList: [number, string] = [1, 'a'];",
-    "function bytes(byteArray: Uint8Array) { return byteArray.length; }",
-    "function rows(rowList: ArrayLike<string>) { return rowList.length; }",
-    `${ACCOUNT}\nconst accountMap = new Map<number, Account>();`,
-    `${ACCOUNT}\nfunction read(accountMap: ReadonlyMap<number, Account>) { return accountMap.size; }`,
-    "const seenSet = new Set<string>();",
-    "function has(idSet: ReadonlySet<number>, id: number) { return idSet.has(id); }",
-    "const cacheMap = new WeakMap<object, number>();",
-    "const SEEN_SET = new Set<string>();",
-    "const accountList: string[] | undefined = undefined;",
-    // A subclass of the container, and a project container named for what it is.
-    "class Registry extends Map<string, number> {}\nconst registryMap = new Registry();",
-    "class LinkedList<T> { head?: T }\nconst accountList = new LinkedList<number>();",
-    // Words that only end in the letters, not the camel-case word.
-    "const dataOffset = 4; const userSubset = 'a'; const bitmap = 1; const checklist = 'x';",
-    // A function is named for what it does.
-    "const loadAccountList = async () => [1, 2];",
-    // `any`, `unknown` and an unconstrained type parameter carry no type to check.
-    "function f(itemList: any, otherList: unknown) { return [itemList, otherList]; }",
-    "function g<T>(itemList: T) { return itemList; }",
-    "function h<T extends string[]>(itemList: T) { return itemList; }",
+    { name: "the name tells the truth: an array of accounts", code: `${ACCOUNT}\nconst accountList: Account[] = [];` },
+    { name: "the name tells the truth: a readonly array", code: `${ACCOUNT}\nconst accountArray: readonly Account[] = [];` },
+    { name: "the name tells the truth: a tuple", code: "const pairList: [number, string] = [1, 'a'];" },
+    { name: "the name tells the truth: a typed array", code: "function bytes(byteArray: Uint8Array) { return byteArray.length; }" },
+    { name: "the name tells the truth: an ArrayLike", code: "function rows(rowList: ArrayLike<string>) { return rowList.length; }" },
+    { name: "the name tells the truth: a Map", code: `${ACCOUNT}\nconst accountMap = new Map<number, Account>();` },
+    { name: "the name tells the truth: a ReadonlyMap", code: `${ACCOUNT}\nfunction read(accountMap: ReadonlyMap<number, Account>) { return accountMap.size; }` },
+    { name: "the name tells the truth: a Set", code: "const seenSet = new Set<string>();" },
+    { name: "the name tells the truth: a ReadonlySet", code: "function has(idSet: ReadonlySet<number>, id: number) { return idSet.has(id); }" },
+    { name: "the name tells the truth: a WeakMap", code: "const cacheMap = new WeakMap<object, number>();" },
+    { name: "the name tells the truth: a snake-case name", code: "const SEEN_SET = new Set<string>();" },
+    { name: "the name tells the truth: an array or undefined", code: "const accountList: string[] | undefined = undefined;" },
+    { name: "a subclass of the container", code: "class Registry extends Map<string, number> {}\nconst registryMap = new Registry();" },
+    { name: "a project container named for what it is", code: "class LinkedList<T> { head?: T }\nconst accountList = new LinkedList<number>();" },
+    { name: "words that only end in the letters, not the camel-case word", code: "const dataOffset = 4; const userSubset = 'a'; const bitmap = 1; const checklist = 'x';" },
+    { name: "a function is named for what it does", code: "const loadAccountList = async () => [1, 2];" },
+    { name: "`any` and `unknown` carry no type to check", code: "function f(itemList: any, otherList: unknown) { return [itemList, otherList]; }" },
+    { name: "an unconstrained type parameter carries no type to check", code: "function g<T>(itemList: T) { return itemList; }" },
+    { name: "a type parameter constrained to an array", code: "function h<T extends string[]>(itemList: T) { return itemList; }" },
   ],
   invalid: [
     {

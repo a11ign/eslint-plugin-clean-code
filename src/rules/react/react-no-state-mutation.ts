@@ -1,4 +1,4 @@
-import type { Scope } from "eslint";
+import type { Rule, Scope } from "eslint";
 import { defineReactRule } from "../../lib/define-rule.ts";
 import { asTs, type Node, type TSESTree } from "../../lib/ast.ts";
 import { hookCalled } from "./react-hooks.ts";
@@ -14,20 +14,20 @@ function stateBinding(declarator: TSESTree.VariableDeclarator): TSESTree.Identif
   return state?.type === "Identifier" ? state : null;
 }
 
-/** The outermost member expression `node` is the object of, such as `state.items.total` for `state`: what a write changes. */
-function outermostMember(node: Node): TSESTree.MemberExpression | null {
-  let member: TSESTree.MemberExpression | null = null;
-  let current = node;
-  while (current.parent?.type === "MemberExpression" && current.parent.object === current) {
-    member = current.parent;
-    current = member;
+/** Reports each write through `state`, the state value `declarator` binds. */
+function reportMutations(context: Rule.RuleContext, declarator: Rule.Node, state: TSESTree.Identifier): void {
+  const variable = context.sourceCode.getDeclaredVariables(declarator).find((declared) => declared.name === state.name);
+  for (const reference of variable?.references ?? []) {
+    const written = writtenMember(reference);
+    if (written) context.report({ node: written.member as never, messageId: "mutated", data: { name: state.name, mutation: written.mutation } });
   }
-  return member;
 }
 
-function propertyName(member: TSESTree.MemberExpression): string | null {
-  if (!member.computed && member.property.type === "Identifier") return member.property.name;
-  return member.property.type === "Literal" && typeof member.property.value === "string" ? member.property.value : null;
+/** The member of the state a reference writes through, and how, or `null` when the reference only reads the state. */
+function writtenMember(reference: Scope.Reference): { member: TSESTree.MemberExpression; mutation: string } | null {
+  const member = outermostMember(asTs(reference.identifier));
+  const mutation = member ? mutationOf(member) : null;
+  return member && mutation ? { member, mutation } : null;
 }
 
 /** How a write through `member` mutates the state, or `null` when the member is only read. */
@@ -37,15 +37,28 @@ function mutationOf(member: TSESTree.MemberExpression): string | null {
   if (parent.type === "UpdateExpression") return "assigns to a member of";
   if (parent.type === "UnaryExpression" && parent.operator === "delete") return "deletes a member of";
   const method = propertyName(member);
-  if (parent.type === "CallExpression" && parent.callee === member && method !== null && MUTATING_METHODS.has(method)) return `calls \`${method}()\` on`;
+  if (parent.type === "CallExpression" && parent.callee === member && isMutatingMethod(method)) return `calls \`${method}()\` on`;
   return null;
 }
 
-/** The member of the state a reference writes through, and how, or `null` when the reference only reads the state. */
-function writtenMember(reference: Scope.Reference): { member: TSESTree.MemberExpression; mutation: string } | null {
-  const member = outermostMember(asTs(reference.identifier));
-  const mutation = member ? mutationOf(member) : null;
-  return member && mutation ? { member, mutation } : null;
+function isMutatingMethod(method: string | null): method is string {
+  return method !== null && MUTATING_METHODS.has(method);
+}
+
+function propertyName(member: TSESTree.MemberExpression): string | null {
+  if (!member.computed && member.property.type === "Identifier") return member.property.name;
+  return member.property.type === "Literal" && typeof member.property.value === "string" ? member.property.value : null;
+}
+
+/** The outermost member expression `node` is the object of, such as `state.items.total` for `state`: what a write changes. */
+function outermostMember(node: Node): TSESTree.MemberExpression | null {
+  let member: TSESTree.MemberExpression | null = null;
+  let current = node;
+  while (current.parent?.type === "MemberExpression" && current.parent.object === current) {
+    member = current.parent;
+    current = member;
+  }
+  return member;
 }
 
 export default defineReactRule({
@@ -68,12 +81,7 @@ export default defineReactRule({
     return {
       VariableDeclarator(node) {
         const state = stateBinding(asTs<TSESTree.VariableDeclarator>(node));
-        if (!state) return;
-        const variable = context.sourceCode.getDeclaredVariables(node).find((declared) => declared.name === state.name);
-        for (const reference of variable?.references ?? []) {
-          const written = writtenMember(reference);
-          if (written) context.report({ node: written.member as never, messageId: "mutated", data: { name: state.name, mutation: written.mutation } });
-        }
+        if (state) reportMutations(context, node, state);
       },
     };
   },

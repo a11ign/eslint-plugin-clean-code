@@ -20,21 +20,14 @@ const CONTINUING_START = /^[([`+\-/*]/;
 const CONTINUING_WORD = new Set(["in", "instanceof"]);
 
 /**
- * Whether `next`, placed directly after `previous`, would be read as part of `previous`'s statement (or class field).
- * Only a `;` or a `{` before it, or nothing at all, makes the start of `next` the start of a new statement for certain.
+ * Removes `range` and, when nothing else is on its lines, the lines themselves, adding a `;` before the code that follows
+ * when that code would otherwise continue the statement before the removed one.
  */
-export function continuesStatement(previous: Token | Comment | null, next: Token | Comment | null): boolean {
-  if (!previous || !next) return false;
-  if (previous.type === "Punctuator" && (previous.value === ";" || previous.value === "{")) return false;
-  if (next.type === "Template" || next.type === "RegularExpression") return true;
-  return CONTINUING_START.test(next.value) || CONTINUING_WORD.has(next.value);
-}
-
-/** `";"` when removing `range` would let the code after it continue the statement before it, else `""`. */
-export function semicolonGuard(sourceCode: SourceCode, range: Range): string {
-  const previous = sourceCode.getTokenBefore({ range } as never) as Token | null;
-  const next = sourceCode.getTokenAfter({ range } as never) as Token | null;
-  return continuesStatement(previous, next) ? ";" : "";
+export function removeRange(fixer: Rule.RuleFixer, sourceCode: SourceCode, range: Range): Rule.Fix {
+  const removed = wholeLinesRange(sourceCode.text, range[0], range[1]) ?? range;
+  if (!semicolonGuard(sourceCode, range)) return fixer.removeRange(removed);
+  const next = sourceCode.getTokenAfter({ range } as never) as Token;
+  return fixer.replaceTextRange([removed[0], next.range[0]], `${sourceCode.text.slice(removed[1], next.range[0])};`);
 }
 
 /** The range of the whole lines `[start, end)` covers, with the line break after them, when nothing but blank space shares those lines. */
@@ -46,24 +39,33 @@ export function wholeLinesRange(text: string, start: number, end: number): Range
   return [lineStart, lineEndIndex === -1 ? lineEnd : lineEnd + 1];
 }
 
-/**
- * Removes `range` and, when nothing else is on its lines, the lines themselves, adding a `;` before the code that follows
- * when that code would otherwise continue the statement before the removed one.
- */
-export function removeRange(fixer: Rule.RuleFixer, sourceCode: SourceCode, range: Range): Rule.Fix {
-  const removed = wholeLinesRange(sourceCode.text, range[0], range[1]) ?? range;
-  if (!semicolonGuard(sourceCode, range)) return fixer.removeRange(removed);
-  const next = sourceCode.getTokenAfter({ range } as never) as Token;
-  return fixer.replaceTextRange([removed[0], next.range[0]], `${sourceCode.text.slice(removed[1], next.range[0])};`);
+/** `";"` when removing `range` would let the code after it continue the statement before it, else `""`. */
+export function semicolonGuard(sourceCode: SourceCode, range: Range): string {
+  const previous = sourceCode.getTokenBefore({ range } as never) as Token | null;
+  const next = sourceCode.getTokenAfter({ range } as never) as Token | null;
+  return continuesStatement(previous, next) ? ";" : "";
 }
+
+/**
+ * Whether `next`, placed directly after `previous`, would be read as part of `previous`'s statement (or class field).
+ * Only a `;` or a `{` before it, or nothing at all, makes the start of `next` the start of a new statement for certain.
+ */
+export function continuesStatement(previous: Token | Comment | null, next: Token | Comment | null): boolean {
+  if (!previous || !next) return false;
+  if (endsStatementForCertain(previous)) return false;
+  if (next.type === "Template" || next.type === "RegularExpression") return true;
+  return CONTINUING_START.test(next.value) || CONTINUING_WORD.has(next.value);
+}
+
+/** Whether a token is a `;` or a `{`, after which the next token starts a new statement for certain. */
+function endsStatementForCertain(token: Token | Comment): boolean {
+  return token.type === "Punctuator" && STATEMENT_STARTS_AFTER.has(token.value);
+}
+
+const STATEMENT_STARTS_AFTER: ReadonlySet<string> = new Set([";", "{"]);
 
 /** Every character JavaScript reads as a line break, as escaped strings: a raw U+2028 in a regex literal does not parse. */
 const LINE_BREAKS = ["\n", "\r", "\u2028", "\u2029"];
-
-/** Whether `text` holds a line break: `\n`, but also `\r`, U+2028 and U+2029, which end a statement the same way. */
-export function hasLineBreak(text: string): boolean {
-  return LINE_BREAKS.some((lineBreak) => text.includes(lineBreak));
-}
 
 /**
  * Deletes a comment without changing how the code around it parses.
@@ -79,14 +81,23 @@ export function removeComment(fixer: Rule.RuleFixer, sourceCode: SourceCode, com
   const lines = wholeLinesRange(text, start, end);
   if (lines) return fixer.removeRange(lines);
   if (hasLineBreak(text.slice(start, end))) return fixer.replaceTextRange([start, end], "\n");
+  return removeCommentBesideCode(fixer, text, [start, end]);
+}
+
+/** Deletes a one-line comment that shares its line with code, as `removeComment`'s last three cases say. */
+function removeCommentBesideCode(fixer: Rule.RuleFixer, text: string, [start, end]: Range): Rule.Fix {
   const before = text.slice(text.lastIndexOf("\n", start - 1) + 1, start);
   const lineEnd = text.indexOf("\n", end);
   const after = text.slice(end, lineEnd === -1 ? text.length : lineEnd);
   const codeBefore = before.trim() !== "";
-  const codeAfter = after.trim() !== "";
-  if (codeBefore && codeAfter) return fixer.replaceTextRange([start, end], " ");
+  if (codeBefore && after.trim() !== "") return fixer.replaceTextRange([start, end], " ");
   if (codeBefore) return fixer.removeRange([start - trailingSpace(before), end]);
   return fixer.removeRange([start, end + leadingSpace(after)]);
+}
+
+/** Whether `text` holds a line break: `\n`, but also `\r`, U+2028 and U+2029, which end a statement the same way. */
+export function hasLineBreak(text: string): boolean {
+  return LINE_BREAKS.some((lineBreak) => text.includes(lineBreak));
 }
 
 /** How many blank characters `text` ends with. */

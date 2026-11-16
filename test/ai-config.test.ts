@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ESLint } from "eslint";
-import { ROOT, copyFixtures, readmeBlock, runEslintWithConfigFile, runOxlint, type Report } from "./support.ts";
+import { ROOT, assertNoParseErrors, onFixtures, readmeBlock, runEslintWithConfigFile, runOxlint, type Report } from "./support.ts";
 
 const FIXTURES = join(ROOT, "test", "fixtures", "ai");
 const AI_PREFIX = "clean-code-book/ai-";
@@ -31,43 +31,36 @@ function aiReports(reports: Report[]): Record<string, string[]> {
   return Object.fromEntries(byFile.filter(([, rules]) => rules.length > 0).sort(([a], [b]) => a.localeCompare(b)));
 }
 
-function assertNoParseErrors(reports: Report[]): void {
-  for (const report of reports) assert.ok(!report.rules.some((rule) => rule.startsWith("fatal")), `${report.file}: ${report.rules.join(", ")}`);
-}
-
 /**
  * `src/invoices.test.ts`: the stub of `src/invoices.ts`, and a placeholder value, in a test file. It is written here rather
  * than kept in the fixtures, where rstest would take it for a test suite.
  */
 const TEST_FILE = 'export function exportInvoices() { throw new Error("Not implemented"); }\n\nexport const apiKey = "YOUR_API_KEY";\n';
 
-/** Runs `lint` on a fresh copy of the fixtures, with `eslint.config.js` set to `eslintConfig` when one is given. */
-async function onFixtures<T>(lint: (dir: string) => Promise<T> | T, eslintConfig?: string): Promise<T> {
-  const work = copyFixtures(FIXTURES);
-  try {
-    writeFileSync(join(work.dir, "src", "invoices.test.ts"), TEST_FILE);
-    if (eslintConfig) writeFileSync(join(work.dir, "eslint.config.js"), eslintConfig);
-    return await lint(work.dir);
-  } finally {
-    work.dispose();
-  }
+/** Runs `lint` on a fresh copy of the fixtures, with `src/invoices.test.ts` added and `eslint.config.js` set to `eslintConfig` when one is given. */
+async function onAiFixtures<T>(lint: (dir: string) => Promise<T> | T, eslintConfig?: string): Promise<T> {
+  return onFixtures(FIXTURES, lint, { eslintConfig, prepare: addTestFile });
+}
+
+function addTestFile(dir: string): void {
+  writeFileSync(join(dir, "src", "invoices.test.ts"), TEST_FILE);
 }
 
 describe("the ai config", () => {
   it("ESLint: the README's ai setup reports each scenario's rule, and nothing in the doc-comment, directive, licence or test files", async () => {
-    const reports = await onFixtures(runEslintWithConfigFile, readmeBlock("eslint-ai"));
+    const reports = await onAiFixtures(runEslintWithConfigFile, readmeBlock("eslint-ai"));
     assertNoParseErrors(reports);
     assert.deepEqual(aiReports(reports), EXPECTED);
   });
 
   it("Oxlint: the README's ai setup reports the same five rules as ESLint, in the same files", async () => {
-    const reports = await onFixtures((dir) => runOxlint(dir, [], readmeBlock("oxlint-ai")));
+    const reports = await onAiFixtures((dir) => runOxlint(dir, [], readmeBlock("oxlint-ai")));
     assertNoParseErrors(reports);
     assert.deepEqual(aiReports(reports), EXPECTED);
   });
 
   it("ESLint: the comment report points to a name, a function, a JSDoc or a doc file, and --fix leaves the comment in place", async () => {
-    await onFixtures(async (dir) => {
+    await onAiFixtures(async (dir) => {
       const eslint = new ESLint({ cwd: dir, fix: true });
       const [result] = await eslint.lintFiles(["src/loop.ts"]);
       await ESLint.outputFixes([result]);
@@ -82,8 +75,8 @@ describe("the ai config", () => {
   });
 
   it("ESLint and Oxlint: a project on recommended alone gets no ai- report", async () => {
-    const eslintReports = await onFixtures(runEslintWithConfigFile, readmeBlock("eslint"));
-    const oxlintReports = await onFixtures((dir) => runOxlint(dir, [], readmeBlock("oxlint")));
+    const eslintReports = await onAiFixtures(runEslintWithConfigFile, readmeBlock("eslint"));
+    const oxlintReports = await onAiFixtures((dir) => runOxlint(dir, [], readmeBlock("oxlint")));
     assert.deepEqual(aiReports(eslintReports), {});
     assert.deepEqual(aiReports(oxlintReports), {});
     assert.ok(eslintReports.some((report) => report.rules.length > 0), "recommended reported nothing, so this check could not fail");

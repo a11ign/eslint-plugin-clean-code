@@ -7,11 +7,67 @@ type Expression = TSESTree.Expression;
 
 const COMPARISON = new Set(["==", "!=", "===", "!==", "<", ">", "<=", ">=", "instanceof", "in"]);
 
+export default defineRule({
+  name: "return-boolean-directly",
+  type: "suggestion",
+  description: "Return a boolean expression directly instead of branching to `return true` and `return false`.",
+  book: {
+    entry: "CD-01",
+    chapter: "21 Continuous Design § Return Boolean Expressions",
+    passage: "We rarely say that things are flat-out wrong in programming, but this is one of those cases. Simply (and we don't use that word lightly) return the boolean expression",
+  },
+  fixable: "code",
+  messages: {
+    branchToBoolean: {
+      problem: "This `if` returns `true` in one branch and `false` in the other.",
+      refactor: "return the condition itself (`return {{suggestion}}`).",
+    },
+  },
+  create(context) {
+    return {
+      IfStatement(node) {
+        checkIf(context, asTs<TSESTree.IfStatement>(node));
+      },
+    };
+  },
+});
+
+function checkIf(context: Rule.RuleContext, statement: TSESTree.IfStatement): void {
+  const otherwise = oppositeBranch(statement);
+  if (!otherwise) return;
+  const range: [number, number] = [statement.range[0], otherwise.range[1]];
+  const replacement = returnText(context.sourceCode, statement.test, { inverse: !returnedBoolean(statement.consequent) });
+  context.report({
+    node: statement as never,
+    messageId: "branchToBoolean",
+    data: { suggestion: replacement.slice("return ".length) },
+    fix: (fixer: Rule.RuleFixer) => fixer.replaceTextRange(range, keptComments(context.sourceCode, range, indentOf(context.sourceCode, statement)) + replacement),
+  });
+}
+
+/**
+ * When the `if` returns a boolean literal and the code it falls to otherwise (its `else`, or the statement after it)
+ * returns the other one, that code.
+ */
+function oppositeBranch(statement: TSESTree.IfStatement): Statement | null {
+  const whenTrue = returnedBoolean(statement.consequent);
+  if (whenTrue === null) return null;
+  const otherwise = statement.alternate ?? nextStatement(statement);
+  const whenFalse = returnedBoolean(otherwise);
+  return whenFalse === null || whenFalse === whenTrue ? null : otherwise;
+}
+
 /** The boolean literal a branch returns: `return true;`, or a block holding only that. */
 function returnedBoolean(statement: Statement | null | undefined): boolean | null {
   const only = statement?.type === "BlockStatement" && statement.body.length === 1 ? statement.body[0] : statement;
   if (only?.type !== "ReturnStatement" || only.argument?.type !== "Literal") return null;
   return typeof only.argument.value === "boolean" ? only.argument.value : null;
+}
+
+function returnText(sourceCode: SourceCode, test: Expression, { inverse }: { inverse: boolean }): string {
+  const text = sourceCode.getText(test as never);
+  if (inverse) return `return !(${text});`;
+  return isBooleanBySyntax(test) ? `return ${text};` : `return !!(${text});`;
 }
 
 /** Whether `expression` is a boolean by its syntax alone, so `return expression` gives exactly `true` or `false`. */
@@ -21,12 +77,6 @@ function isBooleanBySyntax(expression: Expression): boolean {
   if (expression.type === "BinaryExpression") return COMPARISON.has(expression.operator);
   if (expression.type === "LogicalExpression" && expression.operator !== "??") return isBooleanBySyntax(expression.left) && isBooleanBySyntax(expression.right);
   return false;
-}
-
-function returnText(sourceCode: SourceCode, test: Expression, inverse: boolean): string {
-  const text = sourceCode.getText(test as never);
-  if (inverse) return `return !(${text});`;
-  return isBooleanBySyntax(test) ? `return ${text};` : `return !!(${text});`;
 }
 
 /** The comments inside the replaced statements, each on its own line above the new `return`. */
@@ -47,42 +97,3 @@ function nextStatement(node: TSESTree.IfStatement): Statement | null {
   const siblings = (parent.type === "SwitchCase" ? parent.consequent : parent.body) as Statement[];
   return siblings[siblings.indexOf(node) + 1] ?? null;
 }
-
-export default defineRule({
-  name: "return-boolean-directly",
-  type: "suggestion",
-  description: "Return a boolean expression directly instead of branching to `return true` and `return false`.",
-  book: {
-    entry: "CD-01",
-    chapter: "21 Continuous Design § Return Boolean Expressions",
-    passage: "We rarely say that things are flat-out wrong in programming, but this is one of those cases. Simply (and we don't use that word lightly) return the boolean expression",
-  },
-  fixable: "code",
-  messages: {
-    branchToBoolean: {
-      problem: "This `if` returns `true` in one branch and `false` in the other.",
-      refactor: "return the condition itself (`return {{suggestion}}`).",
-    },
-  },
-  create(context) {
-    const sourceCode = context.sourceCode;
-    return {
-      IfStatement(node) {
-        const statement = asTs<TSESTree.IfStatement>(node);
-        const whenTrue = returnedBoolean(statement.consequent);
-        if (whenTrue === null) return;
-        const otherwise = statement.alternate ?? nextStatement(statement);
-        const whenFalse = returnedBoolean(otherwise);
-        if (whenFalse === null || whenFalse === whenTrue || !otherwise) return;
-        const range: [number, number] = [statement.range[0], otherwise.range[1]];
-        const replacement = returnText(sourceCode, statement.test, !whenTrue);
-        context.report({
-          node,
-          messageId: "branchToBoolean",
-          data: { suggestion: replacement.slice("return ".length) },
-          fix: (fixer: Rule.RuleFixer) => fixer.replaceTextRange(range, keptComments(sourceCode, range, indentOf(sourceCode, statement)) + replacement),
-        });
-      },
-    };
-  },
-});

@@ -31,18 +31,6 @@ export function typeServices(context: Rule.RuleContext): TypeServices | null {
   return { program, checker: program.getTypeChecker(), tsNode: (node) => map.get(node) };
 }
 
-/** Whether a declaration is the project's own code: not in a default library file (`lib.*.d.ts`) and not under `node_modules`. */
-export function isProjectDeclaration(program: ts.Program, declaration: ts.Node): boolean {
-  const file = declaration.getSourceFile();
-  if (program.isSourceFileDefaultLibrary(file) || program.isSourceFileFromExternalLibrary(file)) return false;
-  return !/[\\/]node_modules[\\/]/.test(file.fileName);
-}
-
-/** `any` and `unknown`: the only types `unknown` is assignable to. They carry no information to report on. */
-export function isTopType(checker: ts.TypeChecker, type: ts.Type): boolean {
-  return checker.isTypeAssignableTo(checker.getUnknownType(), type);
-}
-
 /** The members of a union, or the type itself. */
 export function unionMembers(type: ts.Type): ts.Type[] {
   return type.isUnion() ? type.types : [type];
@@ -66,24 +54,21 @@ export function isProjectClass(services: TypeServices, symbol: ts.Symbol): boole
   return declarations.length > 0 && declarations.every((declaration) => isProjectDeclaration(services.program, declaration));
 }
 
-function modifierTexts(declaration: ts.Node): string[] {
-  const modifiers = (declaration as { modifiers?: readonly ts.Node[] }).modifiers ?? [];
-  return modifiers.map((modifier) => modifier.getText());
-}
-
-/** Whether a declaration carries the modifier keyword (`abstract`, `private`, `static` and so on). */
-export function hasModifier(declaration: ts.Node, keyword: string): boolean {
-  return modifierTexts(declaration).includes(keyword);
-}
-
-/** A method or accessor declaration: something with a parameter list (fields and parameter properties have none). */
-export function isFunctionLikeDeclaration(declaration: ts.Node): boolean {
-  return "parameters" in declaration && Array.isArray((declaration as { parameters?: unknown }).parameters);
+/** Whether a declaration is the project's own code: not in a default library file (`lib.*.d.ts`) and not under `node_modules`. */
+export function isProjectDeclaration(program: ts.Program, declaration: ts.Node): boolean {
+  const file = declaration.getSourceFile();
+  if (program.isSourceFileDefaultLibrary(file) || program.isSourceFileFromExternalLibrary(file)) return false;
+  return !/[\\/]node_modules[\\/]/.test(file.fileName);
 }
 
 /** A method or accessor with a body: a concrete function, as opposed to an abstract method or an overload signature. */
 export function hasBody(declaration: ts.Node): boolean {
   return isFunctionLikeDeclaration(declaration) && (declaration as { body?: unknown }).body !== undefined;
+}
+
+/** A method or accessor declaration: something with a parameter list (fields and parameter properties have none). */
+export function isFunctionLikeDeclaration(declaration: ts.Node): boolean {
+  return "parameters" in declaration && Array.isArray((declaration as { parameters?: unknown }).parameters);
 }
 
 /** A field or parameter property that is `private`, `protected` or `#private`. */
@@ -94,25 +79,42 @@ export function isNonPublicState(declaration: ts.Node): boolean {
   return hasModifier(declaration, "private") || hasModifier(declaration, "protected");
 }
 
+/** Whether a declaration carries the modifier keyword (`abstract`, `private`, `static` and so on). */
+export function hasModifier(declaration: ts.Node, keyword: string): boolean {
+  return modifierTexts(declaration).includes(keyword);
+}
+
+function modifierTexts(declaration: ts.Node): string[] {
+  const modifiers = (declaration as { modifiers?: readonly ts.Node[] }).modifiers ?? [];
+  return modifiers.map((modifier) => modifier.getText());
+}
+
+/** Whether `symbol` extends or implements `ancestor`, directly or through other types. */
+export function inheritsFrom(checker: ts.TypeChecker, symbol: ts.Symbol, ancestor: ts.Symbol): boolean {
+  const seen = new Set<ts.Symbol>();
+  const reaches = (current: ts.Symbol): boolean => {
+    if (seen.has(current)) return false;
+    seen.add(current);
+    return directSupertypes(checker, current).some((base) => {
+      const baseSymbol = base.getSymbol();
+      return baseSymbol !== undefined && (baseSymbol === ancestor || reaches(baseSymbol));
+    });
+  };
+  return reaches(symbol);
+}
+
 /** The class's direct supertypes: what it `extends` and `implements` (an interface: what it `extends`). */
 export function directSupertypes(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Type[] {
   const declared = checker.getDeclaredTypeOfSymbol(symbol);
   const bases: ts.Type[] = declared.isClassOrInterface() ? [...checker.getBaseTypes(declared)] : [];
-  for (const declaration of symbol.getDeclarations() ?? []) {
-    const clauses = (declaration as { heritageClauses?: readonly ts.HeritageClause[] }).heritageClauses ?? [];
-    for (const clause of clauses) for (const heritage of clause.types) bases.push(checker.getTypeAtLocation(heritage));
-  }
+  for (const declaration of symbol.getDeclarations() ?? []) bases.push(...heritageTypes(checker, declaration));
   return bases;
 }
 
-/** Whether `symbol` extends or implements `ancestor`, directly or through other types. */
-export function inheritsFrom(checker: ts.TypeChecker, symbol: ts.Symbol, ancestor: ts.Symbol, seen = new Set<ts.Symbol>()): boolean {
-  if (seen.has(symbol)) return false;
-  seen.add(symbol);
-  return directSupertypes(checker, symbol).some((base) => {
-    const baseSymbol = base.getSymbol();
-    return baseSymbol !== undefined && (baseSymbol === ancestor || inheritsFrom(checker, baseSymbol, ancestor, seen));
-  });
+/** The types a declaration's `extends` and `implements` clauses name, in source order. */
+function heritageTypes(checker: ts.TypeChecker, declaration: ts.Declaration): ts.Type[] {
+  const clauses = (declaration as { heritageClauses?: readonly ts.HeritageClause[] }).heritageClauses ?? [];
+  return clauses.flatMap((clause) => clause.types.map((heritage) => checker.getTypeAtLocation(heritage)));
 }
 
 /**
@@ -126,4 +128,9 @@ export function nonNullableTypeAt(services: TypeServices, node: Node): ts.Type {
   if (type.isTypeParameter()) type = checker.getBaseConstraintOfType(type) ?? type;
   if (type.isTypeParameter() || isTopType(checker, type)) return type;
   return checker.getNonNullableType(type);
+}
+
+/** `any` and `unknown`: the only types `unknown` is assignable to. They carry no information to report on. */
+export function isTopType(checker: ts.TypeChecker, type: ts.Type): boolean {
+  return checker.isTypeAssignableTo(checker.getUnknownType(), type);
 }

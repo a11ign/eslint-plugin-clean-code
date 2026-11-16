@@ -4,6 +4,12 @@ import { asTs, type TSESTree } from "../lib/ast.ts";
 
 type FieldLike = TSESTree.PropertyDefinition | TSESTree.TSAbstractPropertyDefinition | TSESTree.AccessorProperty | TSESTree.TSAbstractAccessorProperty;
 
+function reportProtectedField(context: Rule.RuleContext, node: unknown): void {
+  const field = asTs<FieldLike | TSESTree.TSParameterProperty>(node);
+  if (field.accessibility !== "protected") return;
+  context.report({ node: node as never, messageId: "protectedField", data: { name: fieldName(field) } });
+}
+
 function fieldName(field: FieldLike | TSESTree.TSParameterProperty): string {
   if (field.type === "TSParameterProperty") {
     const parameter = field.parameter.type === "AssignmentPattern" ? field.parameter.left : field.parameter;
@@ -29,11 +35,7 @@ export default defineRule({
     },
   },
   create(context) {
-    function check(node: unknown): void {
-      const field = asTs<FieldLike | TSESTree.TSParameterProperty>(node);
-      if (field.accessibility !== "protected") return;
-      context.report({ node: node as never, messageId: "protectedField", data: { name: fieldName(field) } });
-    }
+    const check = (node: unknown) => reportProtectedField(context, node);
     return {
       PropertyDefinition: check,
       TSAbstractPropertyDefinition: check,

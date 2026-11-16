@@ -5,23 +5,38 @@
  * others are the values the catalog's owner sign-off approved. A custom rule's threshold is its own default.
  */
 
-/** The catalog entry each built-in rule comes from is in the comment beside it. */
+/** The catalog entry each built-in rule comes from is in the doc comment on its entry. */
 export const BUILT_IN_RULES = {
-  "max-params": ["error", { max: 3, countThis: "never" }], // FN-04: "three is usually my limit"
-  "max-lines-per-function": ["error", { max: 12, skipBlankLines: true, skipComments: true }], // FN-01: "a dozen lines or less"
-  "max-depth": ["error", { max: 2 }], // FN-03: "seldom be greater than one or two"
-  "complexity": ["error", { max: 15 }], // FN-02: owner sign-off
-  "max-lines": ["error", { max: 500 }], // FMT-01: "an upper limit of 500"
-  "max-classes-per-file": ["error", { max: 1 }], // CLS-01: "a single module or class per source file"
-  "no-else-return": ["error", { allowElseIf: false }], // CD-02
-  "no-unneeded-ternary": "error", // CD-01
-  "no-labels": "error", // FH-12
-  "no-warning-comments": ["error", { terms: ["todo", "fixme"] }], // CMT-10: owner sign-off for `fixme`
-  "no-param-reassign": ["error", { props: true, ignorePropertyModificationsFor: ["acc", "accumulator"] }], // FH-03
-  "no-fallthrough": "error", // CLS-05
-  "no-unreachable": "error", // HRM-01
-  "no-empty": ["error", { allowEmptyCatch: false }], // FH-08
-  "id-denylist": ["error", "l", "O", "I", "klass", "clazz"], // NAM-06, NAM-07: owner sign-off for `I`
+  /** FN-04: "three is usually my limit" */
+  "max-params": ["error", { max: 3, countThis: "never" }],
+  /** FN-01: "a dozen lines or less" */
+  "max-lines-per-function": ["error", { max: 12, skipBlankLines: true, skipComments: true }],
+  /** FN-03: "seldom be greater than one or two" */
+  "max-depth": ["error", { max: 2 }],
+  /** FN-02: owner sign-off */
+  "complexity": ["error", { max: 15 }],
+  /** FMT-01: "an upper limit of 500" */
+  "max-lines": ["error", { max: 500 }],
+  /** CLS-01: "a single module or class per source file" */
+  "max-classes-per-file": ["error", { max: 1 }],
+  /** CD-02 */
+  "no-else-return": ["error", { allowElseIf: false }],
+  /** CD-01 */
+  "no-unneeded-ternary": "error",
+  /** FH-12 */
+  "no-labels": "error",
+  /** CMT-10: owner sign-off for `fixme` */
+  "no-warning-comments": ["error", { terms: ["todo", "fixme"] }],
+  /** FH-03 */
+  "no-param-reassign": ["error", { props: true, ignorePropertyModificationsFor: ["acc", "accumulator"] }],
+  /** CLS-05 */
+  "no-fallthrough": "error",
+  /** HRM-01 */
+  "no-unreachable": "error",
+  /** FH-08 */
+  "no-empty": ["error", { allowEmptyCatch: false }],
+  /** NAM-06, NAM-07: owner sign-off for `I` */
+  "id-denylist": ["error", "l", "O", "I", "klass", "clazz"],
 } as const;
 
 /**
@@ -123,10 +138,14 @@ export const TYPESCRIPT_BUILT_IN_RULES = { eqeqeq: ["error", "always"] } as cons
  * `TS_FILES`. Oxlint runs every one of them natively, as `typescript/<name>`, with the same options.
  */
 export const TYPESCRIPT_EXTENDED_RULES = {
-  "no-explicit-any": "error", // TS-01
-  "consistent-type-assertions": ["error", { assertionStyle: "never" }], // TS-02: owner sign-off
-  "no-non-null-assertion": "error", // TS-03
-  "triple-slash-reference": ["error", { path: "never", types: "prefer-import", lib: "never" }], // TS-13: owner sign-off on `lib`
+  /** TS-01 */
+  "no-explicit-any": "error",
+  /** TS-02: owner sign-off */
+  "consistent-type-assertions": ["error", { assertionStyle: "never" }],
+  /** TS-03 */
+  "no-non-null-assertion": "error",
+  /** TS-13: owner sign-off on `lib` */
+  "triple-slash-reference": ["error", { path: "never", types: "prefer-import", lib: "never" }],
 } as const;
 
 /** TS-11: `eslint-plugin-promise`'s rule, on `ALL_FILES`. Oxlint runs it natively under the same name. */
@@ -175,16 +194,6 @@ export const REACT_RULES = ["react-no-state-mutation", "react-no-untyped-empty-s
 export const REACT_HOOKS_RULES = ["rules-of-hooks", "exhaustive-deps"] as const;
 export const REACT_JSX_RULES = ["jsx-key", "no-array-index-key"] as const;
 
-/** `rules` under `plugin`'s name, each `"error"`: `pluginRules("react", ["jsx-key"])` gives `{ "react/jsx-key": "error" }`. */
-export function pluginRules(plugin: string, rules: readonly string[]): Record<string, "error"> {
-  return Object.fromEntries(rules.map((name) => [`${plugin}/${name}`, "error"]));
-}
-
-/** `rules`' settings under `plugin`'s name: `pluginSettings("typescript", { "no-explicit-any": "error" })` gives `{ "typescript/no-explicit-any": "error" }`. */
-export function pluginSettings(plugin: string, rules: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(rules).map(([name, setting]) => [`${plugin}/${name}`, setting]));
-}
-
 /** The files `react` and the `react/` rules of `react-extended` apply to. */
 export const REACT_FILES = ["**/*.{jsx,tsx}"];
 /** The files the hooks rules apply to: `REACT_FILES`, and a custom hook in a `.js` or `.ts` file such as `useChecked.ts`. */
@@ -208,6 +217,16 @@ export function prefixed(names: readonly string[]): Record<string, "error"> {
   return pluginRules(PLUGIN_PREFIX, names);
 }
 
+/** `rules` under `plugin`'s name, each `"error"`: `pluginRules("react", ["jsx-key"])` gives `{ "react/jsx-key": "error" }`. */
+export function pluginRules(plugin: string, rules: readonly string[]): Record<string, "error"> {
+  return Object.fromEntries(rules.map((name) => [`${plugin}/${name}`, "error"]));
+}
+
 export function prefixedOptions(rules: Record<string, readonly unknown[]>): Record<string, unknown> {
   return pluginSettings(PLUGIN_PREFIX, rules);
+}
+
+/** `rules`' settings under `plugin`'s name: `pluginSettings("typescript", { "no-explicit-any": "error" })` gives `{ "typescript/no-explicit-any": "error" }`. */
+export function pluginSettings(plugin: string, rules: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(rules).map(([name, setting]) => [`${plugin}/${name}`, setting]));
 }

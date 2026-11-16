@@ -5,22 +5,19 @@ const SHAPE = "abstract class Shape { abstract area(): number; describe(): strin
 
 runTypedRuleTests("no-concrete-inheritance", rule, {
   valid: [
-    // An abstract base, implementing its abstract methods.
-    `${SHAPE}\nclass Square extends Shape { constructor(private side: number) { super(); } area(): number { return this.side ** 2; } }`,
-    // Library classes are stable: Error, Map, and node_modules classes.
-    "class NotFound extends Error { constructor(id: string) { super(`missing ${id}`); } }",
-    "class Registry extends Map<string, number> { get(key: string): number | undefined { return super.get(key.toLowerCase()); } }",
-    "class Expiry extends Promise<void> {}",
-    "import { RuleTester } from 'oxlint/plugins-dev';\nclass MyTester extends RuleTester { run(...args: Parameters<RuleTester['run']>) { super.run(...args); } }",
-    // Implementing an interface is not inheritance.
-    "interface Greeter { greet(): string }\nclass Hello implements Greeter { greet() { return 'hi'; } }",
-    // A class without `extends`, and a class expression extending an abstract one.
-    "class Plain { run() { return 1; } }",
-    `${SHAPE}\nconst Unit = class extends Shape { area() { return 1; } };`,
-    // `any` as a base gives nothing to check.
-    "declare const Base: any;\nclass Derived extends Base {}",
-    // A new method in a subclass of an abstract class overrides nothing.
-    `${SHAPE}\nclass Circle extends Shape { area() { return 3; } radius() { return 1; } }`,
+    { name: "an abstract base, implementing its abstract methods", code: `${SHAPE}\nclass Square extends Shape { constructor(private side: number) { super(); } area(): number { return this.side ** 2; } }` },
+    { name: "library classes are stable: Error", code: "class NotFound extends Error { constructor(id: string) { super(`missing ${id}`); } }" },
+    { name: "library classes are stable: Map", code: "class Registry extends Map<string, number> { get(key: string): number | undefined { return super.get(key.toLowerCase()); } }" },
+    { name: "library classes are stable: Promise", code: "class Expiry extends Promise<void> {}" },
+    {
+      name: "library classes are stable: a node_modules class",
+      code: "import { RuleTester } from 'oxlint/plugins-dev';\nclass MyTester extends RuleTester { run(...args: Parameters<RuleTester['run']>) { super.run(...args); } }",
+    },
+    { name: "implementing an interface is not inheritance", code: "interface Greeter { greet(): string }\nclass Hello implements Greeter { greet() { return 'hi'; } }" },
+    { name: "a class without `extends`", code: "class Plain { run() { return 1; } }" },
+    { name: "a class expression extending an abstract class", code: `${SHAPE}\nconst Unit = class extends Shape { area() { return 1; } };` },
+    { name: "`any` as a base gives nothing to check", code: "declare const Base: any;\nclass Derived extends Base {}" },
+    { name: "a new method in a subclass of an abstract class overrides nothing", code: `${SHAPE}\nclass Circle extends Shape { area() { return 3; } radius() { return 1; } }` },
   ],
   invalid: [
     {

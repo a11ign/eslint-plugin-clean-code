@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { ESLint } from "eslint";
-import { ROOT, assertNoParseErrors, onFixtures, readmeBlock, relatedReports, runEslintWithConfigFile, runOxlint, type Report } from "./support.ts";
+import { ROOT, assertErrorsWithoutFixOrSuggestion, assertNoParseErrors, onFixtures, readmeBlock, relatedReports, runEslintWithConfigFile, runOxlint, type Report } from "./support.ts";
 
 const FIXTURES = join(ROOT, "test", "fixtures", "typescript");
 
@@ -18,16 +18,6 @@ const FIXTURES = join(ROOT, "test", "fixtures", "typescript");
  */
 const TYPESCRIPT_RELATED = /^(clean-code-book\/ts-|eqeqeq$|@typescript-eslint\/|promise\/|no-unused-vars$)/;
 
-/** What `recommended` and `typescript` report in each fixture file, under either linter. */
-function typescriptExpected(): Record<string, string[]> {
-  return {
-    "src/account.ts": ["clean-code-book/ts-no-definite-assignment-assertion"],
-    "src/compare.js": ["eqeqeq"],
-    "src/express.ts": ["clean-code-book/ts-no-module-augmentation"],
-    "src/legacy.ts": ["clean-code-book/ts-no-amd-dependency"],
-  };
-}
-
 /** `typescript-extended` adds the type assertion, the `lib` directive, and the `.then()` with a rejection callback in a `.js` file. */
 function extendedExpected(): Record<string, string[]> {
   return {
@@ -35,6 +25,16 @@ function extendedExpected(): Record<string, string[]> {
     "src/assertion.ts": ["@typescript-eslint/consistent-type-assertions"],
     "src/dom.ts": ["@typescript-eslint/triple-slash-reference"],
     "src/fetch.js": ["promise/prefer-catch"],
+  };
+}
+
+/** What `recommended` and `typescript` report in each fixture file, under either linter. */
+function typescriptExpected(): Record<string, string[]> {
+  return {
+    "src/account.ts": ["clean-code-book/ts-no-definite-assignment-assertion"],
+    "src/compare.js": ["eqeqeq"],
+    "src/express.ts": ["clean-code-book/ts-no-module-augmentation"],
+    "src/legacy.ts": ["clean-code-book/ts-no-amd-dependency"],
   };
 }
 
@@ -100,7 +100,7 @@ console.log(JSON.stringify({ lengths, typescriptLint, extendedLint }));
 
 describe("the typescript config", () => {
   it("ESLint: the README's typescript setup reports the definite assignment, the amd-dependency, the augmentation and == null", async () => {
-    const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, readmeBlock("eslint-typescript"));
+    const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, { eslintConfig: readmeBlock("eslint-typescript") });
     assertNoParseErrors(reports);
     assert.deepEqual(typescriptReports(reports), typescriptExpected());
     assert.ok(reports.some((report) => report.file === "src/clean.ts"), "ESLint did not lint clean.ts, so the files with no report could not fail");
@@ -121,16 +121,12 @@ describe("the typescript config", () => {
         ["clean-code-book/ts-no-definite-assignment-assertion", 2],
         ["clean-code-book/ts-no-module-augmentation", 3],
       ]);
-      for (const message of messages) {
-        assert.equal(message.severity, 2, message.ruleId ?? "");
-        assert.equal(message.fix, undefined, `${message.ruleId} has a fix`);
-        assert.equal(message.suggestions, undefined, `${message.ruleId} has a suggestion`);
-      }
-    }, readmeBlock("eslint-typescript"));
+      assertErrorsWithoutFixOrSuggestion(messages);
+    }, { eslintConfig: readmeBlock("eslint-typescript") });
   });
 
   it("ESLint and Oxlint: a project on recommended alone gets no ts- rule and no eqeqeq, and no report for the _event parameter", async () => {
-    const eslintReports = await onFixtures(FIXTURES, runEslintWithConfigFile, readmeBlock("eslint"));
+    const eslintReports = await onFixtures(FIXTURES, runEslintWithConfigFile, { eslintConfig: readmeBlock("eslint") });
     const oxlintReports = await onFixtures(FIXTURES, (dir) => runOxlint(dir, [], readmeBlock("oxlint")));
     assert.deepEqual(typescriptReports(eslintReports), {});
     assert.deepEqual(typescriptReports(oxlintReports), {});
@@ -147,7 +143,7 @@ describe("the typescript config", () => {
 
 describe("the typescript-extended config", () => {
   it("ESLint: typescript-eslint's rules and promise/prefer-catch report each scenario, as errors", async () => {
-    const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, readmeBlock("eslint-typescript-extended"));
+    const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, { eslintConfig: readmeBlock("eslint-typescript-extended") });
     assertNoParseErrors(reports);
     assert.deepEqual(typescriptReports(reports), extendedExpected());
     assert.deepEqual(reports.flatMap((report) => report.warnings), []);
@@ -173,7 +169,7 @@ describe("the typescript-extended config", () => {
 
 describe("the typescript-extended-type-checked config", () => {
   it("ESLint: also reports the floating saveOrder(order) and the switch that misses a member of the union", async () => {
-    const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, readmeBlock("eslint-typescript-extended-type-checked"));
+    const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, { eslintConfig: readmeBlock("eslint-typescript-extended-type-checked") });
     assertNoParseErrors(reports);
     assert.deepEqual(typescriptReports(reports), {
       ...extendedExpected(),
@@ -182,7 +178,7 @@ describe("the typescript-extended-type-checked config", () => {
   });
 
   it("ESLint: typescript-extended alone, without type information, does not report orders.ts", async () => {
-    const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, readmeBlock("eslint-typescript-extended"));
+    const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, { eslintConfig: readmeBlock("eslint-typescript-extended") });
     assert.ok(reports.some((report) => report.file === "src/orders.ts"), "ESLint did not lint orders.ts, so this check could not fail");
     assert.deepEqual(typescriptReports(reports)["src/orders.ts"], undefined);
   });

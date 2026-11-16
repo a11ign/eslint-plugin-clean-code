@@ -19,36 +19,13 @@ const PARSE_ATTEMPTS: espree.Options[] = [
 /** Punctuation that only code has: a statement end, a block, or an assignment. */
 const CODE_PUNCTUATION = /^(?:[;{}]|[-+*/%&|^]?=|\*\*=|<<=|>>>?=|&&=|\|\|=|\?\?=)$/;
 
-function parse(text: string): { program: SyntaxNode; tokens: espree.EspreeTokens } | null {
-  for (const options of PARSE_ATTEMPTS) {
-    try {
-      const program = espree.parse(text, { ...options, tokens: true }) as unknown as SyntaxNode & { tokens: espree.EspreeTokens };
-      return { program, tokens: program.tokens };
-    } catch {
-      // Not code under these options; try the next ones.
-    }
-  }
-  return null;
-}
-
-function hasCall(node: unknown): boolean {
-  if (!node || typeof node !== "object") return false;
-  if (Array.isArray(node)) return node.some(hasCall);
-  const { type } = node as SyntaxNode;
-  if (type === "CallExpression" || type === "NewExpression") return true;
-  return Object.entries(node).some(([key, value]) => key !== "tokens" && key !== "loc" && hasCall(value));
-}
-
 /** Words that introduce an example in prose: `e.g. parse("a=b")` reads as `e.g.parse(…)` but is a sentence. */
 const PROSE_START = /^\s*(?:e\.g\.|i\.e\.|eg:|ex:|example:|usage:)/i;
 
 const COMPARISON = new Set(["==", "!=", "===", "!==", "<", ">", "<=", ">="]);
 
-/** A single comparison (`sum(1, 2) === 3`) states a fact about the code; nobody comments out a statement with no effect. */
-function isClaim(statements: SyntaxNode[]): boolean {
-  if (statements.length !== 1 || statements[0].type !== "ExpressionStatement") return false;
-  const expression = statements[0].expression as SyntaxNode;
-  return expression.type === "BinaryExpression" && COMPARISON.has(expression.operator as string);
+function isCommentedOutCode(group: Comment[]): boolean {
+  return !isSkipped(group[0]) && isCode(groupText(group));
 }
 
 /** Whether `text` is JavaScript statements with code syntax, and does not start with a label (so `Note: call(x)` is prose). */
@@ -59,6 +36,41 @@ function isCode(text: string): boolean {
   const statements = (parsed.program.body as SyntaxNode[]).filter((statement) => statement.type !== "EmptyStatement");
   if (statements.length === 0 || statements[0].type === "LabeledStatement" || isClaim(statements)) return false;
   return parsed.tokens.some((token) => token.type === "Punctuator" && CODE_PUNCTUATION.test(token.value)) || hasCall(parsed.program);
+}
+
+/** A single comparison (`sum(1, 2) === 3`) states a fact about the code; nobody comments out a statement with no effect. */
+function isClaim(statements: SyntaxNode[]): boolean {
+  if (statements.length !== 1 || statements[0].type !== "ExpressionStatement") return false;
+  const expression = statements[0].expression as SyntaxNode;
+  return expression.type === "BinaryExpression" && COMPARISON.has(expression.operator as string);
+}
+
+function hasCall(node: unknown): boolean {
+  if (!node || typeof node !== "object") return false;
+  if (Array.isArray(node)) return node.some(hasCall);
+  const { type } = node as SyntaxNode;
+  if (type === "CallExpression" || type === "NewExpression") return true;
+  return Object.entries(node).some(([key, value]) => key !== "tokens" && key !== "loc" && hasCall(value));
+}
+
+type Parsed = { program: SyntaxNode; tokens: espree.EspreeTokens };
+
+function parse(text: string): Parsed | null {
+  for (const options of PARSE_ATTEMPTS) {
+    const parsed = parseUnder(options, text);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+/** `text` parsed under `options`, or null when it is not code under these options. */
+function parseUnder(options: espree.Options, text: string): Parsed | null {
+  try {
+    const program = espree.parse(text, { ...options, tokens: true }) as unknown as SyntaxNode & { tokens: espree.EspreeTokens };
+    return { program, tokens: program.tokens };
+  } catch {
+    return null;
+  }
 }
 
 /** The text of a group of comments as code would read it: a block's `*` decoration taken off, a run's lines joined. */
@@ -94,13 +106,8 @@ export default defineRule({
     const sourceCode = context.sourceCode;
     return {
       Program() {
-        for (const group of commentGroups(sourceCode, isSkipped)) {
-          if (isSkipped(group[0]) || !isCode(groupText(group))) continue;
-          context.report({
-            loc: groupLocation(group),
-            messageId: "commentedOutCode",
-            fix: (fixer) => removeGroup(fixer, sourceCode, group),
-          });
+        for (const group of commentGroups(sourceCode, isSkipped).filter(isCommentedOutCode)) {
+          context.report({ loc: groupLocation(group), messageId: "commentedOutCode", fix: (fixer) => removeGroup(fixer, sourceCode, group) });
         }
       },
     };

@@ -30,14 +30,45 @@ const CLASS_MESSAGE = {
   refactor: "name the class for the one thing it represents, without the word; if nothing is left, the class has no clear responsibility yet.",
 };
 
-function annotationOf(node: Node): TSESTree.TypeNode | null {
-  return (node as { typeAnnotation?: TSESTree.TSTypeAnnotation }).typeAnnotation?.typeAnnotation ?? null;
+type Property = TSESTree.PropertyDefinition | TSESTree.AccessorProperty | TSESTree.TSAbstractPropertyDefinition | TSESTree.TSAbstractAccessorProperty | TSESTree.TSPropertySignature;
+
+type ClassNode = TSESTree.ClassDeclaration | TSESTree.ClassExpression;
+
+type Noise = NonNullable<ReturnType<typeof nameNoise>>;
+
+/** The node types whose key names a property, so their names are checked like a variable's. */
+const PROPERTY_TYPES = ["PropertyDefinition", "AccessorProperty", "TSAbstractPropertyDefinition", "TSAbstractAccessorProperty", "TSPropertySignature"];
+
+/** Checks an object literal's entry when it is written out as `key: value`: not shorthand, a method or an accessor. */
+function reportObjectEntryNoise(context: Rule.RuleContext, property: TSESTree.Property): void {
+  if (isWrittenOutEntry(property)) reportPropertyNoise(context, property);
 }
 
-/** The noise in a variable, parameter or property name: the word `variable`, or a suffix repeating its declared type. */
+function reportPropertyNoise(context: Rule.RuleContext, property: Property | TSESTree.Property): void {
+  reportNoise(context, property.key, noiseOf(propertyName(property), property));
+}
+
+function propertyName(node: Property | TSESTree.Property): string | null {
+  return keyName(node.key, { computed: node.computed });
+}
+
+function reportNoise(context: Rule.RuleContext, node: Node, noise: Noise | null): void {
+  if (noise) context.report({ node: node as never, messageId: noise.messageId, data: noise.data });
+}
+
+function noiseOf(name: string | null, annotated: Node): Noise | null {
+  return name ? nameNoise(name, annotated) : null;
+}
+
+/**
+ * The noise in a variable, parameter or property name: the word `variable` added at the end of a name that already says what
+ * the value is (`nameVariable`), or a suffix repeating its declared type. `variable` alone, or as a word inside a longer name
+ * (`variableWord`, `VARIABLE_DEFS`), names the thing itself, which in code about code is a variable: Clean Code's "Use Solution
+ * Domain Names" lets a CS term stand, and like `string: string` there is nothing to drop.
+ */
 function nameNoise(name: string, annotated: Node): { messageId: string; data: Record<string, string> } | null {
   const parts = words(name);
-  if (parts.includes("variable")) return { messageId: "variableWord", data: { name } };
+  if (endsInNoiseVariable(parts)) return { messageId: "variableWord", data: { name } };
   const suffix = parts.length > 1 ? TYPE_SUFFIX[parts[parts.length - 1]] : undefined;
   const type = annotationOf(annotated);
   if (!suffix || !type) return null;
@@ -45,16 +76,39 @@ function nameNoise(name: string, annotated: Node): { messageId: string; data: Re
   return repeats ? { messageId: "typeSuffix", data: { name, suffix: suffix.suffix } } : null;
 }
 
-type Property = TSESTree.PropertyDefinition | TSESTree.AccessorProperty | TSESTree.TSAbstractPropertyDefinition | TSESTree.TSAbstractAccessorProperty | TSESTree.TSPropertySignature;
+/** Whether `variable` is the last word of a name that has another word before it. */
+function endsInNoiseVariable(parts: string[]): boolean {
+  return parts.length > 1 && parts[parts.length - 1] === "variable";
+}
 
-function propertyName(node: Property | TSESTree.Property): string | null {
-  return keyName(node.key, node.computed);
+function annotationOf(node: Node): TSESTree.TypeNode | null {
+  return (node as { typeAnnotation?: TSESTree.TSTypeAnnotation }).typeAnnotation?.typeAnnotation ?? null;
+}
+
+function isWrittenOutEntry(property: TSESTree.Property): boolean {
+  return isObjectLiteralValue(property) && !property.shorthand && !property.method;
+}
+
+function isObjectLiteralValue(property: TSESTree.Property): boolean {
+  return property.parent?.type === "ObjectExpression" && property.kind === "init";
+}
+
+function reportClassNoise(context: Rule.RuleContext, id: TSESTree.Identifier | null): void {
+  const word = id ? words(id.name).find((part) => CLASS_NOISE.has(part)) : undefined;
+  if (id && word) context.report({ node: id as never, messageId: "classNoise", data: { name: id.name, word: CLASS_NOISE.get(word) as string } });
+}
+
+function reportVariableNoise(context: Rule.RuleContext): void {
+  for (const variable of declaredVariables(context.sourceCode)) {
+    const def = variable.defs[0];
+    if (VARIABLE_DEFS.has(def.type)) reportNoise(context, asTs(def.name), noiseOf(variable.name, asTs(def.name)));
+  }
 }
 
 const rule = defineRule({
   name: "no-noise-words",
   type: "suggestion",
-  description: "Leave noise words out of names: `variable`, a suffix that repeats the declared type, and `Manager`, `Processor`, `Data` or `Info` in class names.",
+  description: "Leave noise words out of names: a trailing `variable`, a suffix that repeats the declared type, and `Manager`, `Processor`, `Data` or `Info` in class names.",
   book: {
     entry: "NAM-08",
     chapter: "4 Meaningful Names § Make Meaningful Distinctions",
@@ -62,7 +116,7 @@ const rule = defineRule({
   },
   messages: {
     variableWord: {
-      problem: "`{{name}}` has the noise word `variable` in its name.",
+      problem: "`{{name}}` ends in the noise word `variable`.",
       refactor: "drop the word and name the binding for what its value means.",
     },
     typeSuffix: {
@@ -72,38 +126,14 @@ const rule = defineRule({
     classNoise: CLASS_MESSAGE,
   },
   create(context) {
-    const report = (node: Node, name: string | null, annotated: Node) => {
-      const noise = name ? nameNoise(name, annotated) : null;
-      if (noise) context.report({ node: node as never, messageId: noise.messageId, data: noise.data });
-    };
-    const checkProperty = (node: unknown) => {
-      const property = asTs<Property>(node);
-      report(property.key, propertyName(property), property);
-    };
-    const checkClass = (node: unknown) => {
-      const id = asTs<TSESTree.ClassDeclaration | TSESTree.ClassExpression>(node).id;
-      const word = id ? words(id.name).find((part) => CLASS_NOISE.has(part)) : undefined;
-      if (id && word) context.report({ node: id as never, messageId: "classNoise", data: { name: id.name, word: CLASS_NOISE.get(word) as string } });
-    };
+    const checkProperty = (node: unknown) => reportPropertyNoise(context, asTs<Property>(node));
+    const checkClass = (node: unknown) => reportClassNoise(context, asTs<ClassNode>(node).id);
     return {
-      PropertyDefinition: checkProperty,
-      AccessorProperty: checkProperty,
-      TSAbstractPropertyDefinition: checkProperty,
-      TSAbstractAccessorProperty: checkProperty,
-      TSPropertySignature: checkProperty,
-      Property(node: unknown) {
-        const property = asTs<TSESTree.Property>(node);
-        if (property.parent?.type !== "ObjectExpression" || property.shorthand || property.method || property.kind !== "init") return;
-        report(property.key, propertyName(property), property);
-      },
+      ...Object.fromEntries(PROPERTY_TYPES.map((type) => [type, checkProperty])),
+      Property: (node: unknown) => reportObjectEntryNoise(context, asTs<TSESTree.Property>(node)),
       ClassDeclaration: checkClass,
       ClassExpression: checkClass,
-      "Program:exit"() {
-        for (const variable of declaredVariables(context.sourceCode)) {
-          const def = variable.defs[0];
-          if (VARIABLE_DEFS.has(def.type)) report(asTs(def.name), variable.name, asTs(def.name));
-        }
-      },
+      "Program:exit": () => reportVariableNoise(context),
     } as Rule.RuleListener;
   },
 });

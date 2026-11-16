@@ -1,3 +1,4 @@
+import type { Rule } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs, type TSESTree } from "../lib/ast.ts";
 
@@ -11,21 +12,44 @@ interface Shape {
   operands: number;
 }
 
+/** An `&&` or `||` expression; `??` joins values, not conditions. */
+type AndOr = TSESTree.LogicalExpression & { operator: "&&" | "||" };
+
+/** Reports `test` when it mixes `&&` and `||` or joins more than `max` operands; `kind` names the statement it belongs to. */
+type ConditionCheck = (test: Expression | null | undefined, kind: string) => void;
+
+function conditionChecker(context: Rule.RuleContext, max: number): ConditionCheck {
+  return (test, kind) => {
+    if (!test) return;
+    const shape = shapeOf(test);
+    if (shape.operators.size > 1) {
+      context.report({ node: test as never, messageId: "mixed", data: { kind } });
+    } else if (shape.operands > max) {
+      context.report({ node: test as never, messageId: "tooManyOperands", data: { kind, count: String(shape.operands), operator: [...shape.operators][0], max: String(max) } });
+    }
+  };
+}
+
 /**
  * The `&&` and `||` operators a condition joins and how many operands they join. A `!` in front of a group is looked
  * through, so `!(a && b) || c` mixes both. `??`, calls and every other expression are one operand.
  */
-function shapeOf(expression: Expression, shape: Shape = { operators: new Set(), operands: 0 }): Shape {
-  if (expression.type === "LogicalExpression" && expression.operator !== "??") {
-    shape.operators.add(expression.operator);
-    shapeOf(expression.left, shape);
-    shapeOf(expression.right, shape);
-  } else if (expression.type === "UnaryExpression" && expression.operator === "!" && expression.argument.type === "LogicalExpression" && expression.argument.operator !== "??") {
-    shapeOf(expression.argument, shape);
-  } else {
-    shape.operands += 1;
-  }
-  return shape;
+function shapeOf(expression: Expression): Shape {
+  const group = andOrGroup(expression);
+  if (!group) return { operators: new Set(), operands: 1 };
+  const left = shapeOf(group.left);
+  const right = shapeOf(group.right);
+  return { operators: new Set([group.operator, ...left.operators, ...right.operators]), operands: left.operands + right.operands };
+}
+
+/** The `&&` or `||` group `expression` is, looking through a `!` in front of it. */
+function andOrGroup(expression: Expression): AndOr | null {
+  const inner = expression.type === "UnaryExpression" && expression.operator === "!" ? expression.argument : expression;
+  return isAndOr(inner) ? inner : null;
+}
+
+function isAndOr(expression: Expression): expression is AndOr {
+  return expression.type === "LogicalExpression" && expression.operator !== "??";
 }
 
 export default defineRule<Options>({
@@ -57,15 +81,7 @@ export default defineRule<Options>({
   defaultOptions: [{ maxOperands: DEFAULT_MAX_OPERANDS }],
   create(context) {
     const max = (context.options[0] as Options[0] | undefined)?.maxOperands ?? DEFAULT_MAX_OPERANDS;
-    function check(test: Expression | null | undefined, kind: string): void {
-      if (!test) return;
-      const shape = shapeOf(test);
-      if (shape.operators.size > 1) {
-        context.report({ node: test as never, messageId: "mixed", data: { kind } });
-      } else if (shape.operands > max) {
-        context.report({ node: test as never, messageId: "tooManyOperands", data: { kind, count: String(shape.operands), operator: [...shape.operators][0], max: String(max) } });
-      }
-    }
+    const check = conditionChecker(context, max);
     return {
       IfStatement: (node) => check(asTs<TSESTree.IfStatement>(node).test, "if"),
       WhileStatement: (node) => check(asTs<TSESTree.WhileStatement>(node).test, "while"),

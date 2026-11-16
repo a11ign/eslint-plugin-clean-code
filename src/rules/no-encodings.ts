@@ -33,21 +33,6 @@ interface Encoding {
   suggestion: string;
 }
 
-/** The encoding a binding or member name carries, and the name without it. */
-function memberEncoding(name: string): Encoding | null {
-  const prefix = MEMBER_PREFIX.exec(name)?.[0] ?? HUNGARIAN.exec(name)?.[0];
-  if (!prefix) return null;
-  return { messageId: prefix === "m_" ? "memberPrefix" : "hungarian", prefix, suggestion: lowerFirstWord(name.slice(prefix.length)) };
-}
-
-function interfaceEncoding(name: string): Encoding | null {
-  return INTERFACE_PREFIX.test(name) && !I_WORDS.test(name) ? { messageId: "interfacePrefix", prefix: "I", suggestion: name.slice(1) } : null;
-}
-
-function isEncoded(name: string): boolean {
-  return memberEncoding(name) !== null || interfaceEncoding(name) !== null;
-}
-
 const NAM_10: BookSource = {
   entry: "NAM-10",
   chapter: "4 Meaningful Names § Interfaces and Implementations",
@@ -59,25 +44,6 @@ const INTERFACE_MESSAGE = {
   refactor: "drop the `I` and leave the interface unadorned; if the interface and its implementation need different names, encode the implementation (`ShapeFactoryImp`).",
 };
 
-function isInterfaceDef(def: VariableT["defs"][number]): boolean {
-  return asTs(def.node).type === "TSInterfaceDeclaration";
-}
-
-function isInParameterProperty(identifier: Node): boolean {
-  const parent = identifier.parent;
-  return parent?.type === "TSParameterProperty" || (parent?.type === "AssignmentPattern" && parent.parent?.type === "TSParameterProperty");
-}
-
-/** A declaration the rename may change: a local variable, a plain identifier parameter, or (for `I`) an interface. */
-function isRenamableDef(def: VariableT["defs"][number], forInterface: boolean): boolean {
-  const name = asTs(def.name);
-  if (forInterface) return isInterfaceDef(def);
-  if (def.type === "Variable") return true;
-  if (def.type !== "Parameter") return false;
-  const owner = name.parent as { params?: Node[] } | undefined;
-  return owner?.params?.includes(name) ?? false;
-}
-
 interface Candidate {
   messageId: MessageId;
   node: Node;
@@ -87,10 +53,70 @@ interface Candidate {
   newName: string;
 }
 
+/** The file being linted, and the `#private` names in it. */
+interface LintedFile {
+  sourceCode: SourceCode;
+  filename: string;
+  privates: TSESTree.PrivateIdentifier[];
+}
+
+type NamedKey = TSESTree.Identifier | TSESTree.PrivateIdentifier;
+
+type Member = TSESTree.PropertyDefinition | TSESTree.MethodDefinition | TSESTree.AccessorProperty | TSESTree.TSAbstractPropertyDefinition | TSESTree.TSAbstractMethodDefinition | TSESTree.TSAbstractAccessorProperty;
+
+function memberCollectors(members: Member[]): Rule.RuleListener {
+  const collectMember = (node: unknown) => members.push(asTs<Member>(node));
+  return {
+    PropertyDefinition: collectMember,
+    MethodDefinition: collectMember,
+    AccessorProperty: collectMember,
+    TSAbstractPropertyDefinition: collectMember,
+    TSAbstractMethodDefinition: collectMember,
+    TSAbstractAccessorProperty: collectMember,
+  };
+}
+
+function allCandidates(file: LintedFile, members: Member[], parameterProperties: TSESTree.TSParameterProperty[]): Candidate[] {
+  return [
+    ...declaredVariables(file.sourceCode).map((variable) => variableCandidate(variable, file)),
+    ...members.map((member) => memberCandidate(member, file)),
+    ...parameterProperties.map(parameterPropertyCandidate),
+  ].filter((candidate): candidate is Candidate => candidate !== null);
+}
+
+function variableCandidate(variable: VariableT, file: LintedFile): Candidate | null {
+  const first = asTs<TSESTree.Identifier>(variable.defs[0].name);
+  if (isInParameterProperty(first)) return null;
+  const encoding = variable.defs.some(isInterfaceDef) ? interfaceEncoding(variable.name) : memberEncoding(variable.name);
+  if (!encoding) return null;
+  const fixable = isEsModuleFile(file.sourceCode) && canRenameVariable(variable, encoding, file.filename);
+  return nameCandidate(first, encoding, fixable ? (fixer) => renameAll(fixer, variableIdentifiers(variable), { from: variable.name, to: encoding.suggestion }) : null);
+}
+
+function isInParameterProperty(identifier: Node): boolean {
+  const parent = identifier.parent;
+  return parent?.type === "TSParameterProperty" || (parent?.type === "AssignmentPattern" && parent.parent?.type === "TSParameterProperty");
+}
+
+function interfaceEncoding(name: string): Encoding | null {
+  return INTERFACE_PREFIX.test(name) && !I_WORDS.test(name) ? { messageId: "interfacePrefix", prefix: "I", suggestion: name.slice(1) } : null;
+}
+
+/** The encoding a binding or member name carries, and the name without it. */
+function memberEncoding(name: string): Encoding | null {
+  const prefix = MEMBER_PREFIX.exec(name)?.[0] ?? HUNGARIAN.exec(name)?.[0];
+  if (!prefix) return null;
+  return { messageId: prefix === "m_" ? "memberPrefix" : "hungarian", prefix, suggestion: lowerFirstWord(name.slice(prefix.length)) };
+}
+
+function isInterfaceDef(def: VariableT["defs"][number]): boolean {
+  return asTs(def.node).type === "TSInterfaceDeclaration";
+}
+
 function canRenameVariable(variable: VariableT, encoding: Encoding, filename: string): boolean {
   const forInterface = encoding.messageId === "interfacePrefix";
   const defNames = variable.defs.map((def) => asTs(def.name));
-  if (!variable.defs.every((def) => isRenamableDef(def, forInterface))) return false;
+  if (!variable.defs.every((def) => isRenamableDef(def, { forInterface }))) return false;
   if (defNames.some((name) => isAmbient(name, filename) || isExportedDeclaration(name))) return false;
   const identifiers = variableIdentifiers(variable);
   if (identifiers.some((identifier) => isShorthand(identifier) || isInImportOrExport(identifier) || receivesNamedFunction(identifier))) return false;
@@ -98,22 +124,73 @@ function canRenameVariable(variable: VariableT, encoding: Encoding, filename: st
   return isBindableName(newName) && !isEncoded(newName) && isNameFree(variable.scope, newName) && !usesEval(variable.scope);
 }
 
-function variableCandidate(variable: VariableT, sourceCode: SourceCode, filename: string): Candidate | null {
-  const first = asTs(variable.defs[0].name);
-  if (isInParameterProperty(first)) return null;
-  const encoding = variable.defs.some(isInterfaceDef) ? interfaceEncoding(variable.name) : memberEncoding(variable.name);
-  if (!encoding) return null;
-  const fixable = isEsModuleFile(sourceCode) && canRenameVariable(variable, encoding, filename);
-  return {
-    messageId: encoding.messageId,
-    node: first,
-    data: { name: variable.name, prefix: encoding.prefix, suggestion: encoding.suggestion },
-    newName: encoding.suggestion,
-    rename: fixable ? (fixer) => renameAll(fixer, variableIdentifiers(variable), variable.name, encoding.suggestion) : null,
-  };
+/** A declaration the rename may change: a local variable, a plain identifier parameter, or (for `I`) an interface. */
+function isRenamableDef(def: VariableT["defs"][number], { forInterface }: { forInterface: boolean }): boolean {
+  const name = asTs(def.name);
+  if (forInterface) return isInterfaceDef(def);
+  if (def.type === "Variable") return true;
+  if (def.type !== "Parameter") return false;
+  const owner = name.parent as { params?: Node[] } | undefined;
+  return owner?.params?.includes(name) ?? false;
 }
 
-type Member = TSESTree.PropertyDefinition | TSESTree.MethodDefinition | TSESTree.AccessorProperty | TSESTree.TSAbstractPropertyDefinition | TSESTree.TSAbstractMethodDefinition | TSESTree.TSAbstractAccessorProperty;
+function isEncoded(name: string): boolean {
+  return memberEncoding(name) !== null || interfaceEncoding(name) !== null;
+}
+
+/** The report for a name that carries `encoding`; a `#private` name keeps its `#` in the message and the new name. */
+function nameCandidate(identifier: NamedKey, encoding: Encoding, rename: Candidate["rename"]): Candidate {
+  const sigil = identifier.type === "PrivateIdentifier" ? "#" : "";
+  const newName = `${sigil}${encoding.suggestion}`;
+  return { messageId: encoding.messageId, node: identifier, data: { name: `${sigil}${identifier.name}`, prefix: encoding.prefix, suggestion: newName }, newName, rename };
+}
+
+function memberCandidate(member: Member, file: LintedFile): Candidate | null {
+  const key = namedKey(member);
+  if (!key) return null;
+  const encoding = memberEncoding(key.name);
+  if (!encoding) return null;
+  const fixable = /^[A-Za-z_$][\w$]*$/.test(encoding.suggestion) && !isEncoded(encoding.suggestion) && canRenameMember(member, file);
+  return nameCandidate(key, encoding, fixable ? privateRename(member as TSESTree.PropertyDefinition, encoding, file) : null);
+}
+
+/** The key of a member that is not computed and is a name or a `#private` name. */
+function namedKey(member: Member): NamedKey | null {
+  if (member.computed) return null;
+  const key = member.key;
+  return key.type === "Identifier" || key.type === "PrivateIdentifier" ? key : null;
+}
+
+function canRenameMember(member: Member, file: LintedFile): member is TSESTree.PropertyDefinition {
+  if (member.type !== "PropertyDefinition" || member.computed || member.key.type !== "PrivateIdentifier") return false;
+  return isEsModuleFile(file.sourceCode) && !isAmbient(member, file.filename) && !isAnonymousFunctionOrClass(member.value);
+}
+
+/** Renames a `#private` field: each `#name` that refers to it, when the new name appears nowhere in the class. */
+function privateRename(member: TSESTree.PropertyDefinition, encoding: Encoding, file: LintedFile) {
+  const key = member.key as TSESTree.PrivateIdentifier;
+  const body = member.parent as TSESTree.ClassBody;
+  const inClass = file.privates.filter((identifier) => within(identifier, body));
+  if (inClass.some((identifier) => identifier.name === encoding.suggestion)) return null;
+  const own = inClass.filter((identifier) => identifier.name === key.name && privateOwner(identifier) === body);
+  return (fixer: Rule.RuleFixer) =>
+    own.map((identifier) => {
+      const start = identifier.range[0] + (file.sourceCode.text[identifier.range[0]] === "#" ? 1 : 0);
+      return fixer.replaceTextRange([start, start + key.name.length], encoding.suggestion);
+    });
+}
+
+function within(node: Node, outer: Node): boolean {
+  return node.range[0] >= outer.range[0] && node.range[1] <= outer.range[1];
+}
+
+/** The class body a `#name` refers to: the nearest one around it that declares that name. */
+function privateOwner(identifier: TSESTree.PrivateIdentifier): Node | null {
+  for (let current: Node | undefined = identifier.parent; current; current = current.parent) {
+    if (current.type === "ClassBody" && declaredPrivateNames(current).has(identifier.name)) return current;
+  }
+  return null;
+}
 
 /** The `#private` names a class body declares. */
 function declaredPrivateNames(body: TSESTree.ClassBody): Set<string> {
@@ -125,59 +202,11 @@ function declaredPrivateNames(body: TSESTree.ClassBody): Set<string> {
   return names;
 }
 
-/** The class body a `#name` refers to: the nearest one around it that declares that name. */
-function privateOwner(identifier: TSESTree.PrivateIdentifier): Node | null {
-  for (let current: Node | undefined = identifier.parent; current; current = current.parent) {
-    if (current.type === "ClassBody" && declaredPrivateNames(current).has(identifier.name)) return current;
-  }
-  return null;
-}
-
-function within(node: Node, outer: Node): boolean {
-  return node.range[0] >= outer.range[0] && node.range[1] <= outer.range[1];
-}
-
-/** Renames a `#private` field: each `#name` that refers to it, when the new name appears nowhere in the class. */
-function privateRename(member: TSESTree.PropertyDefinition, encoding: Encoding, privates: TSESTree.PrivateIdentifier[], sourceCode: SourceCode) {
-  const key = member.key as TSESTree.PrivateIdentifier;
-  const body = member.parent as TSESTree.ClassBody;
-  const inClass = privates.filter((identifier) => within(identifier, body));
-  if (inClass.some((identifier) => identifier.name === encoding.suggestion)) return null;
-  const own = inClass.filter((identifier) => identifier.name === key.name && privateOwner(identifier) === body);
-  return (fixer: Rule.RuleFixer) =>
-    own.map((identifier) => {
-      const start = identifier.range[0] + (sourceCode.text[identifier.range[0]] === "#" ? 1 : 0);
-      return fixer.replaceTextRange([start, start + key.name.length], encoding.suggestion);
-    });
-}
-
-function canRenameMember(member: Member, sourceCode: SourceCode, filename: string): member is TSESTree.PropertyDefinition {
-  if (member.type !== "PropertyDefinition" || member.computed || member.key.type !== "PrivateIdentifier") return false;
-  return isEsModuleFile(sourceCode) && !isAmbient(member, filename) && !isAnonymousFunctionOrClass(member.value);
-}
-
-function memberCandidate(member: Member, privates: TSESTree.PrivateIdentifier[], sourceCode: SourceCode, filename: string): Candidate | null {
-  const key = member.key;
-  if (member.computed || (key.type !== "Identifier" && key.type !== "PrivateIdentifier")) return null;
-  const encoding = memberEncoding(key.name);
-  if (!encoding) return null;
-  const newName = encoding.suggestion;
-  const fixable = /^[A-Za-z_$][\w$]*$/.test(newName) && !isEncoded(newName) && canRenameMember(member, sourceCode, filename);
-  return {
-    messageId: encoding.messageId,
-    node: key,
-    data: { name: key.type === "PrivateIdentifier" ? `#${key.name}` : key.name, prefix: encoding.prefix, suggestion: key.type === "PrivateIdentifier" ? `#${newName}` : newName },
-    newName: key.type === "PrivateIdentifier" ? `#${newName}` : newName,
-    rename: fixable ? privateRename(member as TSESTree.PropertyDefinition, encoding, privates, sourceCode) : null,
-  };
-}
-
 function parameterPropertyCandidate(node: TSESTree.TSParameterProperty): Candidate | null {
   const identifier = node.parameter.type === "AssignmentPattern" ? node.parameter.left : node.parameter;
   if (identifier.type !== "Identifier") return null;
   const encoding = memberEncoding(identifier.name);
-  if (!encoding) return null;
-  return { messageId: encoding.messageId, node: identifier, data: { name: identifier.name, prefix: encoding.prefix, suggestion: encoding.suggestion }, newName: encoding.suggestion, rename: null };
+  return encoding ? nameCandidate(identifier, encoding, null) : null;
 }
 
 /**
@@ -217,29 +246,14 @@ const rule = defineRule({
     interfacePrefix: INTERFACE_MESSAGE,
   },
   create(context) {
-    const sourceCode = context.sourceCode;
-    const filename = context.filename;
-    const privates: TSESTree.PrivateIdentifier[] = [];
+    const file: LintedFile = { sourceCode: context.sourceCode, filename: context.filename, privates: [] };
     const members: Member[] = [];
     const parameterProperties: TSESTree.TSParameterProperty[] = [];
-    const collectMember = (node: unknown) => members.push(asTs<Member>(node));
     return {
-      PrivateIdentifier: (node: unknown) => privates.push(asTs<TSESTree.PrivateIdentifier>(node)),
-      PropertyDefinition: collectMember,
-      MethodDefinition: collectMember,
-      AccessorProperty: collectMember,
-      TSAbstractPropertyDefinition: collectMember,
-      TSAbstractMethodDefinition: collectMember,
-      TSAbstractAccessorProperty: collectMember,
+      ...memberCollectors(members),
+      PrivateIdentifier: (node: unknown) => file.privates.push(asTs<TSESTree.PrivateIdentifier>(node)),
       TSParameterProperty: (node: unknown) => parameterProperties.push(asTs<TSESTree.TSParameterProperty>(node)),
-      "Program:exit"() {
-        const candidates = [
-          ...declaredVariables(sourceCode).map((variable) => variableCandidate(variable, sourceCode, filename)),
-          ...members.map((member) => memberCandidate(member, privates, sourceCode, filename)),
-          ...parameterProperties.map(parameterPropertyCandidate),
-        ].filter((candidate): candidate is Candidate => candidate !== null);
-        reportAll(context, candidates);
-      },
+      "Program:exit": () => reportAll(context, allCandidates(file, members, parameterProperties)),
     } as Rule.RuleListener;
   },
 });

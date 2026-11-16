@@ -22,15 +22,14 @@ export default defineTypescriptRule({
     },
   },
   create(context) {
-    const nameOf = (node: TSESTree.Node) => context.sourceCode.getText(node as never);
     return {
       VariableDeclarator(node) {
         const declarator = asTs<TSESTree.VariableDeclarator>(node);
-        if (declarator.definite) context.report({ node, messageId: "variable", data: { name: nameOf(declarator.id) } });
+        if (declarator.definite) context.report({ node, messageId: "variable", data: { name: context.sourceCode.getText(declarator.id as never) } });
       },
       PropertyDefinition(node) {
         const field = asTs<TSESTree.PropertyDefinition>(node);
-        if (field.definite && !field.declare) context.report({ node, messageId: "field", data: { name: nameOf(field.key) } });
+        if (field.definite && !field.declare) context.report({ node, messageId: "field", data: { name: context.sourceCode.getText(field.key as never) } });
       },
     };
   },

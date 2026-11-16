@@ -3,7 +3,7 @@ import { runTypedRuleTests } from "../testing/run-typed-rule-tests.ts";
 import rule from "./no-command-query-mix.ts";
 
 const attributes = "const attributes: Record<string, string> = {};";
-const bookSet = `${attributes}\nfunction set(attribute: string, value: string): boolean { if (attribute in attributes) return false; attributes[attribute] = value; return true; }`;
+const bookSetFunction = `${attributes}\nfunction set(attribute: string, value: string): boolean { if (attribute in attributes) return false; attributes[attribute] = value; return true; }`;
 
 const storeClass = [
   "class Store {",
@@ -21,7 +21,7 @@ runRuleTests("no-command-query-mix", rule, {
     },
     {
       name: "a command called as a statement",
-      code: `${bookSet}\nset("username", "unclebob");`,
+      code: `${bookSetFunction}\nset("username", "unclebob");`,
     },
     {
       name: "regression: a getOrCreate method returns the value, not a boolean",
@@ -72,13 +72,13 @@ runRuleTests("no-command-query-mix", rule, {
     },
     {
       name: "a call that is only part of the condition",
-      code: `${bookSet}\nif (set("a", "b") && ready) {}`,
+      code: `${bookSetFunction}\nif (set("a", "b") && ready) {}`,
     },
   ],
   invalid: [
     {
       name: "the book's example: `set` writes an attribute and answers whether it existed",
-      code: `${bookSet}\nif (set("username", "unclebob")) {}`,
+      code: `${bookSetFunction}\nif (set("username", "unclebob")) {}`,
       errors: [{ messageId: "commandAsQuery", line: 3, data: { callee: "set", state: "attributes[attribute]" } }],
       output: null,
     },
@@ -164,7 +164,7 @@ runTypedRuleTests("no-command-query-mix", rule, {
     },
     {
       name: "the syntax half still works with type information",
-      code: `${bookSet}\nif (set("username", "unclebob")) {}`,
+      code: `${bookSetFunction}\nif (set("username", "unclebob")) {}`,
       errors: 1,
     },
   ],

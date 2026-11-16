@@ -17,6 +17,11 @@ function licenceHeader(comments: Comment[], firstCodeStart: number): Comment | u
   return first && first.range![1] <= firstCodeStart && LICENCE.test(first.value) ? first : undefined;
 }
 
+/** Whether the rule leaves the comment alone: a JSDoc comment, a tool directive, or one an `allow` pattern matches. */
+function isKept(comment: Comment, allow: RegExp[]): boolean {
+  return isDocComment(comment) || isDirectiveComment(comment) || allow.some((pattern) => pattern.test(comment.value));
+}
+
 export default defineAiRule<[Options]>({
   name: "ai-no-inline-comments",
   type: "suggestion",
@@ -43,15 +48,12 @@ export default defineAiRule<[Options]>({
   create(context) {
     const sourceCode = context.sourceCode;
     const allow = ((context.options[0] as Options | undefined)?.allow ?? []).map((pattern) => new RegExp(pattern, "u"));
-    const isAllowed = (comment: Comment) => allow.some((pattern) => pattern.test(comment.value));
     return {
       Program(program) {
         const comments = sourceComments(sourceCode);
         const header = licenceHeader(comments, program.body[0]?.range?.[0] ?? sourceCode.text.length);
-        for (const comment of comments) {
-          if (comment === header || isDocComment(comment) || isDirectiveComment(comment) || isAllowed(comment)) continue;
-          context.report({ loc: comment.loc!, messageId: "comment", data: { text: shortQuote(comment.value) } });
-        }
+        const narrating = comments.filter((comment) => comment !== header && !isKept(comment, allow));
+        for (const comment of narrating) context.report({ loc: comment.loc!, messageId: "comment", data: { text: shortQuote(comment.value) } });
       },
     };
   },

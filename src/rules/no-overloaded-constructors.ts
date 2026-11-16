@@ -1,5 +1,18 @@
+import type { Rule } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs, type TSESTree } from "../lib/ast.ts";
+
+/** Reports a class with two or more constructor signatures, at the second one. */
+function reportOverloads(context: Rule.RuleContext, body: TSESTree.ClassBody): void {
+  const signatures = body.body.filter(isConstructorSignature);
+  if (signatures.length < 2) return;
+  const owner = body.parent as TSESTree.ClassDeclaration | TSESTree.ClassExpression;
+  context.report({
+    node: signatures[1] as never,
+    messageId: "overloaded",
+    data: { name: owner.id?.name ?? "(anonymous)", count: String(signatures.length) },
+  });
+}
 
 function isConstructorSignature(member: TSESTree.ClassElement): boolean {
   return (member.type === "TSAbstractMethodDefinition" || member.type === "MethodDefinition") && member.kind === "constructor" && member.value.type === "TSEmptyBodyFunctionExpression";
@@ -23,15 +36,7 @@ export default defineRule({
   create(context) {
     return {
       ClassBody(node) {
-        const body = asTs<TSESTree.ClassBody>(node);
-        const signatures = body.body.filter(isConstructorSignature);
-        if (signatures.length < 2) return;
-        const owner = body.parent as TSESTree.ClassDeclaration | TSESTree.ClassExpression;
-        context.report({
-          node: signatures[1] as never,
-          messageId: "overloaded",
-          data: { name: owner.id?.name ?? "(anonymous)", count: String(signatures.length) },
-        });
+        reportOverloads(context, asTs<TSESTree.ClassBody>(node));
       },
     };
   },

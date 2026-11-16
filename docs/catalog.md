@@ -197,7 +197,7 @@ The README will not say which projects this replaces. The pull request body reco
 - **Chapter:** 4 Meaningful Names § Make Meaningful Distinctions. **bookCTX:** chunk 8
 - **Quote:** "Noise words are redundant. The word *variable* should never appear in a variable name. The word *table* should never appear in a table name. How is `NameString` better than `Name` ?"
 - **Class:** syntax.
-- **Rule:** `no-noise-words`. It reports a variable, parameter or property whose name contains the word `variable`, or ends in `String` or `Object` when the declared type annotation is that type. Class names are covered by NAM-11 in the same rule. The word *table* is left out because the book means database tables, which have no syntax here.
+- **Rule:** `no-noise-words`. It reports a variable, parameter or property whose name ends in the word `variable` after another word (`nameVariable`), or ends in `String` or `Object` when the declared type annotation is that type. `variable` alone or inside a longer name (`variableWord`) is not reported: in code about code it names the thing itself, as chapter 4 § Use Solution Domain Names allows ("go ahead and use computer science (CS) terms"), and like `string: string` there is nothing to drop. Found by linting this plugin with its own rules, where ESLint's scope `Variable` is the subject. Class names are covered by NAM-11 in the same rule. The word *table* is left out because the book means database tables, which have no syntax here.
 - **Fix:** none. Removing the word can collide with another name, and choosing a different one needs the meaning.
 
 #### NAM-09 · Avoid encodings: no member prefixes

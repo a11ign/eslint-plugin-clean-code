@@ -8,8 +8,39 @@ const DEFAULT_CHAIN_LENGTH = 2;
 const GETTER = /^get[A-Z]/;
 const GET_OR = /^getOr[A-Z]/;
 
+const TYPE_WRAPPERS = new Set(["TSNonNullExpression", "TSAsExpression", "TSTypeAssertion", "TSSatisfiesExpression"]);
+
 interface Options {
   chainLength?: number;
+}
+
+/** The getter call made on the result of `call`, which continues the chain. */
+function nextGetter(call: TSESTree.CallExpression): TSESTree.CallExpression | null {
+  const outer = outermostTypeWrapper(call);
+  const member = outer.parent;
+  if (member?.type !== "MemberExpression" || member.object !== outer) return null;
+  const nextCall = member.parent;
+  return nextCall?.type === "CallExpression" && nextCall.callee === member && getterName(nextCall) ? nextCall : null;
+}
+
+/** `node`, or the outermost of the type-only wrappers around it (`x!`, `x as T`, `<T>x`, `x satisfies T`). */
+function outermostTypeWrapper(node: Node): Node {
+  let current = node;
+  while (current.parent && TYPE_WRAPPERS.has(current.parent.type)) current = current.parent;
+  return current;
+}
+
+/** The names of the getter calls of the chain that ends in `call`, first to last: `getB()`, `getC()`. */
+function chainNames(call: TSESTree.CallExpression): string[] {
+  const names: string[] = [];
+  for (let link: TSESTree.CallExpression | null = call; link; link = previousGetter(link)) names.unshift(`${getterName(link)}()`);
+  return names;
+}
+
+/** The getter call whose result `call` is made on: `a.getB()` for `a.getB().getC()`. */
+function previousGetter(call: TSESTree.CallExpression): TSESTree.CallExpression | null {
+  const object = unwrapTs((call.callee as TSESTree.MemberExpression).object);
+  return getterName(object) ? (object as TSESTree.CallExpression) : null;
 }
 
 /** The getter name of a call such as `x.getOptions()` with no arguments, or null when the call is not a getter call. */
@@ -19,25 +50,6 @@ function getterName(node: Node): string | null {
   if (callee.type !== "MemberExpression" || callee.computed || callee.property.type !== "Identifier") return null;
   const name = callee.property.name;
   return GETTER.test(name) && !GET_OR.test(name) ? name : null;
-}
-
-/** The getter call whose result `call` is made on: `a.getB()` for `a.getB().getC()`. */
-function previousGetter(call: TSESTree.CallExpression): TSESTree.CallExpression | null {
-  const object = unwrapTs((call.callee as TSESTree.MemberExpression).object);
-  return getterName(object) ? (object as TSESTree.CallExpression) : null;
-}
-
-/** The getter call made on the result of `call`, which continues the chain. */
-function nextGetter(call: TSESTree.CallExpression): TSESTree.CallExpression | null {
-  let parent: Node | undefined = call.parent;
-  let child: Node = call;
-  while (parent && (parent.type === "TSNonNullExpression" || parent.type === "TSAsExpression" || parent.type === "TSTypeAssertion" || parent.type === "TSSatisfiesExpression")) {
-    child = parent;
-    parent = parent.parent;
-  }
-  if (parent?.type !== "MemberExpression" || parent.object !== child) return null;
-  const call2 = parent.parent;
-  return call2?.type === "CallExpression" && call2.callee === parent && getterName(call2) ? call2 : null;
 }
 
 export default defineRule<[Options]>({
@@ -72,10 +84,8 @@ export default defineRule<[Options]>({
       CallExpression(node) {
         const call = asTs<TSESTree.CallExpression>(node);
         if (!getterName(call) || nextGetter(call)) return;
-        const names: string[] = [];
-        for (let link: TSESTree.CallExpression | null = call; link; link = previousGetter(link)) names.unshift(`${getterName(link)}()`);
-        if (names.length < chainLength) return;
-        context.report({ node, messageId: "getterChain", data: { chain: names.join("."), count: String(names.length) } });
+        const names = chainNames(call);
+        if (names.length >= chainLength) context.report({ node, messageId: "getterChain", data: { chain: names.join("."), count: String(names.length) } });
       },
     };
   },

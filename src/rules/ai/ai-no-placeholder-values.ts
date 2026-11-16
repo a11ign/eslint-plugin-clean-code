@@ -1,3 +1,4 @@
+import type { Rule } from "eslint";
 import { defineAiRule } from "../../lib/define-rule.ts";
 import { asTs, type TSESTree } from "../../lib/ast.ts";
 import { shortQuote } from "../../lib/quote.ts";
@@ -22,10 +23,26 @@ interface Options {
 function isName(node: TSESTree.Node): boolean {
   const parent = node.parent;
   if (!parent) return false;
-  if ((parent.type === "Property" || parent.type === "PropertyDefinition" || parent.type === "MethodDefinition") && parent.key === node) return true;
+  if (isKeyed(parent) && parent.key === node) return true;
   if (parent.type === "MemberExpression" && parent.property === node) return true;
   if (parent.type === "TSLiteralType") return true;
-  return (parent.type === "ImportDeclaration" || parent.type === "ExportNamedDeclaration" || parent.type === "ExportAllDeclaration" || parent.type === "ImportExpression") && parent.source === node;
+  return hasModuleSource(parent) && parent.source === node;
+}
+
+/** The node types whose `key` names a property or method. */
+const KEYED_TYPES: ReadonlySet<string> = new Set(["Property", "PropertyDefinition", "MethodDefinition"]);
+
+function isKeyed(node: TSESTree.Node): node is TSESTree.Property | TSESTree.PropertyDefinition | TSESTree.MethodDefinition {
+  return KEYED_TYPES.has(node.type);
+}
+
+/** The node types whose `source` is a module specifier. */
+const MODULE_SOURCE_TYPES: ReadonlySet<string> = new Set(["ImportDeclaration", "ExportNamedDeclaration", "ExportAllDeclaration", "ImportExpression"]);
+
+type ModuleSourceNode = TSESTree.ImportDeclaration | TSESTree.ExportNamedDeclaration | TSESTree.ExportAllDeclaration | TSESTree.ImportExpression;
+
+function hasModuleSource(node: TSESTree.Node): node is ModuleSourceNode {
+  return MODULE_SOURCE_TYPES.has(node.type);
 }
 
 export default defineAiRule<[Options]>({
@@ -38,7 +55,7 @@ export default defineAiRule<[Options]>({
     harm: "a placeholder looks like a working value, so the code runs and fails later, at the call that sends it, instead of at startup.",
   },
   messages: {
-    placeholder: {
+    placeholderValue: {
       problem: "\"{{text}}\" is a placeholder, not a value.",
       refactor: "read the value from configuration or the environment and fail at startup when it is missing; a sample value belongs in a doc file or an `.env.example`.",
     },
@@ -54,19 +71,23 @@ export default defineAiRule<[Options]>({
   create(context) {
     const extra = (context.options[0] as Options | undefined)?.patterns ?? [];
     const patterns = [...DEFAULT_PATTERNS, ...extra].map((pattern) => new RegExp(pattern, "iu"));
-    function check(node: TSESTree.Node, text: string) {
-      if (isName(node) || !patterns.some((pattern) => pattern.test(text))) return;
-      context.report({ node: node as never, messageId: "placeholder", data: { text: shortQuote(text) } });
-    }
-    return {
-      Literal(node) {
-        const literal = asTs<TSESTree.Literal>(node);
-        if (typeof literal.value === "string") check(literal, literal.value);
-      },
-      TemplateLiteral(node) {
-        const template = asTs<TSESTree.TemplateLiteral>(node);
-        if (template.expressions.length === 0) check(template, template.quasis[0].value.cooked ?? "");
-      },
-    };
+    const isPlaceholder = (text: string) => patterns.some((pattern) => pattern.test(text));
+    return stringVisitors((node, text) => {
+      if (!isName(node) && isPlaceholder(text)) context.report({ node: node as never, messageId: "placeholderValue", data: { text: shortQuote(text) } });
+    });
   },
 });
+
+/** Hands each string literal, and each template literal with no `${…}` parts, to `check` with its text. */
+function stringVisitors(check: (node: TSESTree.Node, text: string) => void): Rule.RuleListener {
+  return {
+    Literal(node) {
+      const literal = asTs<TSESTree.Literal>(node);
+      if (typeof literal.value === "string") check(literal, literal.value);
+    },
+    TemplateLiteral(node) {
+      const template = asTs<TSESTree.TemplateLiteral>(node);
+      if (template.expressions.length === 0) check(template, template.quasis[0].value.cooked ?? "");
+    },
+  };
+}

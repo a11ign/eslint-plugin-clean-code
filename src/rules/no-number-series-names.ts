@@ -1,3 +1,4 @@
+import type { Rule } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs } from "../lib/ast.ts";
 import { words } from "../lib/names.ts";
@@ -18,14 +19,22 @@ const TERMS = new Set([
 
 const VERSIONED_TERM = /^(es|ecma|es20)\d+$/;
 
-/** The stem of a number-series name (`list` for `list1` and `list_2`), or `null` when the digits are part of a term. */
-function seriesStem(name: string): string | null {
-  const match = NUMBERED.exec(name);
-  if (!match) return null;
-  const stem = match[1];
-  const last = words(name).at(-1) ?? "";
-  if (TERMS.has(last) || VERSIONED_TERM.test(last)) return null;
-  return stem.length > 1 ? stem : null;
+/** Reports each name of each number series among the bindings of one scope. */
+function reportSeriesIn(context: Rule.RuleContext, scopeVariables: VariableT[]): void {
+  const variables = scopeVariables.filter((variable) => variable.defs.length > 0);
+  const names = new Set(variables.map((variable) => variable.name));
+  for (const [stem, numbered] of seriesIn(variables)) {
+    const series = [...(names.has(stem) ? [stem] : []), ...numbered.map((variable) => variable.name)];
+    reportSeries(context, numbered, series);
+  }
+}
+
+/** Reports each numbered name, listing the other names of its series. */
+function reportSeries(context: Rule.RuleContext, numbered: VariableT[], series: string[]): void {
+  for (const variable of numbered) {
+    const others = series.filter((name) => name !== variable.name).map((name) => `\`${name}\``).join(", ");
+    context.report({ node: asTs(variable.defs[0].name) as never, messageId: "series", data: { name: variable.name, others } });
+  }
 }
 
 /** The series in one scope: each stem with the numbered names, and the bare stem if it is declared too. */
@@ -40,6 +49,16 @@ function seriesIn(variables: VariableT[]): Map<string, VariableT[]> {
     if (numbered.length + (names.has(stem) ? 1 : 0) < 2) byStem.delete(stem);
   }
   return byStem;
+}
+
+/** The stem of a number-series name (`list` for `list1` and `list_2`), or `null` when the digits are part of a term. */
+function seriesStem(name: string): string | null {
+  const match = NUMBERED.exec(name);
+  if (!match) return null;
+  const stem = match[1];
+  const last = words(name).at(-1) ?? "";
+  if (TERMS.has(last) || VERSIONED_TERM.test(last)) return null;
+  return stem.length > 1 ? stem : null;
 }
 
 export default defineRule({
@@ -60,17 +79,7 @@ export default defineRule({
   create(context) {
     return {
       "Program:exit"() {
-        for (const scope of allScopes(context.sourceCode)) {
-          const variables = scope.variables.filter((variable) => variable.defs.length > 0);
-          const names = new Set(variables.map((variable) => variable.name));
-          for (const [stem, numbered] of seriesIn(variables)) {
-            const series = [...(names.has(stem) ? [stem] : []), ...numbered.map((variable) => variable.name)];
-            for (const variable of numbered) {
-              const others = series.filter((name) => name !== variable.name).map((name) => `\`${name}\``).join(", ");
-              context.report({ node: asTs(variable.defs[0].name) as never, messageId: "series", data: { name: variable.name, others } });
-            }
-          }
-        }
+        for (const scope of allScopes(context.sourceCode)) reportSeriesIn(context, scope.variables);
       },
     };
   },

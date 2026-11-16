@@ -1,9 +1,20 @@
+import type { SourceCode } from "eslint";
 import { defineNodeRule } from "../../lib/define-rule.ts";
 import { asTs, type TSESTree } from "../../lib/ast.ts";
 import { enclosingFunctions, functionNamed, isMemberNamed, isMethodCall } from "./node-calls.ts";
 
 const PROCESS = new Set(["process"]);
 const NEXT_TICK = new Set(["nextTick"]);
+
+/** The name of the function a `process.nextTick(…)` call schedules from inside itself; `null` when the call is not that. */
+function recursiveName(sourceCode: SourceCode, call: TSESTree.CallExpression): string | null {
+  const [argument] = call.arguments;
+  if (!argument || !isMethodCall(call, PROCESS, NEXT_TICK)) return null;
+  if (isMemberNamed(argument, "arguments", "callee")) return "arguments.callee";
+  if (argument.type !== "Identifier") return null;
+  const scheduled = functionNamed(sourceCode, argument);
+  return scheduled && enclosingFunctions(call).includes(scheduled) ? argument.name : null;
+}
 
 export default defineNodeRule({
   name: "node-no-recursive-next-tick",
@@ -24,16 +35,8 @@ export default defineNodeRule({
   create(context) {
     return {
       CallExpression(node) {
-        const call = asTs<TSESTree.CallExpression>(node);
-        const [argument] = call.arguments;
-        if (!argument || !isMethodCall(call, PROCESS, NEXT_TICK)) return;
-        if (isMemberNamed(argument, "arguments", "callee")) {
-          context.report({ node, messageId: "recursive", data: { name: "arguments.callee" } });
-          return;
-        }
-        if (argument.type !== "Identifier") return;
-        const scheduled = functionNamed(context.sourceCode, argument);
-        if (scheduled && enclosingFunctions(call).includes(scheduled)) context.report({ node, messageId: "recursive", data: { name: argument.name } });
+        const name = recursiveName(context.sourceCode, asTs<TSESTree.CallExpression>(node));
+        if (name !== null) context.report({ node, messageId: "recursive", data: { name } });
       },
     };
   },
