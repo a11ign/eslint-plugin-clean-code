@@ -60,15 +60,25 @@ function noiseOf(name: string | null, annotated: Node): Noise | null {
   return name ? nameNoise(name, annotated) : null;
 }
 
-/** The noise in a variable, parameter or property name: the word `variable`, or a suffix repeating its declared type. */
+/**
+ * The noise in a variable, parameter or property name: the word `variable` added at the end of a name that already says what
+ * the value is (`nameVariable`), or a suffix repeating its declared type. `variable` alone, or as a word inside a longer name
+ * (`variableWord`, `VARIABLE_DEFS`), names the thing itself, which in code about code is a variable: Clean Code's "Use Solution
+ * Domain Names" lets a CS term stand, and like `string: string` there is nothing to drop.
+ */
 function nameNoise(name: string, annotated: Node): { messageId: string; data: Record<string, string> } | null {
   const parts = words(name);
-  if (parts.includes("variable")) return { messageId: "variableWord", data: { name } };
+  if (endsInNoiseVariable(parts)) return { messageId: "variableWord", data: { name } };
   const suffix = parts.length > 1 ? TYPE_SUFFIX[parts[parts.length - 1]] : undefined;
   const type = annotationOf(annotated);
   if (!suffix || !type) return null;
   const repeats = type.type === suffix.keyword || (type.type === "TSTypeReference" && type.typeName.type === "Identifier" && type.typeName.name === suffix.wrapper);
   return repeats ? { messageId: "typeSuffix", data: { name, suffix: suffix.suffix } } : null;
+}
+
+/** Whether `variable` is the last word of a name that has another word before it. */
+function endsInNoiseVariable(parts: string[]): boolean {
+  return parts.length > 1 && parts[parts.length - 1] === "variable";
 }
 
 function annotationOf(node: Node): TSESTree.TypeNode | null {
@@ -98,7 +108,7 @@ function reportVariableNoise(context: Rule.RuleContext): void {
 const rule = defineRule({
   name: "no-noise-words",
   type: "suggestion",
-  description: "Leave noise words out of names: `variable`, a suffix that repeats the declared type, and `Manager`, `Processor`, `Data` or `Info` in class names.",
+  description: "Leave noise words out of names: a trailing `variable`, a suffix that repeats the declared type, and `Manager`, `Processor`, `Data` or `Info` in class names.",
   book: {
     entry: "NAM-08",
     chapter: "4 Meaningful Names § Make Meaningful Distinctions",
@@ -106,7 +116,7 @@ const rule = defineRule({
   },
   messages: {
     variableWord: {
-      problem: "`{{name}}` has the noise word `variable` in its name.",
+      problem: "`{{name}}` ends in the noise word `variable`.",
       refactor: "drop the word and name the binding for what its value means.",
     },
     typeSuffix: {
