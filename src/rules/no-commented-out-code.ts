@@ -24,6 +24,10 @@ const PROSE_START = /^\s*(?:e\.g\.|i\.e\.|eg:|ex:|example:|usage:)/i;
 
 const COMPARISON = new Set(["==", "!=", "===", "!==", "<", ">", "<=", ">="]);
 
+function isCommentedOutCode(group: Comment[]): boolean {
+  return !isSkipped(group[0]) && isCode(groupText(group));
+}
+
 /** Whether `text` is JavaScript statements with code syntax, and does not start with a label (so `Note: call(x)` is prose). */
 function isCode(text: string): boolean {
   if (text.trim() === "" || PROSE_START.test(text)) return false;
@@ -49,16 +53,24 @@ function hasCall(node: unknown): boolean {
   return Object.entries(node).some(([key, value]) => key !== "tokens" && key !== "loc" && hasCall(value));
 }
 
-function parse(text: string): { program: SyntaxNode; tokens: espree.EspreeTokens } | null {
+type Parsed = { program: SyntaxNode; tokens: espree.EspreeTokens };
+
+function parse(text: string): Parsed | null {
   for (const options of PARSE_ATTEMPTS) {
-    try {
-      const program = espree.parse(text, { ...options, tokens: true }) as unknown as SyntaxNode & { tokens: espree.EspreeTokens };
-      return { program, tokens: program.tokens };
-    } catch {
-      // Not code under these options; try the next ones.
-    }
+    const parsed = parseUnder(options, text);
+    if (parsed) return parsed;
   }
   return null;
+}
+
+/** `text` parsed under `options`, or null when it is not code under these options. */
+function parseUnder(options: espree.Options, text: string): Parsed | null {
+  try {
+    const program = espree.parse(text, { ...options, tokens: true }) as unknown as SyntaxNode & { tokens: espree.EspreeTokens };
+    return { program, tokens: program.tokens };
+  } catch {
+    return null;
+  }
 }
 
 /** The text of a group of comments as code would read it: a block's `*` decoration taken off, a run's lines joined. */
@@ -94,13 +106,8 @@ export default defineRule({
     const sourceCode = context.sourceCode;
     return {
       Program() {
-        for (const group of commentGroups(sourceCode, isSkipped)) {
-          if (isSkipped(group[0]) || !isCode(groupText(group))) continue;
-          context.report({
-            loc: groupLocation(group),
-            messageId: "commentedOutCode",
-            fix: (fixer) => removeGroup(fixer, sourceCode, group),
-          });
+        for (const group of commentGroups(sourceCode, isSkipped).filter(isCommentedOutCode)) {
+          context.report({ loc: groupLocation(group), messageId: "commentedOutCode", fix: (fixer) => removeGroup(fixer, sourceCode, group) });
         }
       },
     };

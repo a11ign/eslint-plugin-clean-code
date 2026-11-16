@@ -1,9 +1,13 @@
 import { defineAiRule } from "../../lib/define-rule.ts";
+import type { Rule, SourceCode } from "eslint";
 import { asTs, type TSESTree } from "../../lib/ast.ts";
 
+type Range = readonly [number, number];
+
 /**
- * One emoji as a reader sees it: a character shown as an emoji by default (`✅`, `🚀`), or a pictographic character asked to
- * show as one with U+FE0F (`⚠️`), a keycap (`1️⃣`) or a flag, with any skin-tone modifiers and `‍`-joined parts after it.
+ * One emoji as a reader sees it: a character shown as an emoji by default (`\u{2705}`, `\u{1F680}`), or a pictographic
+ * character asked to show as one with U+FE0F (`\u{26A0}\u{FE0F}`), a keycap (`1\u{FE0F}\u{20E3}`) or a flag, with any
+ * skin-tone modifiers and U+200D-joined parts after it. Emoji are written here as escapes so this file passes its own rule.
  * A pictographic character with no U+FE0F (`©`, `™`, `↔`, `✔`) shows as text, and arrows and marks such as `→` and `✓`
  * are not pictographic at all, so none of them is reported.
  */
@@ -12,11 +16,6 @@ const EMOJI = /(?:\p{RI}\p{RI}|[#*0-9]️?⃣|\p{Emoji_Presentation}|\p{Extended
 interface Options {
   allow?: string[];
   checkJsxText?: boolean;
-}
-
-/** An emoji without its U+FE0F, so an `allow` entry matches it written either way. */
-function bare(emoji: string): string {
-  return emoji.replaceAll("️", "");
 }
 
 export default defineAiRule<[Options]>({
@@ -46,32 +45,45 @@ export default defineAiRule<[Options]>({
   ],
   defaultOptions: [{ allow: [], checkJsxText: false }],
   create(context) {
-    const sourceCode = context.sourceCode;
     const options = (context.options[0] as Options | undefined) ?? {};
     const allowed = new Set((options.allow ?? []).map(bare));
-    const checkNode = (node: unknown) => {
-      const [start, end] = asTs(node).range;
-      checkRange(start, end);
-    };
-    /** Reports each emoji in the source text between `start` and `end`. */
-    function checkRange(start: number, end: number) {
-      for (const match of sourceCode.text.slice(start, end).matchAll(EMOJI)) {
-        if (allowed.has(bare(match[0]))) continue;
-        const offset = start + match.index;
-        const loc = { start: sourceCode.getLocFromIndex(offset), end: sourceCode.getLocFromIndex(offset + match[0].length) };
-        context.report({ loc, messageId: "emoji", data: { emoji: match[0] } });
-      }
-    }
-
-    return {
-      Program() {
-        for (const comment of sourceCode.getAllComments()) checkRange(comment.range![0], comment.range![1]);
-      },
-      Literal(node) {
-        if (typeof asTs<TSESTree.Literal>(node).value === "string") checkNode(node);
-      },
-      TemplateElement: checkNode,
-      ...(options.checkJsxText ? { JSXText: checkNode } : {}),
-    };
+    return commentAndStringVisitors(context.sourceCode, (range) => reportEmojiIn(context, allowed, range), options);
   },
 });
+
+/**
+ * Hands the range of every comment, string literal and template literal part (and JSX text, with `checkJsxText`) to
+ * `checkRange`.
+ */
+function commentAndStringVisitors(sourceCode: SourceCode, checkRange: (range: Range) => void, options: Options): Rule.RuleListener {
+  const checkNode = (node: unknown) => checkRange(asTs(node).range);
+  return {
+    Program: () => sourceCode.getAllComments().forEach((comment) => checkRange(comment.range!)),
+    Literal(node) {
+      if (typeof asTs<TSESTree.Literal>(node).value === "string") checkNode(node);
+    },
+    TemplateElement: checkNode,
+    ...(options.checkJsxText ? { JSXText: checkNode } : {}),
+  };
+}
+
+/** Reports each emoji in the source text in `range`, except those `allowed` lists. */
+function reportEmojiIn(context: Rule.RuleContext, allowed: ReadonlySet<string>, range: Range) {
+  const [start, end] = range;
+  const matches = context.sourceCode.text.slice(start, end).matchAll(EMOJI);
+  for (const match of matches) {
+    if (!allowed.has(bare(match[0]))) reportEmojiAt(context, start + match.index, match[0]);
+  }
+}
+
+/** An emoji without its U+FE0F, so an `allow` entry matches it written either way. */
+function bare(emoji: string): string {
+  return emoji.replaceAll("️", "");
+}
+
+/** Reports `emoji`, which starts at `offset` in the source text. */
+function reportEmojiAt(context: Rule.RuleContext, offset: number, emoji: string) {
+  const sourceCode = context.sourceCode;
+  const loc = { start: sourceCode.getLocFromIndex(offset), end: sourceCode.getLocFromIndex(offset + emoji.length) };
+  context.report({ loc, messageId: "emoji", data: { emoji } });
+}

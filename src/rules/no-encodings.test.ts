@@ -1,8 +1,47 @@
-import { runRuleTests } from "../testing/run-rule-tests.ts";
+import { runRuleTests, type InvalidCase } from "../testing/run-rule-tests.ts";
 import rule from "./no-encodings.ts";
 
 const numbers = "[0, 1, -1, 2.5, NaN].map((v) => f(v))";
 const strings = "['', 'a', 'example.com', ' '].map((v) => f(v))";
+
+/** No fix: the conditions of NAM-09 and NAM-10. */
+const NO_FIX_CASES: InvalidCase[] = [
+  { name: "a reference is a shorthand property", code: "export function f() {\n  const m_count = 1;\n  return { m_count };\n}", output: null, errors: 1 },
+  { name: "the binding is a shorthand destructuring key", code: "export function f(o) {\n  const { m_count } = o;\n  return m_count;\n}", output: null, errors: 1 },
+  { name: "a destructuring assignment writes it as a shorthand key", code: "export function f(o) {\n  let m_count;\n  ({ m_count = 0 } = o);\n  return m_count;\n}", output: null, errors: 1 },
+  { name: "a function, whose `name` would change", code: "function m_helper() { return 1; }\nexport const h = m_helper;", output: null, errors: 1 },
+  { name: "a class, whose `name` would change", code: "class strThing {}\nexport const t = strThing;", output: null, errors: 1 },
+  { name: "a variable holding an anonymous function, which takes the variable's name", code: "const m_run = () => 1;\nexport const r = m_run;", output: null, errors: 1 },
+  { name: "an anonymous function assigned later also takes the name", code: "export function f() {\n  let m_run;\n  m_run = function () {};\n  return m_run.name;\n}", output: null, errors: 1 },
+  { name: "the new name is declared in the same scope", code: "export function f() {\n  const name = 1;\n  const strName = 'a';\n  return name + strName;\n}", output: null, errors: 1 },
+  { name: "the new name is declared in a scope inside", code: "export function f(strName) {\n  return [1].map((name) => name + strName);\n}", output: null, errors: 1 },
+  { name: "the new name is declared in a scope around", code: "const url = 1;\nexport function f() {\n  const strURL = 'x';\n  return strURL + url;\n}", output: null, errors: 1 },
+  { name: "the new name is referenced as an undeclared global", code: "export function f() {\n  const strName = 'a';\n  return name + strName;\n}", output: null, errors: 1 },
+  { name: "the new name is a standard global", code: "interface IPromise {\n  then(): void;\n}\nexport const p: IPromise = { then() {} };", output: null, errors: [{ messageId: "interfacePrefix" }] },
+  { name: "two `#private` renames would give the same name", code: "export class A {\n  #m_x = 1;\n  #strX = 'a';\n  both() { return [this.#m_x, this.#strX]; }\n}", output: null, errors: 2 },
+  { name: "two renames would give the same name", code: "export function f() {\n  const m_name = 1;\n  const strName = 'a';\n  return [m_name, strName];\n}", output: null, errors: 2 },
+  { name: "the new name is a reserved word", code: "export function f() {\n  const m_class = 1;\n  return m_class;\n}", output: null, errors: 1 },
+  { name: "the new name still has a prefix", code: "export function f() {\n  const m_m_x = 1;\n  return m_m_x;\n}", output: null, errors: 1 },
+  { name: "code in scope calls `eval`, which can read the name", code: "export function f() {\n  const m_x = 1;\n  return eval('m_x');\n}", output: null, errors: 1 },
+  { name: "an imported binding", code: 'import { m_value } from "./x";\nexport const v = m_value;', output: null, errors: 1 },
+  { name: "an exported declaration", code: "export const m_value = 1;", output: null, errors: 1 },
+  { name: "a binding exported by name", code: "const strName = 'a';\nexport { strName };", output: null, errors: 1 },
+  { name: "an exported interface", code: "export interface IShape {\n  area(): number;\n}", output: null, errors: [{ messageId: "interfacePrefix" }] },
+  { name: "an interface exported by name", code: "interface IShape {\n  area(): number;\n}\nexport type { IShape };", output: null, errors: [{ messageId: "interfacePrefix" }] },
+  { name: "a TypeScript `private` member, an ordinary property at run time", code: "export class A {\n  private m_count = 0;\n  get() { return this.m_count; }\n}", output: null, errors: 1 },
+  { name: "a public field", code: "export class A {\n  strName = 'a';\n}", output: null, errors: 1 },
+  { name: "a parameter property", code: "export class A {\n  constructor(private m_count: number) {}\n}", output: null, errors: 1 },
+  { name: "a `#private` method, a function whose `name` would change", code: "export class A {\n  #m_run() { return 1; }\n  run() { return this.#m_run(); }\n}", output: null, errors: 1 },
+  { name: "a `#private` field holding an anonymous function", code: "export class A {\n  #m_run = () => 1;\n  run() { return this.#m_run(); }\n}", output: null, errors: 1 },
+  { name: "the new `#name` is already used in the class", code: "export class A {\n  #m_x = 1;\n  #x = 2;\n  sum() { return this.#m_x + this.#x; }\n}", output: null, errors: 1 },
+  { name: "a parameter with a default value is not a plain identifier", code: "export function f(strName = 'a') {\n  return strName;\n}", output: null, errors: 1 },
+  { name: "a catch parameter is not in the list the fix applies to", code: "export function f() {\n  try { return 1; } catch (m_error) { return m_error; }\n}", output: null, errors: 1 },
+  { name: "a script file", sourceType: "script", filename: "file.js", code: "function f() {\n  var m_x = 1;\n  return m_x;\n}", output: null, errors: 1 },
+  { name: "a file with no `import` or `export`, which TypeScript treats as a script", code: "function run() {\n  const m_x = 1;\n  return m_x;\n}\ninterface IShape { a: 1 }", output: null, errors: 2 },
+  { name: "a `declare` declaration", code: "declare const m_value: number;\nexport const v = m_value;", output: null, errors: 1 },
+  { name: "an interface in `declare global`", code: "declare global {\n  interface IWindowState { open: boolean }\n}\nexport {};", output: null, errors: [{ messageId: "interfacePrefix" }] },
+  { name: "a declaration in `declare module`", code: 'declare module "x" {\n  interface IShape { a: 1 }\n}\nexport {};', output: null, errors: [{ messageId: "interfacePrefix" }] },
+];
 
 runRuleTests("no-encodings", rule, {
   valid: [
@@ -98,42 +137,6 @@ runRuleTests("no-encodings", rule, {
       errors: 2,
       behaviour: "[f(1), g('b'), f(undefined), g(null)]",
     },
-
-    // No fix: the conditions of NAM-09 and NAM-10.
-    { name: "a reference is a shorthand property", code: "export function f() {\n  const m_count = 1;\n  return { m_count };\n}", output: null, errors: 1 },
-    { name: "the binding is a shorthand destructuring key", code: "export function f(o) {\n  const { m_count } = o;\n  return m_count;\n}", output: null, errors: 1 },
-    { name: "a destructuring assignment writes it as a shorthand key", code: "export function f(o) {\n  let m_count;\n  ({ m_count = 0 } = o);\n  return m_count;\n}", output: null, errors: 1 },
-    { name: "a function, whose `name` would change", code: "function m_helper() { return 1; }\nexport const h = m_helper;", output: null, errors: 1 },
-    { name: "a class, whose `name` would change", code: "class strThing {}\nexport const t = strThing;", output: null, errors: 1 },
-    { name: "a variable holding an anonymous function, which takes the variable's name", code: "const m_run = () => 1;\nexport const r = m_run;", output: null, errors: 1 },
-    { name: "an anonymous function assigned later also takes the name", code: "export function f() {\n  let m_run;\n  m_run = function () {};\n  return m_run.name;\n}", output: null, errors: 1 },
-    { name: "the new name is declared in the same scope", code: "export function f() {\n  const name = 1;\n  const strName = 'a';\n  return name + strName;\n}", output: null, errors: 1 },
-    { name: "the new name is declared in a scope inside", code: "export function f(strName) {\n  return [1].map((name) => name + strName);\n}", output: null, errors: 1 },
-    { name: "the new name is declared in a scope around", code: "const url = 1;\nexport function f() {\n  const strURL = 'x';\n  return strURL + url;\n}", output: null, errors: 1 },
-    { name: "the new name is referenced as an undeclared global", code: "export function f() {\n  const strName = 'a';\n  return name + strName;\n}", output: null, errors: 1 },
-    { name: "the new name is a standard global", code: "interface IPromise {\n  then(): void;\n}\nexport const p: IPromise = { then() {} };", output: null, errors: [{ messageId: "interfacePrefix" }] },
-    { name: "two `#private` renames would give the same name", code: "export class A {\n  #m_x = 1;\n  #strX = 'a';\n  both() { return [this.#m_x, this.#strX]; }\n}", output: null, errors: 2 },
-    { name: "two renames would give the same name", code: "export function f() {\n  const m_name = 1;\n  const strName = 'a';\n  return [m_name, strName];\n}", output: null, errors: 2 },
-    { name: "the new name is a reserved word", code: "export function f() {\n  const m_class = 1;\n  return m_class;\n}", output: null, errors: 1 },
-    { name: "the new name still has a prefix", code: "export function f() {\n  const m_m_x = 1;\n  return m_m_x;\n}", output: null, errors: 1 },
-    { name: "code in scope calls `eval`, which can read the name", code: "export function f() {\n  const m_x = 1;\n  return eval('m_x');\n}", output: null, errors: 1 },
-    { name: "an imported binding", code: 'import { m_value } from "./x";\nexport const v = m_value;', output: null, errors: 1 },
-    { name: "an exported declaration", code: "export const m_value = 1;", output: null, errors: 1 },
-    { name: "a binding exported by name", code: "const strName = 'a';\nexport { strName };", output: null, errors: 1 },
-    { name: "an exported interface", code: "export interface IShape {\n  area(): number;\n}", output: null, errors: [{ messageId: "interfacePrefix" }] },
-    { name: "an interface exported by name", code: "interface IShape {\n  area(): number;\n}\nexport type { IShape };", output: null, errors: [{ messageId: "interfacePrefix" }] },
-    { name: "a TypeScript `private` member, an ordinary property at run time", code: "export class A {\n  private m_count = 0;\n  get() { return this.m_count; }\n}", output: null, errors: 1 },
-    { name: "a public field", code: "export class A {\n  strName = 'a';\n}", output: null, errors: 1 },
-    { name: "a parameter property", code: "export class A {\n  constructor(private m_count: number) {}\n}", output: null, errors: 1 },
-    { name: "a `#private` method, a function whose `name` would change", code: "export class A {\n  #m_run() { return 1; }\n  run() { return this.#m_run(); }\n}", output: null, errors: 1 },
-    { name: "a `#private` field holding an anonymous function", code: "export class A {\n  #m_run = () => 1;\n  run() { return this.#m_run(); }\n}", output: null, errors: 1 },
-    { name: "the new `#name` is already used in the class", code: "export class A {\n  #m_x = 1;\n  #x = 2;\n  sum() { return this.#m_x + this.#x; }\n}", output: null, errors: 1 },
-    { name: "a parameter with a default value is not a plain identifier", code: "export function f(strName = 'a') {\n  return strName;\n}", output: null, errors: 1 },
-    { name: "a catch parameter is not in the list the fix applies to", code: "export function f() {\n  try { return 1; } catch (m_error) { return m_error; }\n}", output: null, errors: 1 },
-    { name: "a script file", sourceType: "script", filename: "file.js", code: "function f() {\n  var m_x = 1;\n  return m_x;\n}", output: null, errors: 1 },
-    { name: "a file with no `import` or `export`, which TypeScript treats as a script", code: "function run() {\n  const m_x = 1;\n  return m_x;\n}\ninterface IShape { a: 1 }", output: null, errors: 2 },
-    { name: "a `declare` declaration", code: "declare const m_value: number;\nexport const v = m_value;", output: null, errors: 1 },
-    { name: "an interface in `declare global`", code: "declare global {\n  interface IWindowState { open: boolean }\n}\nexport {};", output: null, errors: [{ messageId: "interfacePrefix" }] },
-    { name: "a declaration in `declare module`", code: 'declare module "x" {\n  interface IShape { a: 1 }\n}\nexport {};', output: null, errors: [{ messageId: "interfacePrefix" }] },
+    ...NO_FIX_CASES,
   ],
 });

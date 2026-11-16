@@ -1,3 +1,4 @@
+import type { Rule } from "eslint";
 import type ts from "typescript";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs, type Node, type TSESTree } from "../lib/ast.ts";
@@ -7,6 +8,22 @@ import { classOrInterfaceOf, isFunctionLikeDeclaration, isNonPublicState, isProj
 interface InnerCall {
   call: TSESTree.CallExpression;
   member: TSESTree.MemberExpression;
+}
+
+/** A method call on a stranger: `outer` is called on the `result` that `inner` returns. */
+interface StrangerCall {
+  outer: TSESTree.MemberExpression;
+  inner: InnerCall;
+  result: ts.Type;
+}
+
+/** The call as a method call on a stranger, or `null` when its receiver is a friend, a data structure or a library type. */
+function strangerCall(services: TypeServices, call: TSESTree.CallExpression): StrangerCall | null {
+  const inner = innerMethodCall(call);
+  if (!inner) return null;
+  const result = nonNullableTypeAt(services, inner.call);
+  if (!isObjectResult(services, result) || isFluent(services, inner, result) || isLibraryMethod(services, inner)) return null;
+  return { outer: unwrap(call.callee) as TSESTree.MemberExpression, inner, result };
 }
 
 function innerMethodCall(call: TSESTree.CallExpression): InnerCall | null {
@@ -66,8 +83,23 @@ function receiverClasses(services: TypeServices, receiver: Node): Set<ts.Symbol>
  */
 function isLibraryMethod(services: TypeServices, inner: InnerCall): boolean {
   const receiver = nonNullableTypeAt(services, inner.member.object);
-  const declarations = unionMembers(receiver).flatMap((member) => member.getSymbol()?.getDeclarations() ?? []);
+  const declarations = unionMembers(receiver).flatMap(typeDeclarations);
   return declarations.length > 0 && declarations.every((declaration) => !isProjectDeclaration(services.program, declaration));
+}
+
+/** Where a type's symbol is declared; none for a type with no symbol. */
+function typeDeclarations(type: ts.Type): ts.Declaration[] {
+  const symbol = type.getSymbol();
+  return symbol ? declarationsOf(symbol) : [];
+}
+
+function reportStranger(context: Rule.RuleContext, checker: ts.TypeChecker, stranger: StrangerCall): void {
+  const { outer, inner, result } = stranger;
+  context.report({
+    node: outer.property as never,
+    messageId: "stranger",
+    data: { method: memberName(outer, context), inner: memberName(inner.member, context), type: checker.typeToString(result) },
+  });
 }
 
 function memberName(member: TSESTree.MemberExpression, context: { sourceCode: { getText: (node: never) => string } }): string {
@@ -95,17 +127,8 @@ export default defineRule({
     if (!services) return {};
     return {
       CallExpression(node) {
-        const call = asTs<TSESTree.CallExpression>(node);
-        const inner = innerMethodCall(call);
-        if (!inner) return;
-        const result = nonNullableTypeAt(services, inner.call);
-        if (!isObjectResult(services, result) || isFluent(services, inner, result) || isLibraryMethod(services, inner)) return;
-        const outer = unwrap(call.callee) as TSESTree.MemberExpression;
-        context.report({
-          node: outer.property as never,
-          messageId: "stranger",
-          data: { method: memberName(outer, context), inner: memberName(inner.member, context), type: services.checker.typeToString(result) },
-        });
+        const stranger = strangerCall(services, asTs<TSESTree.CallExpression>(node));
+        if (stranger) reportStranger(context, services.checker, stranger);
       },
     };
   },

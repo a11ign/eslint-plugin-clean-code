@@ -1,29 +1,71 @@
-import type { Rule } from "eslint";
+import type { Rule, SourceCode } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs, isFunction, type FunctionNode, type Node, type TSESTree } from "../lib/ast.ts";
 import { lookUp, predicateCandidateName, unwrapTypeScript, type VariableT } from "../lib/naming.ts";
 
 const PREDICATE = /^(is|has|can|should)[A-Z]/;
 
+export default defineRule({
+  name: "no-side-effects-in-predicates",
+  type: "problem",
+  description: "A function named as a predicate (`is…`, `has…`, `can…`, `should…`) must not assign to anything declared outside it.",
+  book: {
+    entry: "NAM-12",
+    chapter: "4 Meaningful Names § Method Names; Appendix, The Clean Code Debate",
+    passage: "If a reader trusts the name `isMultipleOfNthPrimeFactor` (which suggests a predicate with no side effects) and doesn't bother to read its code, they will not realize that it has side effects",
+  },
+  messages: {
+    sideEffect: {
+      problem: "Predicate `{{name}}` assigns to `{{target}}`, which is declared outside it.",
+      refactor: "move the change out of the predicate into a separately named command, or, if the change is the point, rename the function for what it does.",
+    },
+  },
+  create(context) {
+    const checkAll = (write: Node, left: Node | null) => checkWrites(context, write, left);
+    return {
+      AssignmentExpression: (node: unknown) => checkAll(asTs(node), asTs<TSESTree.AssignmentExpression>(node).left),
+      UpdateExpression: (node: unknown) => checkAll(asTs(node), asTs<TSESTree.UpdateExpression>(node).argument),
+      "ForInStatement, ForOfStatement"(node: unknown) {
+        const loop = asTs<TSESTree.ForInStatement | TSESTree.ForOfStatement>(node);
+        if (loop.left.type !== "VariableDeclaration") checkAll(loop, loop.left);
+      },
+    } as Rule.RuleListener;
+  },
+});
+
+/** Checks each target `write` assigns to, `left` being its write target. */
+function checkWrites(context: Rule.RuleContext, write: Node, left: Node | null): void {
+  for (const target of writeTargets(left)) checkWrite(context, write, target);
+}
+
+function checkWrite(context: Rule.RuleContext, write: Node, target: Node): void {
+  const predicate = predicateWrittenBy(context.sourceCode, write, target);
+  if (!predicate) return;
+  context.report({ node: write as never, messageId: "sideEffect", data: { name: predicateName(predicate) as string, target: context.sourceCode.getText(target as never) } });
+}
+
+/** The predicate a write to `target` has a side effect on: through `this` or `super`, or through a variable declared outside it. */
+function predicateWrittenBy(sourceCode: SourceCode, write: Node, target: Node): FunctionNode | null {
+  const root = target.type === "MemberExpression" ? chainRoot(target) : target;
+  if (root.type === "ThisExpression" || root.type === "Super") return predicateOwningThis(write);
+  if (root.type !== "Identifier") return null;
+  return predicateAffectedBy(root, lookUp(sourceCode.getScope(root as never), root.name), { property: target !== root });
+}
 /** The identifiers and member expressions a write target (possibly a destructuring pattern) assigns to. */
 function writeTargets(target: Node | null): Node[] {
   const node = unwrapTypeScript(target);
   if (!node) return [];
-  switch (node.type) {
-    case "Identifier":
-    case "MemberExpression":
-      return [node];
-    case "ArrayPattern":
-      return node.elements.flatMap((element) => writeTargets(element));
-    case "ObjectPattern":
-      return node.properties.flatMap((property) => writeTargets(property.type === "Property" ? property.value : property));
-    case "AssignmentPattern":
-      return writeTargets(node.left);
-    case "RestElement":
-      return writeTargets(node.argument);
-    default:
-      return [];
-  }
+  if (node.type === "Identifier" || node.type === "MemberExpression") return [node];
+  return innerTargets(node).flatMap((inner) => writeTargets(inner));
+}
+
+/** The write targets inside a destructuring pattern or a default value. */
+function innerTargets(node: Node): (Node | null)[] {
+  if (node.type === "ArrayPattern") return node.elements;
+  if (node.type === "ObjectPattern") return node.properties.map((property) => (property.type === "Property" ? property.value : property));
+  if (node.type === "AssignmentPattern") return [node.left];
+  if (node.type === "RestElement") return [node.argument];
+  return [];
 }
 
 /** The object at the start of a member chain: `this` in `this.a.b`, `p` in `p.x[0]`. */
@@ -36,12 +78,19 @@ function chainRoot(member: TSESTree.MemberExpression): Node {
 /** The predicate whose `this` a write in `node` changes: the nearest function around it, looking through arrows. */
 function predicateOwningThis(node: Node): FunctionNode | null {
   for (let current = node.parent; current; current = current.parent) {
-    if (current.type === "PropertyDefinition" || current.type === "AccessorProperty" || current.type === "StaticBlock") return null;
-    if (!isFunction(current)) continue;
-    if (predicateName(current)) return current;
-    if (current.type !== "ArrowFunctionExpression") return null;
+    if (endsThisSearch(current)) return predicateName(current) ? (current as FunctionNode) : null;
   }
   return null;
+}
+
+/** Code whose `this` is not the enclosing function's: a field initializer or a static block. */
+const OWN_THIS = new Set(["PropertyDefinition", "AccessorProperty", "StaticBlock"]);
+
+/** Whether the search for the `this` a write changes stops at `node`: code with its own `this`, a predicate, or a function that is not an arrow. */
+function endsThisSearch(node: Node): boolean {
+  if (OWN_THIS.has(node.type)) return true;
+  if (!isFunction(node)) return false;
+  return node.type !== "ArrowFunctionExpression" || predicateName(node) !== null;
 }
 
 function predicateName(node: Node): string | null {
@@ -68,44 +117,3 @@ function reachesOutside(variable: VariableT | null, predicate: FunctionNode, { p
 function within(node: Node, outer: Node): boolean {
   return node.range[0] >= outer.range[0] && node.range[1] <= outer.range[1];
 }
-
-export default defineRule({
-  name: "no-side-effects-in-predicates",
-  type: "problem",
-  description: "A function named as a predicate (`is…`, `has…`, `can…`, `should…`) must not assign to anything declared outside it.",
-  book: {
-    entry: "NAM-12",
-    chapter: "4 Meaningful Names § Method Names; Appendix, The Clean Code Debate",
-    passage: "If a reader trusts the name `isMultipleOfNthPrimeFactor` (which suggests a predicate with no side effects) and doesn't bother to read its code, they will not realize that it has side effects",
-  },
-  messages: {
-    sideEffect: {
-      problem: "Predicate `{{name}}` assigns to `{{target}}`, which is declared outside it.",
-      refactor: "move the change out of the predicate into a separately named command, or, if the change is the point, rename the function for what it does.",
-    },
-  },
-  create(context) {
-    const sourceCode = context.sourceCode;
-    const reportWrite = (write: Node, target: Node, predicate: FunctionNode) => {
-      context.report({ node: write as never, messageId: "sideEffect", data: { name: predicateName(predicate) as string, target: sourceCode.getText(target as never) } });
-    };
-    const check = (write: Node, target: Node) => {
-      const root = target.type === "MemberExpression" ? chainRoot(target) : target;
-      let predicate: FunctionNode | null = null;
-      if (root.type === "ThisExpression" || root.type === "Super") predicate = predicateOwningThis(write);
-      else if (root.type === "Identifier") predicate = predicateAffectedBy(root, lookUp(sourceCode.getScope(root as never), root.name), { property: target !== root });
-      if (predicate) reportWrite(write, target, predicate);
-    };
-    const checkAll = (write: Node, left: Node | null) => {
-      for (const target of writeTargets(left)) check(write, target);
-    };
-    return {
-      AssignmentExpression: (node: unknown) => checkAll(asTs(node), asTs<TSESTree.AssignmentExpression>(node).left),
-      UpdateExpression: (node: unknown) => checkAll(asTs(node), asTs<TSESTree.UpdateExpression>(node).argument),
-      "ForInStatement, ForOfStatement"(node: unknown) {
-        const loop = asTs<TSESTree.ForInStatement | TSESTree.ForOfStatement>(node);
-        if (loop.left.type !== "VariableDeclaration") checkAll(loop, loop.left);
-      },
-    } as Rule.RuleListener;
-  },
-});

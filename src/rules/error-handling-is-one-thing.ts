@@ -1,7 +1,19 @@
 import { defineRule } from "../lib/define-rule.ts";
-import { asTs, isFunction, type Node, type TSESTree } from "../lib/ast.ts";
+import type { Rule } from "eslint";
+import { asTs, isFunction, type FunctionNode, type Node, type TSESTree } from "../lib/ast.ts";
 
 type Statement = TSESTree.Statement;
+
+/** Reports each statement before the function's first `try` that is not a declaration, and each after it that runs code. */
+function reportAroundTry(context: Rule.RuleContext, body: TSESTree.BlockStatement): void {
+  const statements = body.body.filter((statement) => !isNotCode(statement));
+  const first = statements.findIndex((statement) => statement.type === "TryStatement");
+  if (first === -1) return;
+  statements.forEach((statement, index) => {
+    if (index < first && !isDeclarationOnly(statement)) context.report({ node: statement as never, messageId: "beforeTry" });
+    else if (index > first && !runsNothing(statement)) context.report({ node: statement as never, messageId: "afterTry" });
+  });
+}
 
 /** Statements that may come before the `try`: the book's "some variable declarations", and TypeScript type declarations, which do nothing at run time. */
 function isDeclarationOnly(statement: Statement): boolean {
@@ -50,27 +62,13 @@ export default defineRule({
     },
   },
   create(context) {
-    function checkFunction(node: unknown): void {
-      const fn = asTs<TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression>(node);
-      if (fn.body?.type === "BlockStatement") checkBody(fn.body);
-    }
-    function checkBody(body: TSESTree.BlockStatement): void {
-      const statements = body.body.filter((statement) => !isNotCode(statement));
-      const first = statements.findIndex((statement) => statement.type === "TryStatement");
-      if (first === -1) return;
-      statements.forEach((statement, index) => {
-        if (index < first && !isDeclarationOnly(statement)) context.report({ node: statement as never, messageId: "beforeTry" });
-        else if (index > first && !runsNothing(statement)) context.report({ node: statement as never, messageId: "afterTry" });
-      });
-    }
-    return {
-      FunctionDeclaration: checkFunction,
-      FunctionExpression: checkFunction,
-      ArrowFunctionExpression: checkFunction,
-      TryStatement(node) {
-        const statement = asTs<TSESTree.TryStatement>(node);
-        if (isInsideCatch(statement)) context.report({ node, messageId: "tryInCatch" });
-      },
+    const checkFunction = (node: unknown) => {
+      const body = asTs<FunctionNode>(node).body;
+      if (body?.type === "BlockStatement") reportAroundTry(context, body);
     };
+    const checkTry = (node: Rule.Node) => {
+      if (isInsideCatch(asTs<TSESTree.TryStatement>(node))) context.report({ node, messageId: "tryInCatch" });
+    };
+    return { FunctionDeclaration: checkFunction, FunctionExpression: checkFunction, ArrowFunctionExpression: checkFunction, TryStatement: checkTry };
   },
 });

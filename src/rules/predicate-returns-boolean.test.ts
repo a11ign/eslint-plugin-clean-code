@@ -7,24 +7,18 @@ runTypedRuleTests("predicate-returns-boolean", rule, {
     "function hasItems(items: unknown[]) { return items.length > 0; }",
     "const canRetry = (attempts: number) => attempts < 3;",
     "function isAlwaysTrue(): true { return true; }",
-    // A type predicate returns a boolean.
-    "function isString(value: unknown): value is string { return typeof value === 'string'; }",
-    // A promise of a boolean.
-    "async function shouldRefresh(age: number) { return age > 60; }",
-    "function hasAccess(id: string): Promise<boolean> { return Promise.resolve(id.length > 0); }",
-    // Methods, getters and object members.
-    "class Stack { private items: number[] = []; isEmpty(): boolean { return this.items.length === 0; } get hasTop() { return this.items.length > 0; } }",
-    "const policy = { canDelete(role: string) { return role === 'admin'; } };",
-    // A setter's name is the property's.
-    "class Door { private open = false; set isOpen(value: boolean) { this.open = value; } }",
-    // A function that never returns, and one whose result is `any`.
-    "function isBroken(): never { throw new Error('x'); }",
-    "function isWhatever(x: any) { return x.check(); }",
-    // Not a predicate name: the prefix is not followed by a new word.
-    "function island(): string { return 'x'; }",
-    "function hash(text: string): number { return text.length; }",
-    "function canonical(): string { return 'x'; }",
-    "function shoulder(): number { return 1; }",
+    { name: "a type predicate returns a boolean", code: "function isString(value: unknown): value is string { return typeof value === 'string'; }" },
+    { name: "an async predicate returns a promise of a boolean", code: "async function shouldRefresh(age: number) { return age > 60; }" },
+    { name: "a predicate declared to return a promise of a boolean", code: "function hasAccess(id: string): Promise<boolean> { return Promise.resolve(id.length > 0); }" },
+    { name: "a method returning a boolean, and a getter", code: "class Stack { private items: number[] = []; isEmpty(): boolean { return this.items.length === 0; } get hasTop() { return this.items.length > 0; } }" },
+    { name: "an object member", code: "const policy = { canDelete(role: string) { return role === 'admin'; } };" },
+    { name: "a setter's name is the property's", code: "class Door { private open = false; set isOpen(value: boolean) { this.open = value; } }" },
+    { name: "a function that never returns", code: "function isBroken(): never { throw new Error('x'); }" },
+    { name: "a function whose result is `any`", code: "function isWhatever(x: any) { return x.check(); }" },
+    { name: "not a predicate name: `is` is not followed by a new word", code: "function island(): string { return 'x'; }" },
+    { name: "not a predicate name: `has` is not followed by a new word", code: "function hash(text: string): number { return text.length; }" },
+    { name: "not a predicate name: `can` is not followed by a new word", code: "function canonical(): string { return 'x'; }" },
+    { name: "not a predicate name: `should` is not followed by a new word", code: "function shoulder(): number { return 1; }" },
   ],
   invalid: [
     {

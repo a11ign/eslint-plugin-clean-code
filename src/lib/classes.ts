@@ -104,9 +104,13 @@ export function returnStatements(fn: FunctionNode): TSESTree.ReturnStatement[] {
 export function walk(root: Node, visit: (node: Node) => void, intoFunctions = false): void {
   for (const child of childNodes(root)) {
     visit(child);
-    const opensScope = isFunction(child) || child.type === "ClassDeclaration" || child.type === "ClassExpression";
-    if (intoFunctions || !opensScope) walk(child, visit, intoFunctions);
+    if (intoFunctions || !opensScope(child)) walk(child, visit, intoFunctions);
   }
+}
+
+/** Whether a node is a function or a class, whose code does not run when the code around it runs. */
+function opensScope(node: Node): boolean {
+  return isFunction(node) || node.type === "ClassDeclaration" || node.type === "ClassExpression";
 }
 
 /** The child nodes of `node`, in no particular order, read from its own keys so it works with either linter's tree. */
@@ -138,33 +142,51 @@ export interface ThisOwner {
 export function thisOwner(node: Node): ThisOwner | null {
   let current: Node | undefined = node.parent;
   let child: Node = node;
-  while (current) {
-    if (current.type === "ClassBody") {
-      const member = child as ClassMember;
-      if (member.type === "TSIndexSignature") return null;
-      return { body: current, member, isStatic: member.type === "StaticBlock" || Boolean(member.static) };
-    }
-    if (current.type === "FunctionDeclaration" || current.type === "FunctionExpression") {
-      const parent = current.parent;
-      const isMemberFunction = (parent?.type === "MethodDefinition" || parent?.type === "PropertyDefinition") && parent.value === current;
-      if (!isMemberFunction) return null;
-    }
+  while (current && !endsThisSearch(current)) {
     child = current;
     current = current.parent;
   }
-  return null;
+  if (current?.type !== "ClassBody") return null;
+  return ownerInBody(current, child as ClassMember);
+}
+
+/** Whether the search for `this`'s class stops at `node`: at a class body, or at a function that binds its own `this`. */
+function endsThisSearch(node: Node): boolean {
+  return node.type === "ClassBody" || bindsOwnThis(node);
+}
+
+/** Whether a node is a non-arrow function that is not a class member's own function, so it binds a new `this`. */
+function bindsOwnThis(node: Node): boolean {
+  if (node.type !== "FunctionDeclaration" && node.type !== "FunctionExpression") return false;
+  return !isClassMemberFunction(node);
+}
+
+function isClassMemberFunction(fn: TSESTree.FunctionDeclaration | TSESTree.FunctionExpression): boolean {
+  const parent = fn.parent;
+  const isMember = parent?.type === "MethodDefinition" || parent?.type === "PropertyDefinition";
+  return isMember && parent.value === fn;
+}
+
+/** The owner of `this` in `member` of class `body`; an index signature has no code, so no owner. */
+function ownerInBody(body: TSESTree.ClassBody, member: ClassMember): ThisOwner | null {
+  if (member.type === "TSIndexSignature") return null;
+  return { body, member, isStatic: member.type === "StaticBlock" || Boolean(member.static) };
 }
 
 /** The class member a `this.name()` call reaches, from the members on the same side (static or instance). */
 export function findMethod(owner: ThisOwner, name: string): FunctionNode | null {
   for (const member of owner.body.body) {
-    if (member.type === "StaticBlock" || member.type === "TSIndexSignature") continue;
-    if (Boolean(member.static) !== owner.isStatic || memberName(member) !== name) continue;
-    if (member.type === "MethodDefinition" && member.kind !== "method") continue;
-    const fn = memberFunction(member);
+    const fn = isMethodNamed(owner, member, name) ? memberFunction(member) : null;
     if (fn) return fn;
   }
   return null;
+}
+
+/** Whether `member` is a plain method or field called `name`, on the same side (static or instance) as `owner`. */
+function isMethodNamed(owner: ThisOwner, member: ClassMember, name: string): boolean {
+  if (member.type === "StaticBlock" || member.type === "TSIndexSignature") return false;
+  if (Boolean(member.static) !== owner.isStatic || memberName(member) !== name) return false;
+  return member.type !== "MethodDefinition" || member.kind === "method";
 }
 
 /** The function a class member runs: a method's body, or a field initialised with a function. */
@@ -183,8 +205,14 @@ export function memberName(member: ClassMember): string | null {
 /** Removes the wrappers that do not change which value an expression has: `x!`, `x as T`, `<T>x`, `x satisfies T`. */
 export function unwrapTs(expression: TSESTree.Node): TSESTree.Node {
   let current = expression;
-  while (current.type === "TSNonNullExpression" || current.type === "TSAsExpression" || current.type === "TSTypeAssertion" || current.type === "TSSatisfiesExpression") {
-    current = current.expression;
-  }
+  while (isTsWrapper(current)) current = current.expression;
   return current;
+}
+
+type TsWrapper = TSESTree.TSNonNullExpression | TSESTree.TSAsExpression | TSESTree.TSTypeAssertion | TSESTree.TSSatisfiesExpression;
+
+const TS_WRAPPER_TYPES: ReadonlySet<string> = new Set(["TSNonNullExpression", "TSAsExpression", "TSTypeAssertion", "TSSatisfiesExpression"]);
+
+function isTsWrapper(node: TSESTree.Node): node is TsWrapper {
+  return TS_WRAPPER_TYPES.has(node.type);
 }

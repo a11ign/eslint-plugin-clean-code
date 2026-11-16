@@ -1,9 +1,27 @@
 import type ts from "typescript";
+import type { Rule } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs, type TSESTree } from "../lib/ast.ts";
 import { hasBody, hasModifier, isProjectClass, isProjectDeclaration, type TypeServices, typeServices } from "../lib/types.ts";
 
 type ClassNode = TSESTree.ClassDeclaration | TSESTree.ClassExpression;
+
+/** A method of a subclass that overrides a concrete method of its project base class. */
+interface ConcreteOverride {
+  member: TSESTree.MethodDefinition;
+  method: string;
+  overridden: string;
+}
+
+function checkClass(context: Rule.RuleContext, services: TypeServices, cls: ClassNode): void {
+  const base = cls.superClass ? baseClass(services, cls) : null;
+  if (!base || !isProjectClass(services, base.symbol)) return;
+  const name = cls.id?.name ?? "(anonymous class)";
+  if (!isAbstractClass(base.symbol)) context.report({ node: cls.superClass as never, messageId: "concreteBase", data: { name, base: base.symbol.getName() } });
+  for (const { member, method, overridden } of concreteOverrides(services, base.type, cls.body.body)) {
+    context.report({ node: member.key as never, messageId: "concreteOverride", data: { method: `${name}.${method}`, base: overridden } });
+  }
+}
 
 /** The class `node` extends, when it is a class (not a mixin's intersection or an `any`). */
 function baseClass(services: TypeServices, node: ClassNode): { type: ts.Type; symbol: ts.Symbol } | null {
@@ -20,6 +38,24 @@ function baseClass(services: TypeServices, node: ClassNode): { type: ts.Type; sy
 
 function isAbstractClass(symbol: ts.Symbol): boolean {
   return (symbol.getDeclarations() ?? []).some((declaration) => hasModifier(declaration, "abstract"));
+}
+
+function concreteOverrides(services: TypeServices, base: ts.Type, members: TSESTree.ClassElement[]): ConcreteOverride[] {
+  return members.filter(isOverridableMethod).flatMap((member) => {
+    const method = memberName(member);
+    if (method === null) return [];
+    const overridden = overriddenConcrete(services, base, method);
+    return overridden ? [{ member, method, overridden }] : [];
+  });
+}
+
+/** An instance method with a body: constructors, static methods and overload signatures override nothing. */
+function isOverridableMethod(member: TSESTree.ClassElement): member is TSESTree.MethodDefinition {
+  return member.type === "MethodDefinition" && isInstanceMethod(member) && Boolean(member.value.body);
+}
+
+function isInstanceMethod(member: TSESTree.MethodDefinition): boolean {
+  return member.kind !== "constructor" && !member.static;
 }
 
 /** The concrete project method (or accessor) of the base class that `name` overrides, as `Class.method`, or `null`. */
@@ -60,22 +96,7 @@ export default defineRule({
   create(context) {
     const services = typeServices(context);
     if (!services) return {};
-    const check = (node: unknown): void => {
-      const cls = asTs<ClassNode>(node);
-      if (!cls.superClass) return;
-      const base = baseClass(services, cls);
-      if (!base || !isProjectClass(services, base.symbol)) return;
-      const name = cls.id?.name ?? "(anonymous class)";
-      if (!isAbstractClass(base.symbol)) {
-        context.report({ node: cls.superClass as never, messageId: "concreteBase", data: { name, base: base.symbol.getName() } });
-      }
-      for (const member of cls.body.body) {
-        if (member.type !== "MethodDefinition" || member.kind === "constructor" || member.static || !member.value.body) continue;
-        const method = memberName(member);
-        const overridden = method === null ? null : overriddenConcrete(services, base.type, method);
-        if (overridden) context.report({ node: member.key as never, messageId: "concreteOverride", data: { method: `${name}.${method}`, base: overridden } });
-      }
-    };
+    const check = (node: unknown): void => checkClass(context, services, asTs<ClassNode>(node));
     return { ClassDeclaration: check, ClassExpression: check };
   },
 });

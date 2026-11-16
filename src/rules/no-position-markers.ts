@@ -1,3 +1,4 @@
+import type { Rule } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
 import type { Comment } from "../lib/ast.ts";
 import { isDirectiveComment, isDocComment } from "../lib/safe-fix.ts";
@@ -15,17 +16,75 @@ interface Run {
 const BOX_DRAWING = /[\u2500-\u257f]/;
 const DIAGRAM_EDGE = new Set(["+", "|"]);
 
+/** A comment with a banner: its lines, and the banner runs found on each line. */
+interface Banner {
+  comment: Comment;
+  lines: CommentLine[];
+  runs: Run[][];
+  movedStar: boolean;
+}
+
+function reportBanner(context: Rule.RuleContext, comment: Comment, length: number): void {
+  if (isDirectiveComment(comment)) return;
+  const banner = findBanner(comment, length);
+  if (!banner) return;
+  context.report({
+    loc: comment.loc!,
+    messageId: "banner",
+    data: describeFirstRun(banner),
+    fix: (fixer) => replaceCommentText(fixer, context.sourceCode, comment, withoutBanner(banner)),
+  });
+}
+
+/** The comment's banner runs, or null when it has none. Markdown rules in a doc comment are not banners. */
+function findBanner(comment: Comment, length: number): Banner | null {
+  const { lines, movedStar } = linesOf(comment);
+  const runs = lines.map((line, index) => (isMarkdownRule(lines, index, { doc: isDocComment(comment) }) ? [] : runsIn(line.content, length)));
+  return runs.some((found) => found.length > 0) ? { comment, lines, runs, movedStar } : null;
+}
+
+/** The length and the character of the first banner run, for the message. */
+function describeFirstRun({ lines, runs }: Banner): { count: string; character: string } {
+  const index = runs.findIndex((found) => found.length > 0);
+  const first = runs[index][0];
+  return { count: String(first.end - first.start), character: lines[index].content[first.start] };
+}
+
+/** The comment's text with its banner runs removed, and the lines that held only runs deleted. */
+function withoutBanner({ comment, lines, runs, movedStar }: Banner): string {
+  const rewritten = lines.map((line, index) => {
+    const place = { first: index === 0, last: index === lines.length - 1, block: comment.type === "Block", movedStar };
+    return runs[index].length === 0 ? line : rewriteLine(line, runs[index], place);
+  });
+  const emptied = new Set(rewritten.flatMap((line, index) => (runs[index].length > 0 && line.content === "" ? [index] : [])));
+  return joinLines(comment, withoutLines(comment, rewritten, emptied));
+}
+
 /** The runs of one punctuation character in `text` at least `length` long that are banners. */
 function runsIn(text: string, length: number): Run[] {
   if (isDiagramLine(text)) return [];
+  return characterRuns(text).filter((run) => isBannerRun(text, run, length));
+}
+
+/** `text` cut into runs: each run of one of the punctuation characters, and each other character on its own. */
+function characterRuns(text: string): Run[] {
   const runs: Run[] = [];
-  for (let start = 0; start < text.length; ) {
-    let end = start + 1;
-    if (RUN_CHARACTERS.has(text[start])) while (text[end] === text[start]) end += 1;
-    if (RUN_CHARACTERS.has(text[start]) && end - start >= length && !isNotBanner(text, start, end)) runs.push({ start, end });
-    start = end;
+  for (let start = 0, end = 0; start < text.length; start = end) {
+    end = runEnd(text, start);
+    runs.push({ start, end });
   }
   return runs;
+}
+
+/** Where the run that starts at `start` ends: after the last repeat of a punctuation character, or after any other character. */
+function runEnd(text: string, start: number): number {
+  let end = start + 1;
+  if (RUN_CHARACTERS.has(text[start])) while (text[end] === text[start]) end += 1;
+  return end;
+}
+
+function isBannerRun(text: string, run: Run, length: number): boolean {
+  return RUN_CHARACTERS.has(text[run.start]) && run.end - run.start >= length && !isNotBanner(text, run.start, run.end);
 }
 
 /**
@@ -35,8 +94,17 @@ function runsIn(text: string, length: number): Run[] {
 function isNotBanner(text: string, start: number, end: number): boolean {
   const before = text[start - 1];
   const after = text[end];
-  if (after === ">" || before === "<" || DIAGRAM_EDGE.has(before) || DIAGRAM_EDGE.has(after)) return true;
+  if (isArrowOrBoxEdge(before, after)) return true;
   return before !== undefined && after !== undefined && /\S/.test(before) && /\S/.test(after);
+}
+
+function isArrowOrBoxEdge(before: string, after: string): boolean {
+  return isArrowHead(before, after) || DIAGRAM_EDGE.has(before) || DIAGRAM_EDGE.has(after);
+}
+
+/** Whether the run is the shaft of an arrow: `>` right after it, or `<` right before it. */
+function isArrowHead(before: string, after: string): boolean {
+  return after === ">" || before === "<";
 }
 
 /** Whether the line is part of an ASCII or box-drawing diagram: it starts or ends with `+` or `|`, or draws boxes. */
@@ -74,18 +142,25 @@ interface LinePlace {
 
 /**
  * One line with its runs removed. Text that a run kept apart from the comment's delimiters stays one space away from
- * them, so `/ Section \/` becomes `/* Section *\/` and `// Section` becomes `// Section`.
+ * them: a block comment of a run of `*`, ` Section ` and another run of `*` becomes `/* Section *\/`, and a line comment of
+ * `//`, a run of `=` and `Section` becomes `// Section`.
  */
 function rewriteLine(line: CommentLine, runs: Run[], place: LinePlace): CommentLine {
-  let content = withoutRuns(line.content, runs);
+  const content = withoutRuns(line.content, runs);
   if (content.trim() === "") return { ...line, content: "" };
-  let prefix = line.prefix;
-  if (place.first && runs[0].start === 0) {
-    if (place.movedStar) prefix = prefix.slice(0, -1);
-    if (!/[ \t]$/.test(prefix)) prefix += " ";
-  }
-  if (place.block && place.last && runs.at(-1)!.end >= line.content.trimEnd().length && !/[ \t]$/.test(content)) content += " ";
-  return { prefix, content };
+  const prefix = place.first && runs[0].start === 0 ? openingPrefix(line.prefix, place) : line.prefix;
+  const runsToClose = place.block && place.last && runs.at(-1)!.end >= line.content.trimEnd().length;
+  return { prefix, content: runsToClose ? withTrailingSpace(content) : content };
+}
+
+/** The opening delimiter, without the `*` moved into the decoration, and one space after it. */
+function openingPrefix(prefix: string, place: LinePlace): string {
+  const opening = place.movedStar ? prefix.slice(0, -1) : prefix;
+  return withTrailingSpace(opening);
+}
+
+function withTrailingSpace(text: string): string {
+  return /[ \t]$/.test(text) ? text : `${text} `;
 }
 
 /** `content` with each run and the blank space around it removed, keeping one space between text on both sides. */
@@ -120,29 +195,10 @@ export default defineRule<[number]>({
     },
   },
   create(context) {
-    const sourceCode = context.sourceCode;
     const length = (context.options[0] as number | undefined) ?? DEFAULT_LENGTH;
     return {
       Program() {
-        for (const comment of sourceComments(sourceCode)) {
-          if (isDirectiveComment(comment)) continue;
-          const { lines, movedStar } = linesOf(comment);
-          const runs = lines.map((line, index) => (isMarkdownRule(lines, index, { doc: isDocComment(comment) }) ? [] : runsIn(line.content, length)));
-          const first = runs.flat()[0];
-          if (!first) continue;
-          const firstLine = lines[runs.findIndex((found) => found.length > 0)];
-          const rewritten = lines.map((line, index) => {
-            const place = { first: index === 0, last: index === lines.length - 1, block: comment.type === "Block", movedStar };
-            return runs[index].length === 0 ? line : rewriteLine(line, runs[index], place);
-          });
-          const emptied = new Set(rewritten.flatMap((line, index) => (runs[index].length > 0 && line.content === "" ? [index] : [])));
-          context.report({
-            loc: comment.loc!,
-            messageId: "banner",
-            data: { count: String(first.end - first.start), character: firstLine.content[first.start] },
-            fix: (fixer) => replaceCommentText(fixer, sourceCode, comment, joinLines(comment, withoutLines(comment, rewritten, emptied))),
-          });
-        }
+        for (const comment of sourceComments(context.sourceCode)) reportBanner(context, comment, length);
       },
     };
   },

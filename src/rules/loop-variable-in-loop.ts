@@ -13,6 +13,30 @@ function siblingsOf(node: Node): readonly Node[] | null {
   return parent.type === "SwitchCase" ? parent.consequent : (parent as { body: Node[] }).body;
 }
 
+interface Candidate {
+  declaration: TSESTree.VariableDeclaration;
+  declarator: Declarator;
+  loop: TSESTree.ForStatement;
+  variable: Scope.Variable;
+}
+
+/** The `let` declaration's variables that a later `for` loop among its siblings assigns, and that are not read after it. */
+function loopVariables(sourceCode: SourceCode, declaration: TSESTree.VariableDeclaration, siblings: readonly Node[]): Candidate[] {
+  const later = siblings.slice(siblings.indexOf(declaration) + 1);
+  const named = declaration.declarations.flatMap((declarator) => (declarator.id.type === "Identifier" ? [declarator as Declarator] : []));
+  return named.flatMap((declarator) => {
+    const loop = loopAssigning(later, declarator.id.name);
+    const variable = sourceCode.getDeclaredVariables(declarator as never).find((v) => v.name === declarator.id.name);
+    if (!loop || !variable || isReadAfter(variable, loop)) return [];
+    return [{ declaration, declarator, loop, variable }];
+  });
+}
+
+/** The first `for` statement whose init assigns `name`. */
+function loopAssigning(statements: readonly Node[], name: string): TSESTree.ForStatement | undefined {
+  return statements.find((statement): statement is TSESTree.ForStatement => statement.type === "ForStatement" && initAssigns(statement, name));
+}
+
 /** Whether a `for` statement's init assigns `name`, on its own or in a comma-separated list. */
 function initAssigns(loop: TSESTree.ForStatement, name: string): boolean {
   const init = loop.init;
@@ -25,11 +49,18 @@ function assigns(expression: Node | null | undefined, name: string): expression 
   return expression?.type === "AssignmentExpression" && expression.operator === "=" && expression.left.type === "Identifier" && expression.left.name === name;
 }
 
-interface Candidate {
-  declaration: TSESTree.VariableDeclaration;
-  declarator: Declarator;
-  loop: TSESTree.ForStatement;
-  variable: Scope.Variable;
+/** Whether the binding is read after the loop ends. */
+function isReadAfter(binding: Scope.Variable, loop: TSESTree.ForStatement): boolean {
+  return binding.references.some((reference) => reference.isRead() && reference.identifier.range![0] >= loop.range[1]);
+}
+
+function reportLoopVariable(context: Rule.RuleContext, candidate: Candidate, siblings: readonly Node[]): void {
+  context.report({
+    node: candidate.declarator.id as never,
+    messageId: "declaredBeforeLoop",
+    data: { name: candidate.declarator.id.name },
+    fix: canMove(candidate, siblings) ? moveFix(context.sourceCode, candidate) : null,
+  });
 }
 
 /**
@@ -61,6 +92,10 @@ function within(node: Node, range: [number, number]): boolean {
   return node.range[0] >= range[0] && node.range[1] <= range[1];
 }
 
+/**
+ * Moves the declaration into the loop header, keeping its type annotation. A definite-assignment `!` is left out: it is not
+ * allowed on a declaration with an initializer (TS1263).
+ */
 function moveFix(sourceCode: SourceCode, candidate: Candidate): Rule.ReportFixer {
   const { declaration, declarator, loop } = candidate;
   const init = loop.init as TSESTree.AssignmentExpression;
@@ -68,7 +103,6 @@ function moveFix(sourceCode: SourceCode, candidate: Candidate): Rule.ReportFixer
   const sameLine = next.loc.start.line === declaration.loc.end.line;
   const removed: [number, number] = [declaration.range[0], sameLine ? next.range[0] : declaration.range[1]];
   const annotation = declarator.id.typeAnnotation ? sourceCode.getText(declarator.id.typeAnnotation as never) : "";
-  // A definite-assignment `!` is left out: it is not allowed on a declaration with an initializer (TS1263).
   const header = `let ${declarator.id.name}${annotation} = ${sourceCode.getText(init.right as never)}`;
   return (fixer) => [removeRange(fixer, sourceCode, removed), fixer.replaceTextRange(init.range, header)];
 }
@@ -90,29 +124,12 @@ export default defineRule({
     },
   },
   create(context) {
-    const sourceCode = context.sourceCode;
     return {
       VariableDeclaration(node) {
         const declaration = asTs<TSESTree.VariableDeclaration>(node);
         const siblings = siblingsOf(declaration);
         if (declaration.kind !== "let" || !siblings) return;
-        const later = siblings.slice(siblings.indexOf(declaration) + 1);
-        for (const declarator of declaration.declarations) {
-          if (declarator.id.type !== "Identifier") continue;
-          const name = declarator.id.name;
-          const loop = later.find((statement): statement is TSESTree.ForStatement => statement.type === "ForStatement" && initAssigns(statement, name));
-          const variable = sourceCode.getDeclaredVariables(declarator as never).find((v) => v.name === name);
-          if (!loop || !variable) continue;
-          const readAfter = variable.references.some((reference) => reference.isRead() && reference.identifier.range![0] >= loop.range[1]);
-          if (readAfter) continue;
-          const candidate: Candidate = { declaration, declarator: declarator as Declarator, loop, variable };
-          context.report({
-            node: declarator.id as never,
-            messageId: "declaredBeforeLoop",
-            data: { name },
-            fix: canMove(candidate, siblings) ? moveFix(sourceCode, candidate) : null,
-          });
-        }
+        for (const candidate of loopVariables(context.sourceCode, declaration, siblings)) reportLoopVariable(context, candidate, siblings);
       },
     };
   },

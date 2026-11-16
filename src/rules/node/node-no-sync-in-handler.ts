@@ -1,3 +1,4 @@
+import type { Rule, SourceCode } from "eslint";
 import { defineNodeRule } from "../../lib/define-rule.ts";
 import { asTs, type FunctionNode, type TSESTree } from "../../lib/ast.ts";
 import { shortQuote } from "../../lib/quote.ts";
@@ -14,6 +15,27 @@ const SYNC_NAME = /.Sync$/;
 /** Whether `call` takes event handlers: an `EventEmitter` listener method, or a server's `createServer`. */
 function takesHandlers(call: TSESTree.CallExpression): boolean {
   return LISTENER_METHODS.has(methodName(call) ?? "") || isMethodCall(call, SERVER_MODULES, CREATE_SERVER);
+}
+
+/** What the rule learns as it walks the file: the blocking `…Sync()` calls, and the functions passed as event handlers. */
+class SyncCalls {
+  readonly #handlers = new Set<FunctionNode>();
+  readonly #syncCalls: TSESTree.CallExpression[] = [];
+
+  /** Notes a call: it may be a blocking `…Sync()` call, and it may pass event handlers. */
+  noteCall(sourceCode: SourceCode, call: TSESTree.CallExpression): void {
+    if (SYNC_NAME.test(methodName(call) ?? "")) this.#syncCalls.push(call);
+    if (!takesHandlers(call)) return;
+    for (const argument of call.arguments) {
+      const handler = passedFunction(sourceCode, argument);
+      if (handler) this.#handlers.add(handler);
+    }
+  }
+
+  /** The blocking calls that sit inside an event handler. */
+  inHandlers(): TSESTree.CallExpression[] {
+    return this.#syncCalls.filter((call) => enclosingFunctions(call).some((fn) => this.#handlers.has(fn)));
+  }
 }
 
 export default defineNodeRule({
@@ -33,24 +55,14 @@ export default defineNodeRule({
     },
   },
   create(context) {
-    const handlers = new Set<FunctionNode>();
-    const syncCalls: TSESTree.CallExpression[] = [];
+    const syncCalls = new SyncCalls();
     return {
-      CallExpression(node) {
-        const call = asTs<TSESTree.CallExpression>(node);
-        if (SYNC_NAME.test(methodName(call) ?? "")) syncCalls.push(call);
-        if (!takesHandlers(call)) return;
-        for (const argument of call.arguments) {
-          const handler = passedFunction(context.sourceCode, argument);
-          if (handler) handlers.add(handler);
-        }
-      },
-      "Program:exit"() {
-        for (const call of syncCalls) {
-          if (!enclosingFunctions(call).some((fn) => handlers.has(fn))) continue;
-          context.report({ node: call as never, messageId: "blocking", data: { call: shortQuote(context.sourceCode.getText(call.callee as never)) } });
-        }
-      },
+      CallExpression: (node) => syncCalls.noteCall(context.sourceCode, asTs<TSESTree.CallExpression>(node)),
+      "Program:exit": () => syncCalls.inHandlers().forEach((call) => reportBlocking(context, call)),
     };
   },
 });
+
+function reportBlocking(context: Rule.RuleContext, call: TSESTree.CallExpression): void {
+  context.report({ node: call as never, messageId: "blocking", data: { call: shortQuote(context.sourceCode.getText(call.callee as never)) } });
+}

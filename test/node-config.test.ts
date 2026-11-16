@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { ESLint } from "eslint";
-import { ROOT, assertNoParseErrors, onFixtures, readmeBlock, relatedReports, runEslintWithConfigFile, runOxlint, type Report } from "./support.ts";
+import { ROOT, assertErrorsWithoutFixOrSuggestion, assertNoParseErrors, onFixtures, readmeBlock, relatedReports, runEslintWithConfigFile, runOxlint, type Report } from "./support.ts";
 
 const FIXTURES = join(ROOT, "test", "fixtures", "node");
 
@@ -79,7 +79,7 @@ console.log(JSON.stringify({ lengths, recommendedLint, extendedLint }));
 
 describe("the node config", () => {
   it("ESLint: the README's node setup reports each scenario's rule, and not the top-level read or the handler that exits", async () => {
-    const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, readmeBlock("eslint-node"));
+    const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, { eslintConfig: readmeBlock("eslint-node") });
     assertNoParseErrors(reports);
     assert.deepEqual(nodeReports(reports), NODE_EXPECTED);
   });
@@ -95,18 +95,14 @@ describe("the node config", () => {
       const results = await new ESLint({ cwd: dir }).lintFiles(["src/*.ts"]);
       const messages = results.flatMap((result) => result.messages).filter((message) => message.ruleId?.startsWith("clean-code-book/node-"));
       assert.equal(messages.length, 4);
-      for (const message of messages) {
-        assert.equal(message.severity, 2, message.ruleId ?? "");
-        assert.equal(message.fix, undefined, `${message.ruleId} has a fix`);
-        assert.equal(message.suggestions, undefined, `${message.ruleId} has a suggestion`);
-      }
+      assertErrorsWithoutFixOrSuggestion(messages);
       const matching = messages.find((message) => message.ruleId === "clean-code-book/node-no-error-message-matching");
       assert.equal(matching?.line, 7);
-    }, readmeBlock("eslint-node"));
+    }, { eslintConfig: readmeBlock("eslint-node") });
   });
 
   it("ESLint and Oxlint: a project on recommended alone gets no node report", async () => {
-    const eslintReports = await onFixtures(FIXTURES, runEslintWithConfigFile, readmeBlock("eslint"));
+    const eslintReports = await onFixtures(FIXTURES, runEslintWithConfigFile, { eslintConfig: readmeBlock("eslint") });
     const oxlintReports = await onFixtures(FIXTURES, (dir) => runOxlint(dir, [], readmeBlock("oxlint")));
     assert.deepEqual(nodeReports(eslintReports), {});
     assert.deepEqual(nodeReports(oxlintReports), {});
@@ -126,7 +122,7 @@ describe("the node config", () => {
 
 describe("the node-extended config", () => {
   it("ESLint: n/handle-callback-err reports the callbacks that never check err or error, and no-process-exit and n/no-sync stay off", async () => {
-    const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, readmeBlock("eslint-node-extended"));
+    const reports = await onFixtures(FIXTURES, runEslintWithConfigFile, { eslintConfig: readmeBlock("eslint-node-extended") });
     assertNoParseErrors(reports);
     assert.deepEqual(nodeReports(reports), extendedExpected("n/handle-callback-err"));
   });

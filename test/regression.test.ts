@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import vm from "node:vm";
 import plugin from "../src/index.ts";
-import { ROOT, copyFixtures, readTree, runEslint, runOxlint } from "./support.ts";
+import { ROOT, copyFixtures, fixWithEslint, readTree, runEslint, runOxlint } from "./support.ts";
 
 const FIXTURES = join(ROOT, "test", "fixtures", "regression");
 const OXLINT_FIX_MODES = [["--fix"], ["--fix", "--fix-suggestions"], ["--fix-dangerously"]];
@@ -27,7 +27,7 @@ const SEMICOLON_CHECKS: Record<string, string> = {
   "field-after-generator.js": "[...new Bag().values()]",
 };
 
-function checkSemicolons(before: Record<string, string>, after: Record<string, string>): void {
+function assertSemicolonsSurvive(before: Record<string, string>, after: Record<string, string>): void {
   for (const [name, expression] of Object.entries(SEMICOLON_CHECKS)) {
     assert.ok(leadingSemicolons(after[name]) >= leadingSemicolons(before[name]), `${name}: a leading ; was removed:\n${after[name]}`);
     assert.equal(evaluate(after[name], expression), evaluate(before[name], expression), `${name} behaves differently after the fixes:\n${after[name]}`);
@@ -48,7 +48,7 @@ describe("regression cases under ESLint with --fix", () => {
   it("unchanged/: every fix applied, the import stays type-only and no constructor or overload is removed", async () => {
     const work = copyFixtures(join(FIXTURES, "unchanged"));
     try {
-      await runEslint(work.dir, plugin.configs.recommended, true);
+      await fixWithEslint(work.dir, plugin.configs.recommended);
       assert.deepEqual(sourceFiles(readTree(work.dir)), readTree(join(FIXTURES, "unchanged")));
     } finally {
       work.dispose();
@@ -63,8 +63,8 @@ describe("regression cases under ESLint with --fix", () => {
   it("semicolons/: every leading ; survives and the code behaves the same", async () => {
     const work = copyFixtures(join(FIXTURES, "semicolons"));
     try {
-      await runEslint(work.dir, plugin.configs.recommended, true);
-      checkSemicolons(readTree(join(FIXTURES, "semicolons")), readTree(work.dir));
+      await fixWithEslint(work.dir, plugin.configs.recommended);
+      assertSemicolonsSurvive(readTree(join(FIXTURES, "semicolons")), readTree(work.dir));
     } finally {
       work.dispose();
     }
@@ -87,7 +87,7 @@ describe("regression cases under Oxlint", () => {
       const work = copyFixtures(join(FIXTURES, "semicolons"));
       try {
         runOxlint(work.dir, mode);
-        checkSemicolons(readTree(join(FIXTURES, "semicolons")), sourceFiles(readTree(work.dir)));
+        assertSemicolonsSurvive(readTree(join(FIXTURES, "semicolons")), sourceFiles(readTree(work.dir)));
       } finally {
         work.dispose();
       }

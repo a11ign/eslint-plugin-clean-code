@@ -7,40 +7,74 @@ const REGISTRY = `${BUCKET}\nclass Registry { private buckets = new Map<string, 
 
 const OPTS = "interface Opts { a: number; b: string; limits: { max: number } }";
 
+/** Regression cases (catalog row 6): parameter objects are data structures, read through properties. */
+const PARAMETER_OBJECTS = [
+  `${OPTS}\nfunction f({ a, b }: Opts) { return a + b; }`,
+  `${OPTS}\nfunction g(opts: Opts) { return opts.limits.max; }`,
+];
+
+/** Talking to friends: a field, a parameter, an object the method created. */
+const FRIENDS = [
+  `${REGISTRY}\nclass User { private bucket = new Bucket(); save(item: string) { this.bucket.add(item); } }`,
+  `${BUCKET}\nfunction save(bucket: Bucket, item: string) { bucket.add(item); }`,
+  `${BUCKET}\nfunction save(item: string) { new Bucket().add(item); }`,
+];
+
+/** Property access of any kind, even on a returned object. */
+const PROPERTY_ACCESS = [
+  `${BUCKET}\nclass Shelf { private top = new Bucket(); first(): Bucket { return this.top; } }\nfunction read(shelf: Shelf) { return shelf.first().constructor; }`,
+];
+
+/** Fluent APIs: the result is the receiver's own type. */
+const FLUENT_APIS = [
+  "class Query { private parts: string[] = []; where(part: string): this { this.parts.push(part); return this; } limit(n: number): Query { this.parts.push(`limit ${n}`); return this; } run(): string { return this.parts.join(' '); } }\nfunction q(query: Query) { return query.where('a').limit(1).run(); }",
+  "class Builder<T> { private items: T[] = []; with<U>(item: U): Builder<U> { return new Builder<U>(); } build(): T[] { return this.items; } }\nfunction b(builder: Builder<number>) { return builder.with('x').build(); }",
+];
+
+/** A static factory method creates the object it returns. */
+const STATIC_FACTORIES = [
+  "class Complex { private constructor(private readonly real: number) {} static fromRealNumber(real: number): Complex { return new Complex(real); } plus(other: Complex): Complex { return new Complex(this.real + other.real); } }\nfunction c(z: Complex) { return Complex.fromRealNumber(1).plus(z); }",
+];
+
+/** Data structures: interfaces, type aliases, classes with only public fields. */
+const DATA_STRUCTURES = [
+  "interface Options { getScratchDir(): { absolutePath: string; resolve(): string } }\ninterface Ctxt { getOptions(): Options }\nfunction d(ctxt: Ctxt) { return ctxt.getOptions().getScratchDir().resolve(); }",
+  "type Point = { x: number; norm(): number };\ninterface Shape { center(): Point }\nfunction e(shape: Shape) { return shape.center().norm(); }",
+  "class Point { x = 0; y = 0; norm(): number { return Math.hypot(this.x, this.y); } }\nclass Shape { private origin = new Point(); center(): Point { return this.origin; } }\nfunction h(shape: Shape) { return shape.center().norm(); }",
+];
+
+/** Standard library types. */
+const STANDARD_LIBRARY = [
+  "async function load(fetchText: () => Promise<string>) { return fetchText().then((t) => t.trim()); }",
+  "function words(text: string) { return text.trim().toUpperCase().split(' ').filter(Boolean).map((w) => w.length); }",
+  "function chain(p: Promise<number>) { return p.then((n) => n + 1).catch(() => 0).finally(() => undefined); }",
+  "function keys(m: Map<string, number>) { return m.keys().next(); }",
+];
+
+/** node_modules types: `RuleTester` is a class with methods and #private state, declared in oxlint's package. */
+const NODE_MODULES_TYPES = [
+  "import { RuleTester } from 'oxlint/plugins-dev';\ninterface Factory { make(): RuleTester }\nfunction t(factory: Factory) { factory.make().run('x', {} as never, { valid: [], invalid: [] }); }",
+];
+
+/** An element taken out of a standard container the class holds: the method called first is the library's. */
+const CONTAINER_ELEMENTS = [
+  `${BUCKET}\nclass Registry { private buckets = new Map<string, Bucket>(); put(key: string, item: string) { this.buckets.get(key)?.add(item); } }`,
+  `${BUCKET}\nfunction first(buckets: Bucket[], item: string) { buckets.find(Boolean)!.add(item); buckets.at(0)?.add(item); }`,
+];
+
+/** `any` carries no type to check. */
+const ANY_TYPED = [
+  "function anyChain(x: any) { return x.a().b(); }",
+];
+
+/** A free function call is not `a.b().c()`. */
+const FREE_FUNCTION_CALLS = [
+  `${BUCKET}\ndeclare function makeBucket(): Bucket;\nfunction m(item: string) { makeBucket().add(item); }`,
+];
+
 runTypedRuleTests("law-of-demeter", rule, {
   valid: [
-    // Regression cases (catalog row 6): parameter objects are data structures, read through properties.
-    `${OPTS}\nfunction f({ a, b }: Opts) { return a + b; }`,
-    `${OPTS}\nfunction g(opts: Opts) { return opts.limits.max; }`,
-    // Talking to friends: a field, a parameter, an object the method created.
-    `${REGISTRY}\nclass User { private bucket = new Bucket(); save(item: string) { this.bucket.add(item); } }`,
-    `${BUCKET}\nfunction save(bucket: Bucket, item: string) { bucket.add(item); }`,
-    `${BUCKET}\nfunction save(item: string) { new Bucket().add(item); }`,
-    // Property access of any kind, even on a returned object.
-    `${BUCKET}\nclass Shelf { private top = new Bucket(); first(): Bucket { return this.top; } }\nfunction read(shelf: Shelf) { return shelf.first().constructor; }`,
-    // Fluent APIs: the result is the receiver's own type.
-    "class Query { private parts: string[] = []; where(part: string): this { this.parts.push(part); return this; } limit(n: number): Query { this.parts.push(`limit ${n}`); return this; } run(): string { return this.parts.join(' '); } }\nfunction q(query: Query) { return query.where('a').limit(1).run(); }",
-    "class Builder<T> { private items: T[] = []; with<U>(item: U): Builder<U> { return new Builder<U>(); } build(): T[] { return this.items; } }\nfunction b(builder: Builder<number>) { return builder.with('x').build(); }",
-    // A static factory method creates the object it returns.
-    "class Complex { private constructor(private readonly real: number) {} static fromRealNumber(real: number): Complex { return new Complex(real); } plus(other: Complex): Complex { return new Complex(this.real + other.real); } }\nfunction c(z: Complex) { return Complex.fromRealNumber(1).plus(z); }",
-    // Data structures: interfaces, type aliases, classes with only public fields.
-    "interface Options { getScratchDir(): { absolutePath: string; resolve(): string } }\ninterface Ctxt { getOptions(): Options }\nfunction d(ctxt: Ctxt) { return ctxt.getOptions().getScratchDir().resolve(); }",
-    "type Point = { x: number; norm(): number };\ninterface Shape { center(): Point }\nfunction e(shape: Shape) { return shape.center().norm(); }",
-    "class Point { x = 0; y = 0; norm(): number { return Math.hypot(this.x, this.y); } }\nclass Shape { private origin = new Point(); center(): Point { return this.origin; } }\nfunction h(shape: Shape) { return shape.center().norm(); }",
-    // Standard library types.
-    "async function load(fetchText: () => Promise<string>) { return fetchText().then((t) => t.trim()); }",
-    "function words(text: string) { return text.trim().toUpperCase().split(' ').filter(Boolean).map((w) => w.length); }",
-    "function chain(p: Promise<number>) { return p.then((n) => n + 1).catch(() => 0).finally(() => undefined); }",
-    "function keys(m: Map<string, number>) { return m.keys().next(); }",
-    // node_modules types: `RuleTester` is a class with methods and #private state, declared in oxlint's package.
-    "import { RuleTester } from 'oxlint/plugins-dev';\ninterface Factory { make(): RuleTester }\nfunction t(factory: Factory) { factory.make().run('x', {} as never, { valid: [], invalid: [] }); }",
-    // An element taken out of a standard container the class holds: the method called first is the library's.
-    `${BUCKET}\nclass Registry { private buckets = new Map<string, Bucket>(); put(key: string, item: string) { this.buckets.get(key)?.add(item); } }`,
-    `${BUCKET}\nfunction first(buckets: Bucket[], item: string) { buckets.find(Boolean)!.add(item); buckets.at(0)?.add(item); }`,
-    // `any` carries no type to check.
-    "function anyChain(x: any) { return x.a().b(); }",
-    // A free function call is not `a.b().c()`.
-    `${BUCKET}\ndeclare function makeBucket(): Bucket;\nfunction m(item: string) { makeBucket().add(item); }`,
+    ...PARAMETER_OBJECTS, ...FRIENDS, ...PROPERTY_ACCESS, ...FLUENT_APIS, ...STATIC_FACTORIES, ...DATA_STRUCTURES, ...STANDARD_LIBRARY, ...NODE_MODULES_TYPES, ...CONTAINER_ELEMENTS, ...ANY_TYPED, ...FREE_FUNCTION_CALLS,
   ],
   invalid: [
     {

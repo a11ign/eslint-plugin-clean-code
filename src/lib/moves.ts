@@ -75,15 +75,30 @@ function isAttached(sourceCode: SourceCode, comment: Comment, below: number): bo
 export function removeBlock(fixer: Rule.RuleFixer, sourceCode: SourceCode, block: Block): Rule.Fix[] {
   const removal = removeRange(fixer, sourceCode, block.range);
   if (semicolonGuard(sourceCode, block.range)) return [removal];
+  const surplus = surplusBlankLine(sourceCode, block.lines);
+  if (!surplus) return [removal];
+  const blankLineRemoval = fixer.removeRange(surplus.range);
+  return surplus.isAbove ? [blankLineRemoval, removal] : [removal, blankLineRemoval];
+}
+
+/** A blank line next to removed lines that has to go with them, and whether it is above them or below. */
+interface SurplusBlankLine {
+  range: Range;
+  isAbove: boolean;
+}
+
+/**
+ * The blank line next to the removed `lines` that would leave two gaps in a row, or a gap after the list's `{` or before
+ * its `}`; `null` when there is none.
+ */
+function surplusBlankLine(sourceCode: SourceCode, [start, after]: Range): SurplusBlankLine | null {
   const text = sourceCode.text;
-  const [start, after] = block.lines;
   const above = start > 0 ? previousLineStart(text, start) : -1;
   const blankAbove = above !== -1 && isBlankLine(text, above);
-  if (isBlankLine(text, after) && (blankAbove || besideBrace(sourceCode, start, "{"))) {
-    return [removal, fixer.removeRange([after, text.indexOf("\n", after) + 1])];
-  }
-  if (blankAbove && besideBrace(sourceCode, after, "}")) return [fixer.removeRange([above, start]), removal];
-  return [removal];
+  const gapOrBraceAbove = blankAbove || besideBrace(sourceCode, start, "{");
+  if (isBlankLine(text, after) && gapOrBraceAbove) return { range: [after, text.indexOf("\n", after) + 1], isAbove: false };
+  if (blankAbove && besideBrace(sourceCode, after, "}")) return { range: [above, start], isAbove: true };
+  return null;
 }
 
 /** Whether the token next to `offset` (before or after it, comments included) is `brace`, or there is none. */
@@ -168,22 +183,28 @@ const REGION_DIRECTIVE = /^\s*(eslint|oxlint)-(disable|enable)(?![-\w])|^\s*(ist
  * code: a directive between a block's old place and `to` that is not itself moving, or a region directive inside a block.
  */
 export function crossesDirective(sourceCode: SourceCode, blocks: Block[], to: number): boolean {
-  const comments = sourceCode.getAllComments() as Comment[];
+  const directives = (sourceCode.getAllComments() as Comment[]).filter(isDirectiveComment);
   return blocks.some((block) => {
-    const from = Math.min(block.range[0], to);
-    const until = Math.max(block.range[1], to);
-    return comments.some((comment) => {
-      if (!isDirectiveComment(comment)) return false;
-      const [start, end] = comment.range as Range;
-      if (start < from || end > until) return false;
-      return inside(comment, blocks) ? inside(comment, [block]) && REGION_DIRECTIVE.test(comment.value) : true;
-    });
+    const path: Range = [Math.min(block.range[0], to), Math.max(block.range[1], to)];
+    return directives.some((directive) => within(directive, path) && blocksMove(directive, block, blocks));
   });
 }
 
+/**
+ * Whether a directive on a block's path stops it moving: one that is not itself moving, or a region directive inside the
+ * block, which would cover other code once moved.
+ */
+function blocksMove(directive: Comment, block: Block, blocks: Block[]): boolean {
+  return inside(directive, blocks) ? inside(directive, [block]) && REGION_DIRECTIVE.test(directive.value) : true;
+}
+
 function inside(comment: Comment, blocks: Block[]): boolean {
+  return blocks.some((block) => within(comment, block.range));
+}
+
+function within(comment: Comment, [from, until]: Range): boolean {
   const [start, end] = comment.range as Range;
-  return blocks.some((block) => start >= block.range[0] && end <= block.range[1]);
+  return start >= from && end <= until;
 }
 
 /** The node's own sibling: the ancestor of `node` (or `node` itself) whose parent is `container`. */

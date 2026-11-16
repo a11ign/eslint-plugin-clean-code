@@ -118,16 +118,19 @@ function behaviourTests(ruleName: string, invalid: InvalidCase[]): void {
   describe(`${ruleName}: a fix keeps behaviour`, () => {
     for (const testCase of withBehaviour) {
       it(testCase.name ?? testCase.code, () => {
-        const filename = testCase.filename ?? DEFAULT_FILENAME;
-        for (const expression of [testCase.behaviour].flat() as string[]) {
-          const before = evaluate(runnable(testCase.code, filename), expression);
-          const after = evaluate(runnable(testCase.output as string, filename), expression);
-          assert.equal(after, before, `${expression} gave a different result after the fix`);
-          assert.doesNotMatch(before, /is not defined/, `${expression} could not run on the code before the fix`);
-        }
+        for (const expression of [testCase.behaviour].flat() as string[]) assertSameValueAfterFix(testCase, expression);
       });
     }
   });
+}
+
+/** Asserts that `expression` runs on the case's code, and gives the same result on its fixed output. */
+function assertSameValueAfterFix(testCase: InvalidCase, expression: string): void {
+  const filename = testCase.filename ?? DEFAULT_FILENAME;
+  const before = evaluate(runnable(testCase.code, filename), expression);
+  const after = evaluate(runnable(testCase.output as string, filename), expression);
+  assert.equal(after, before, `${expression} gave a different result after the fix`);
+  assert.doesNotMatch(before, /is not defined/, `${expression} could not run on the code before the fix`);
 }
 
 function runnable(code: string, filename: string): string {
@@ -148,13 +151,16 @@ function evaluate(code: string, expression: string): string {
 function fixedOutputCases(invalid: InvalidCase[]): { valid: CaseBase[]; invalid: InvalidCase[] } {
   const valid: CaseBase[] = [];
   const stillInvalid: InvalidCase[] = [];
-  for (const testCase of invalid) {
-    if (testCase.output === null) continue;
+  for (const testCase of invalid.filter(hasFix)) {
     const fixed = { ...testCase, code: testCase.output, name: `fixed output of: ${testCase.name ?? testCase.code}` };
     if (testCase.outputErrors === undefined) valid.push(fixed);
     else stillInvalid.push({ ...fixed, errors: testCase.outputErrors, output: null, outputErrors: undefined });
   }
   return { valid, invalid: stillInvalid };
+}
+
+function hasFix(testCase: InvalidCase): testCase is InvalidCase & { output: string } {
+  return testCase.output !== null;
 }
 
 function normalise(testCase: ValidCase): CaseBase {

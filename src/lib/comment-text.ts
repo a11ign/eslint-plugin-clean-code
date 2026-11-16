@@ -15,21 +15,21 @@ type Location = NonNullable<Comment["loc"]>;
  * group; every other comment is a group of its own. A comment for which `standsAlone` is true never joins a run.
  */
 export function commentGroups(sourceCode: SourceCode, standsAlone: (comment: Comment) => boolean = () => false): Comment[][] {
+  const comments = sourceComments(sourceCode);
+  const joinable = new Set(comments.filter((comment) => comment.type === "Line" && !standsAlone(comment) && isAloneOnItsLines(sourceCode, comment)));
   const groups: Comment[][] = [];
-  let run: Comment[] = [];
-  const close = () => {
-    if (run.length > 0) groups.push(run);
-    run = [];
-  };
-  for (const comment of sourceComments(sourceCode)) {
-    const joinable = comment.type === "Line" && !standsAlone(comment) && isAloneOnItsLines(sourceCode, comment);
-    const last = run.at(-1);
-    if (!joinable || !last || last.loc!.end.line + 1 !== comment.loc!.start.line) close();
-    if (joinable) run.push(comment);
+  for (const comment of comments) {
+    const group = groups.at(-1);
+    if (group && continuesRun(group, comment, joinable)) group.push(comment);
     else groups.push([comment]);
   }
-  close();
   return groups;
+}
+
+/** Whether `comment` joins the run `group` ends with: both are joinable line comments, on consecutive lines. */
+function continuesRun(group: Comment[], comment: Comment, joinable: ReadonlySet<Comment>): boolean {
+  const last = group.at(-1)!;
+  return joinable.has(comment) && joinable.has(last) && last.loc!.end.line + 1 === comment.loc!.start.line;
 }
 
 /** Whether nothing but blank space shares the comment's lines. */
@@ -114,11 +114,16 @@ export function rewrittenComment(comment: Comment, value: string): string | null
   const next = { ...comment, value } as Comment;
   if (isDirectiveComment(next) !== isDirectiveComment(comment)) return null;
   if (comment.type === "Line") {
-    if (hasLineBreak(value) || (value.startsWith("/") && !comment.value.startsWith("/"))) return null;
+    if (hasLineBreak(value) || becomesTripleSlash(comment, value)) return null;
     return `//${value}`;
   }
   if (value.includes("*/") || isDocComment(next) !== isDocComment(comment)) return null;
   return `/*${value}*/`;
+}
+
+/** Whether `value` would turn the line comment into a `///` triple-slash comment it was not before. */
+function becomesTripleSlash(comment: Comment, value: string): boolean {
+  return value.startsWith("/") && !comment.value.startsWith("/");
 }
 
 /** Whether a comment's lines hold no text at all. */

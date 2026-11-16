@@ -1,3 +1,4 @@
+import type { Rule } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs, type TSESTree } from "../lib/ast.ts";
 import { className, classOfBody, thisMemberName, thisOwner, unwrapTs } from "../lib/classes.ts";
@@ -21,28 +22,39 @@ export default defineRule({
     },
   },
   create(context) {
-    const firstSwitch = new Map<TSESTree.ClassBody, Map<string, TSESTree.SwitchStatement>>();
+    const firstSwitches: FirstSwitches = new Map();
     return {
       SwitchStatement(node) {
-        const statement = asTs<TSESTree.SwitchStatement>(node);
-        const member = thisMemberName(unwrapTs(statement.discriminant));
-        if (!member || !TYPE_CODE.test(member)) return;
-        const owner = thisOwner(statement);
-        if (!owner) return;
-        const key = `${owner.isStatic ? "static " : ""}${member}`;
-        const seen = firstSwitch.get(owner.body) ?? new Map<string, TSESTree.SwitchStatement>();
-        firstSwitch.set(owner.body, seen);
-        const first = seen.get(key);
-        if (!first) {
-          seen.set(key, statement);
-          return;
-        }
-        context.report({
-          node,
-          messageId: "secondSwitch",
-          data: { className: className(classOfBody(owner.body)), member, firstLine: String(first.loc.start.line) },
-        });
+        checkSwitch(context, firstSwitches, asTs<TSESTree.SwitchStatement>(node));
       },
     };
   },
 });
+
+/** For each class body, the first `switch` on each of its type codes, keyed by the code's name (with `static ` before a static one). */
+type FirstSwitches = Map<TSESTree.ClassBody, Map<string, TSESTree.SwitchStatement>>;
+
+/** Records the first `switch` on a class's type code, and reports every later one. */
+function checkSwitch(context: Rule.RuleContext, firstSwitches: FirstSwitches, statement: TSESTree.SwitchStatement): void {
+  const member = typeCodeSwitchedOn(statement);
+  if (!member) return;
+  const owner = thisOwner(statement);
+  if (!owner) return;
+  const seen = switchesOf(firstSwitches, owner.body);
+  const key = `${owner.isStatic ? "static " : ""}${member}`;
+  const first = seen.get(key);
+  if (!first) seen.set(key, statement);
+  else context.report({ node: statement as never, messageId: "secondSwitch", data: { className: className(classOfBody(owner.body)), member, firstLine: String(first.loc.start.line) } });
+}
+
+/** The `this` member a `switch` tests, when it holds a type code. */
+function typeCodeSwitchedOn(statement: TSESTree.SwitchStatement): string | null {
+  const member = thisMemberName(unwrapTs(statement.discriminant));
+  return member && TYPE_CODE.test(member) ? member : null;
+}
+
+function switchesOf(firstSwitches: FirstSwitches, body: TSESTree.ClassBody): Map<string, TSESTree.SwitchStatement> {
+  const seen = firstSwitches.get(body) ?? new Map<string, TSESTree.SwitchStatement>();
+  firstSwitches.set(body, seen);
+  return seen;
+}

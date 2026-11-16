@@ -21,38 +21,62 @@ const FUNCTION_TYPES = ["FunctionDeclaration", "FunctionExpression", "ArrowFunct
  * `onExit` is called when a function is left, when its usage is complete.
  */
 export function trackFunctionUsage(onExit: (fn: FunctionNode, usage: FunctionUsage) => void): Rule.RuleListener {
-  const stack: Array<{ fn: FunctionNode; usage: FunctionUsage }> = [];
-  /** The function whose `this` and `arguments` a node inside `stack`'s top sees: the nearest one that is not an arrow. */
-  const owner = () => [...stack].reverse().find((entry) => entry.fn.type !== "ArrowFunctionExpression");
-  const listeners: Rule.RuleListener = {
-    ThisExpression() {
-      const entry = owner();
-      if (entry) entry.usage.usesThis = true;
-    },
+  const stack: TrackedFunction[] = [];
+  return { ...usageListeners(stack), ...functionListeners(stack, onExit) };
+}
+
+/** A function being walked, with what its body has used so far. */
+interface TrackedFunction {
+  fn: FunctionNode;
+  usage: FunctionUsage;
+}
+
+/** Listeners that record a use of `this`, `arguments` or `return this` on the function in `stack` it belongs to. */
+function usageListeners(stack: TrackedFunction[]): Rule.RuleListener {
+  return {
+    ThisExpression: () => markOwnerUsage(stack, "usesThis"),
     Identifier(node) {
-      const identifier = asTs<TSESTree.Identifier>(node);
-      if (identifier.name !== "arguments" || !isValueReference(identifier)) return;
-      const entry = owner();
-      if (entry) entry.usage.usesArguments = true;
+      if (isArgumentsReference(asTs<TSESTree.Identifier>(node))) markOwnerUsage(stack, "usesArguments");
     },
     ReturnStatement(node) {
-      const statement = asTs<TSESTree.ReturnStatement>(node);
       const top = stack.at(-1);
-      if (top && isThis(statement.argument)) top.usage.returnsThis = true;
+      if (top && isThis(asTs<TSESTree.ReturnStatement>(node).argument)) top.usage.returnsThis = true;
     },
   };
+}
+
+/**
+ * Marks `usage` on the function whose `this` and `arguments` a node inside `stack`'s top sees: the nearest one that is not
+ * an arrow.
+ */
+function markOwnerUsage(stack: TrackedFunction[], usage: "usesThis" | "usesArguments"): void {
+  const owner = [...stack].reverse().find((entry) => entry.fn.type !== "ArrowFunctionExpression");
+  if (owner) owner.usage[usage] = true;
+}
+
+/** Whether an identifier reads the `arguments` binding. */
+function isArgumentsReference(identifier: TSESTree.Identifier): boolean {
+  return identifier.name === "arguments" && isValueReference(identifier);
+}
+
+/** Listeners that push every function onto `stack` when it is entered, and pop it and call `onExit` when it is left. */
+function functionListeners(stack: TrackedFunction[], onExit: (fn: FunctionNode, usage: FunctionUsage) => void): Rule.RuleListener {
+  const listeners: Rule.RuleListener = {};
+  const exit = () => {
+    const entry = stack.pop();
+    if (entry) onExit(entry.fn, entry.usage);
+  };
   for (const type of FUNCTION_TYPES) {
-    listeners[type] = (node: unknown) => {
-      const fn = asTs<FunctionNode>(node);
-      const returnsThis = fn.type === "ArrowFunctionExpression" && isThis(fn.body);
-      stack.push({ fn, usage: { usesArguments: false, usesThis: false, returnsThis } });
-    };
-    listeners[`${type}:exit`] = () => {
-      const entry = stack.pop();
-      if (entry) onExit(entry.fn, entry.usage);
-    };
+    listeners[type] = (node: unknown) => stack.push(trackedFunction(asTs<FunctionNode>(node)));
+    listeners[`${type}:exit`] = exit;
   }
   return listeners;
+}
+
+/** A function as it is entered: nothing used yet, except an arrow whose body is `this`, which returns `this`. */
+function trackedFunction(fn: FunctionNode): TrackedFunction {
+  const returnsThis = fn.type === "ArrowFunctionExpression" && isThis(fn.body);
+  return { fn, usage: { usesArguments: false, usesThis: false, returnsThis } };
 }
 
 const TYPE_WRAPPERS = new Set(["TSAsExpression", "TSSatisfiesExpression", "TSNonNullExpression", "TSTypeAssertion", "ParenthesizedExpression"]);
@@ -63,10 +87,18 @@ const TYPE_WRAPPERS = new Set(["TSAsExpression", "TSSatisfiesExpression", "TSNon
  */
 export function isThis(expression: Node | null | undefined): boolean {
   let current = expression;
-  while (current && (TYPE_WRAPPERS.has(current.type) || current.type === "SequenceExpression")) {
-    current = current.type === "SequenceExpression" ? current.expressions.at(-1) : (current as { expression: Node }).expression;
-  }
+  while (current && givesInnerValue(current)) current = innerValue(current);
   return current?.type === "ThisExpression";
+}
+
+/** Whether an expression's value is the value of an expression inside it: a type-only wrapper, or a sequence. */
+function givesInnerValue(expression: Node): boolean {
+  return TYPE_WRAPPERS.has(expression.type) || expression.type === "SequenceExpression";
+}
+
+/** The expression whose value a wrapper or a sequence gives: the wrapped one, or a sequence's last. */
+function innerValue(expression: Node): Node | undefined {
+  return expression.type === "SequenceExpression" ? expression.expressions.at(-1) : (expression as { expression: Node }).expression;
 }
 
 /** Whether a call is a direct `eval(…)`, which can read the local scope and `arguments`, and call anything in scope by name. */
@@ -86,18 +118,28 @@ export function hasOtherDeclarations(variable: Scope.Variable): boolean {
 function isValueReference(identifier: TSESTree.Identifier): boolean {
   const parent = identifier.parent;
   if (parent?.type === "MemberExpression" && parent.property === identifier && !parent.computed) return false;
-  if ((parent?.type === "Property" || parent?.type === "MethodDefinition" || parent?.type === "PropertyDefinition") && parent.key === identifier && !parent.computed) {
-    return parent.type === "Property" && parent.shorthand;
-  }
+  if (isPlainKeyOf(parent, identifier)) return parent.type === "Property" && parent.shorthand;
   return true;
+}
+
+/** Whether `identifier` is the non-computed key of `parent`, an object property, a method or a class field. */
+function isPlainKeyOf(parent: Node | undefined, identifier: TSESTree.Identifier): parent is TSESTree.Property | TSESTree.MethodDefinition | TSESTree.PropertyDefinition {
+  if (parent?.type !== "Property" && parent?.type !== "MethodDefinition" && parent?.type !== "PropertyDefinition") return false;
+  return parent.key === identifier && !parent.computed;
 }
 
 /** The class member or object property a function is the value of, if any. */
 export function methodOf(fn: FunctionNode): TSESTree.MethodDefinition | TSESTree.TSAbstractMethodDefinition | TSESTree.Property | TSESTree.PropertyDefinition | null {
   const parent = fn.parent;
   if (parent?.type === "MethodDefinition" || parent?.type === "TSAbstractMethodDefinition") return parent;
-  if ((parent?.type === "Property" || parent?.type === "PropertyDefinition") && parent.value === fn) return parent;
+  if (isPropertyValueOf(parent, fn)) return parent;
   return null;
+}
+
+/** Whether `fn` is the value of `parent`, an object property or a class field. */
+function isPropertyValueOf(parent: Node | undefined, fn: FunctionNode): parent is TSESTree.Property | TSESTree.PropertyDefinition {
+  if (parent?.type !== "Property" && parent?.type !== "PropertyDefinition") return false;
+  return parent.value === fn;
 }
 
 /** The class a method belongs to, if it is a class member. */

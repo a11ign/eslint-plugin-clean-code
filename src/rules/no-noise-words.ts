@@ -30,6 +30,36 @@ const CLASS_MESSAGE = {
   refactor: "name the class for the one thing it represents, without the word; if nothing is left, the class has no clear responsibility yet.",
 };
 
+type Property = TSESTree.PropertyDefinition | TSESTree.AccessorProperty | TSESTree.TSAbstractPropertyDefinition | TSESTree.TSAbstractAccessorProperty | TSESTree.TSPropertySignature;
+
+type ClassNode = TSESTree.ClassDeclaration | TSESTree.ClassExpression;
+
+type Noise = NonNullable<ReturnType<typeof nameNoise>>;
+
+/** The node types whose key names a property, so their names are checked like a variable's. */
+const PROPERTY_TYPES = ["PropertyDefinition", "AccessorProperty", "TSAbstractPropertyDefinition", "TSAbstractAccessorProperty", "TSPropertySignature"];
+
+/** Checks an object literal's entry when it is written out as `key: value`: not shorthand, a method or an accessor. */
+function reportObjectEntryNoise(context: Rule.RuleContext, property: TSESTree.Property): void {
+  if (isWrittenOutEntry(property)) reportPropertyNoise(context, property);
+}
+
+function reportPropertyNoise(context: Rule.RuleContext, property: Property | TSESTree.Property): void {
+  reportNoise(context, property.key, noiseOf(propertyName(property), property));
+}
+
+function propertyName(node: Property | TSESTree.Property): string | null {
+  return keyName(node.key, node.computed);
+}
+
+function reportNoise(context: Rule.RuleContext, node: Node, noise: Noise | null): void {
+  if (noise) context.report({ node: node as never, messageId: noise.messageId, data: noise.data });
+}
+
+function noiseOf(name: string | null, annotated: Node): Noise | null {
+  return name ? nameNoise(name, annotated) : null;
+}
+
 /** The noise in a variable, parameter or property name: the word `variable`, or a suffix repeating its declared type. */
 function nameNoise(name: string, annotated: Node): { messageId: string; data: Record<string, string> } | null {
   const parts = words(name);
@@ -45,10 +75,24 @@ function annotationOf(node: Node): TSESTree.TypeNode | null {
   return (node as { typeAnnotation?: TSESTree.TSTypeAnnotation }).typeAnnotation?.typeAnnotation ?? null;
 }
 
-type Property = TSESTree.PropertyDefinition | TSESTree.AccessorProperty | TSESTree.TSAbstractPropertyDefinition | TSESTree.TSAbstractAccessorProperty | TSESTree.TSPropertySignature;
+function isWrittenOutEntry(property: TSESTree.Property): boolean {
+  return isObjectLiteralValue(property) && !property.shorthand && !property.method;
+}
 
-function propertyName(node: Property | TSESTree.Property): string | null {
-  return keyName(node.key, node.computed);
+function isObjectLiteralValue(property: TSESTree.Property): boolean {
+  return property.parent?.type === "ObjectExpression" && property.kind === "init";
+}
+
+function reportClassNoise(context: Rule.RuleContext, id: TSESTree.Identifier | null): void {
+  const word = id ? words(id.name).find((part) => CLASS_NOISE.has(part)) : undefined;
+  if (id && word) context.report({ node: id as never, messageId: "classNoise", data: { name: id.name, word: CLASS_NOISE.get(word) as string } });
+}
+
+function reportVariableNoise(context: Rule.RuleContext): void {
+  for (const variable of declaredVariables(context.sourceCode)) {
+    const def = variable.defs[0];
+    if (VARIABLE_DEFS.has(def.type)) reportNoise(context, asTs(def.name), noiseOf(variable.name, asTs(def.name)));
+  }
 }
 
 const rule = defineRule({
@@ -72,38 +116,14 @@ const rule = defineRule({
     classNoise: CLASS_MESSAGE,
   },
   create(context) {
-    const report = (node: Node, name: string | null, annotated: Node) => {
-      const noise = name ? nameNoise(name, annotated) : null;
-      if (noise) context.report({ node: node as never, messageId: noise.messageId, data: noise.data });
-    };
-    const checkProperty = (node: unknown) => {
-      const property = asTs<Property>(node);
-      report(property.key, propertyName(property), property);
-    };
-    const checkClass = (node: unknown) => {
-      const id = asTs<TSESTree.ClassDeclaration | TSESTree.ClassExpression>(node).id;
-      const word = id ? words(id.name).find((part) => CLASS_NOISE.has(part)) : undefined;
-      if (id && word) context.report({ node: id as never, messageId: "classNoise", data: { name: id.name, word: CLASS_NOISE.get(word) as string } });
-    };
+    const checkProperty = (node: unknown) => reportPropertyNoise(context, asTs<Property>(node));
+    const checkClass = (node: unknown) => reportClassNoise(context, asTs<ClassNode>(node).id);
     return {
-      PropertyDefinition: checkProperty,
-      AccessorProperty: checkProperty,
-      TSAbstractPropertyDefinition: checkProperty,
-      TSAbstractAccessorProperty: checkProperty,
-      TSPropertySignature: checkProperty,
-      Property(node: unknown) {
-        const property = asTs<TSESTree.Property>(node);
-        if (property.parent?.type !== "ObjectExpression" || property.shorthand || property.method || property.kind !== "init") return;
-        report(property.key, propertyName(property), property);
-      },
+      ...Object.fromEntries(PROPERTY_TYPES.map((type) => [type, checkProperty])),
+      Property: (node: unknown) => reportObjectEntryNoise(context, asTs<TSESTree.Property>(node)),
       ClassDeclaration: checkClass,
       ClassExpression: checkClass,
-      "Program:exit"() {
-        for (const variable of declaredVariables(context.sourceCode)) {
-          const def = variable.defs[0];
-          if (VARIABLE_DEFS.has(def.type)) report(asTs(def.name), variable.name, asTs(def.name));
-        }
-      },
+      "Program:exit": () => reportVariableNoise(context),
     } as Rule.RuleListener;
   },
 });

@@ -52,10 +52,17 @@ export function semicolonGuard(sourceCode: SourceCode, range: Range): string {
  */
 export function continuesStatement(previous: Token | Comment | null, next: Token | Comment | null): boolean {
   if (!previous || !next) return false;
-  if (previous.type === "Punctuator" && (previous.value === ";" || previous.value === "{")) return false;
+  if (endsStatementForCertain(previous)) return false;
   if (next.type === "Template" || next.type === "RegularExpression") return true;
   return CONTINUING_START.test(next.value) || CONTINUING_WORD.has(next.value);
 }
+
+/** Whether a token is a `;` or a `{`, after which the next token starts a new statement for certain. */
+function endsStatementForCertain(token: Token | Comment): boolean {
+  return token.type === "Punctuator" && STATEMENT_STARTS_AFTER.has(token.value);
+}
+
+const STATEMENT_STARTS_AFTER: ReadonlySet<string> = new Set([";", "{"]);
 
 /** Every character JavaScript reads as a line break, as escaped strings: a raw U+2028 in a regex literal does not parse. */
 const LINE_BREAKS = ["\n", "\r", "\u2028", "\u2029"];
@@ -74,12 +81,16 @@ export function removeComment(fixer: Rule.RuleFixer, sourceCode: SourceCode, com
   const lines = wholeLinesRange(text, start, end);
   if (lines) return fixer.removeRange(lines);
   if (hasLineBreak(text.slice(start, end))) return fixer.replaceTextRange([start, end], "\n");
+  return removeCommentBesideCode(fixer, text, [start, end]);
+}
+
+/** Deletes a one-line comment that shares its line with code, as `removeComment`'s last three cases say. */
+function removeCommentBesideCode(fixer: Rule.RuleFixer, text: string, [start, end]: Range): Rule.Fix {
   const before = text.slice(text.lastIndexOf("\n", start - 1) + 1, start);
   const lineEnd = text.indexOf("\n", end);
   const after = text.slice(end, lineEnd === -1 ? text.length : lineEnd);
   const codeBefore = before.trim() !== "";
-  const codeAfter = after.trim() !== "";
-  if (codeBefore && codeAfter) return fixer.replaceTextRange([start, end], " ");
+  if (codeBefore && after.trim() !== "") return fixer.replaceTextRange([start, end], " ");
   if (codeBefore) return fixer.removeRange([start - trailingSpace(before), end]);
   return fixer.removeRange([start, end + leadingSpace(after)]);
 }

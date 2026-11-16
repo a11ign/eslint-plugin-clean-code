@@ -29,10 +29,13 @@ export function functionName(node: FunctionNode): string | null {
   if (node.id) return node.id.name;
   const parent = node.parent;
   if (parent?.type === "VariableDeclarator" && parent.id.type === "Identifier") return parent.id.name;
-  if ((parent?.type === "MethodDefinition" || parent?.type === "Property" || parent?.type === "PropertyDefinition") && parent.key.type === "Identifier" && !parent.computed) {
-    return parent.key.name;
-  }
+  if (isKeyedMember(parent) && parent.key.type === "Identifier" && !parent.computed) return parent.key.name;
   return null;
+}
+
+/** Whether a node is a class method, an object property or a class field: a member with a key a function can be named by. */
+function isKeyedMember(node: Node | undefined): node is TSESTree.MethodDefinition | TSESTree.Property | TSESTree.PropertyDefinition {
+  return node?.type === "MethodDefinition" || node?.type === "Property" || node?.type === "PropertyDefinition";
 }
 
 /**

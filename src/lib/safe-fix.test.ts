@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { Rule } from "eslint";
 import { runRuleTests } from "../testing/run-rule-tests.ts";
-import type { Token } from "./ast.ts";
+import type { Comment, Token } from "./ast.ts";
 import { continuesStatement, isDirectiveComment, removeComment, removeRange } from "./safe-fix.ts";
 
 /** A rule that deletes every comment that is not a directive with `removeComment`, to test the helper under both linters. */
@@ -12,15 +12,19 @@ const removeEveryComment: Rule.RuleModule = {
     const sourceCode = context.sourceCode;
     return {
       Program() {
-        for (const comment of sourceCode.getAllComments()) {
-          if (comment.type !== "Line" && comment.type !== "Block") continue;
-          if (isDirectiveComment(comment)) continue;
+        for (const comment of sourceCode.getAllComments().filter(isRemovable)) {
           context.report({ loc: comment.loc!, messageId: "comment", fix: (fixer) => removeComment(fixer, sourceCode, comment) });
         }
       },
     };
   },
 };
+
+/** Whether the test rule removes a comment: a line or block comment that is not a directive. */
+function isRemovable(comment: Comment): boolean {
+  if (comment.type !== "Line" && comment.type !== "Block") return false;
+  return !isDirectiveComment(comment);
+}
 
 runRuleTests("safe-fix removeComment", removeEveryComment, {
   valid: [

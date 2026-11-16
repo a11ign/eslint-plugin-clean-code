@@ -9,6 +9,15 @@ interface Options {
   loggerNames?: string[];
 }
 
+/** What a catch clause that only logs does with the error: `rethrow` or `swallow` it; `null` when it does more than log. */
+function ceremonyOf(clause: TSESTree.CatchClause, loggerNames: Set<string>): "rethrow" | "swallow" | null {
+  const statements = clause.body.body;
+  const rethrows = rethrowsParam(statements.at(-1), clause.param);
+  const logs = rethrows ? statements.slice(0, -1) : statements;
+  if (logs.length === 0 || !logs.every((statement) => isLoggingCall(statement, loggerNames))) return null;
+  return rethrows ? "rethrow" : "swallow";
+}
+
 /** Whether the statement is only a call on `console`, or on a callee whose last name is in `loggerNames`, awaited or not. */
 function isLoggingCall(statement: TSESTree.Statement, loggerNames: Set<string>): boolean {
   if (statement.type !== "ExpressionStatement") return false;
@@ -66,15 +75,11 @@ export default defineAiRule<[Options]>({
   create(context) {
     const options = (context.options[0] as Options | undefined) ?? {};
     const loggerNames = new Set(options.loggerNames ?? DEFAULT_LOGGER_NAMES);
+    const reported = new Set(options.allowSwallow ? ["rethrow"] : ["rethrow", "swallow"]);
     return {
       CatchClause(node) {
-        const clause = asTs<TSESTree.CatchClause>(node);
-        const statements = clause.body.body;
-        const rethrows = rethrowsParam(statements.at(-1), clause.param);
-        const logs = rethrows ? statements.slice(0, -1) : statements;
-        if (logs.length === 0 || !logs.every((statement) => isLoggingCall(statement, loggerNames))) return;
-        if (!rethrows && options.allowSwallow) return;
-        context.report({ node, messageId: rethrows ? "rethrow" : "swallow" });
+        const ceremony = ceremonyOf(asTs<TSESTree.CatchClause>(node), loggerNames);
+        if (ceremony && reported.has(ceremony)) context.report({ node, messageId: ceremony });
       },
     };
   },

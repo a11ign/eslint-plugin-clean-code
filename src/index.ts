@@ -40,7 +40,7 @@ const recommended: Linter.Config[] = [
     name: `${PLUGIN_PREFIX}/recommended`,
     files: ALL_FILES,
     plugins: { [PLUGIN_PREFIX]: plugin as unknown as ESLint.Plugin, "@typescript-eslint": tseslint.plugin as unknown as ESLint.Plugin },
-    // JavaScript keeps ESLint's own parser, which reads sloppy-mode code in a CommonJS file as ESLint's defaults say; JSX is on for every file.
+    /** JavaScript keeps ESLint's own parser, which reads sloppy-mode code in a CommonJS file as ESLint's defaults say; JSX is on for every file. */
     languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
     rules: { ...BUILT_IN_RULES, ...JS_UNUSED_VARS, ...TYPESCRIPT_ESLINT_RULES, ...prefixed(SYNTAX_RULES) } as unknown as Linter.RulesRecord,
   },
@@ -97,30 +97,6 @@ const node: Linter.Config[] = [
   { name: `${PLUGIN_PREFIX}/node/typescript`, files: TS_FILES, languageOptions: { parser: tseslint.parser as Linter.Parser } },
 ];
 
-/** An optional peer plugin, required when the config that needs it is first read; `ruleNames` are the rules that config turns on. */
-function loadPeerPlugin(packageName: string, configName: string, ruleNames: readonly string[]): ESLint.Plugin {
-  try {
-    const loaded = createRequire(import.meta.url)(packageName) as ESLint.Plugin & { default?: ESLint.Plugin };
-    return loaded.default ?? loaded;
-  } catch (error) {
-    return missingPeerPlugin(packageName, configName, ruleNames, error);
-  }
-}
-
-/**
- * Stands in for an optional peer plugin that is not installed. Reading the config, or listing every config, still works; linting
- * with the config that needs it fails, at its first file, with a message that says what to install.
- */
-function missingPeerPlugin(packageName: string, configName: string, ruleNames: readonly string[], cause: unknown): ESLint.Plugin {
-  const missing: Rule.RuleModule = {
-    meta: { schema: false },
-    create() {
-      throw new Error(`The ${configName} config needs ${packageName}: npm install --save-dev ${packageName}`, { cause });
-    },
-  };
-  return { meta: { name: `${packageName} (not installed)` }, rules: Object.fromEntries(ruleNames.map((name) => [name, missing])) };
-}
-
 /** A config built once, when it is first read, so the optional peer plugins it loads are required only by a project that uses it. */
 function builtOnce(build: () => Linter.Config[]): () => Linter.Config[] {
   let built: Linter.Config[] | undefined;
@@ -139,22 +115,57 @@ const nodeExtended = builtOnce((): Linter.Config[] => [
   },
 ]);
 
-/** TS-01, TS-02, TS-03 and TS-13 on TypeScript files, and TS-11 on every file. */
-const typescriptExtended = builtOnce((): Linter.Config[] => [
-  {
+/** TS-01, TS-02, TS-03 and TS-13 on TypeScript files. */
+function typescriptExtendedTypeScriptConfig(): Linter.Config {
+  return {
     name: `${PLUGIN_PREFIX}/typescript-extended`,
     files: TS_FILES,
     plugins: { "@typescript-eslint": tseslint.plugin as unknown as ESLint.Plugin },
     languageOptions: { parser: tseslint.parser as Linter.Parser },
     rules: pluginSettings("@typescript-eslint", TYPESCRIPT_EXTENDED_RULES) as Linter.RulesRecord,
-  },
-  {
+  };
+}
+
+/** TS-11 on every file, from `eslint-plugin-promise`. */
+function typescriptExtendedPromiseConfig(): Linter.Config {
+  return {
     name: `${PLUGIN_PREFIX}/typescript-extended/promise`,
     files: ALL_FILES,
     plugins: { promise: loadPeerPlugin("eslint-plugin-promise", "typescript-extended", PROMISE_RULES) },
     rules: pluginRules("promise", PROMISE_RULES),
-  },
-]);
+  };
+}
+
+/** An optional peer plugin, required when the config that needs it is first read; `ruleNames` are the rules that config turns on. */
+function loadPeerPlugin(packageName: string, configName: string, ruleNames: readonly string[]): ESLint.Plugin {
+  try {
+    const loaded = createRequire(import.meta.url)(packageName) as ESLint.Plugin & { default?: ESLint.Plugin };
+    return loaded.default ?? loaded;
+  } catch (error) {
+    return missingPeerPlugin(packageName, ruleNames, missingPeerRule(packageName, configName, error));
+  }
+}
+
+/** The stand-in for every rule of a missing peer plugin: it fails when it is created, saying what to install. */
+function missingPeerRule(packageName: string, configName: string, cause: unknown): Rule.RuleModule {
+  return {
+    meta: { schema: false },
+    create() {
+      throw new Error(`The ${configName} config needs ${packageName}: npm install --save-dev ${packageName}`, { cause });
+    },
+  };
+}
+
+/**
+ * Stands in for an optional peer plugin that is not installed. Reading the config, or listing every config, still works; linting
+ * with the config that needs it fails, at its first file, with a message that says what to install.
+ */
+function missingPeerPlugin(packageName: string, ruleNames: readonly string[], missing: Rule.RuleModule): ESLint.Plugin {
+  return { meta: { name: `${packageName} (not installed)` }, rules: Object.fromEntries(ruleNames.map((name) => [name, missing])) };
+}
+
+/** TS-01, TS-02, TS-03 and TS-13 on TypeScript files, and TS-11 on every file. */
+const typescriptExtended = builtOnce((): Linter.Config[] => [typescriptExtendedTypeScriptConfig(), typescriptExtendedPromiseConfig()]);
 
 /** `typescript-extended`, and TS-10 and TS-16, which need the project service's type information. */
 const typescriptExtendedTypeChecked = builtOnce((): Linter.Config[] => [
@@ -178,21 +189,31 @@ const react: Linter.Config[] = [
   { name: `${PLUGIN_PREFIX}/react/typescript`, files: REACT_TS_FILES, languageOptions: { parser: tseslint.parser as Linter.Parser } },
 ];
 
-/** RCT-01 to RCT-04: the hooks rules on components and on `use*` hook files, the list-key rules on `.jsx` and `.tsx` only. */
-const reactExtended = builtOnce((): Linter.Config[] => [
-  {
+/** RCT-01 to RCT-03: the hooks rules on components and on `use*` hook files. */
+function reactExtendedHooksConfig(): Linter.Config {
+  return {
     name: `${PLUGIN_PREFIX}/react-extended/hooks`,
     files: REACT_HOOK_FILES,
     plugins: { "react-hooks": loadPeerPlugin("eslint-plugin-react-hooks", "react-extended", REACT_HOOKS_RULES) },
     languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
     rules: pluginRules("react-hooks", REACT_HOOKS_RULES),
-  },
-  {
+  };
+}
+
+/** RCT-04: the list-key rules on `.jsx` and `.tsx` only. */
+function reactExtendedJsxConfig(): Linter.Config {
+  return {
     name: `${PLUGIN_PREFIX}/react-extended/jsx`,
     files: REACT_FILES,
     plugins: { react: loadPeerPlugin("eslint-plugin-react", "react-extended", REACT_JSX_RULES) },
     rules: pluginRules("react", REACT_JSX_RULES),
-  },
+  };
+}
+
+/** RCT-01 to RCT-04: the hooks rules on components and on `use*` hook files, the list-key rules on `.jsx` and `.tsx` only. */
+const reactExtended = builtOnce((): Linter.Config[] => [
+  reactExtendedHooksConfig(),
+  reactExtendedJsxConfig(),
   { name: `${PLUGIN_PREFIX}/react-extended/typescript`, files: REACT_HOOK_TS_FILES, languageOptions: { parser: tseslint.parser as Linter.Parser } },
 ]);
 

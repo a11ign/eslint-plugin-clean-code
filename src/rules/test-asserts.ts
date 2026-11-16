@@ -1,4 +1,4 @@
-import type { Scope, SourceCode } from "eslint";
+import type { Rule, Scope, SourceCode } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs, type TSESTree } from "../lib/ast.ts";
 import { isSkipped, isTodo, readTestCall } from "../lib/test-calls.ts";
@@ -12,6 +12,100 @@ const ASSERTION_PREFIX = /^(expect|assert)/;
 
 /** A property that makes a member call an assertion: `t.assert.equal(…)` (`node:test`), `ctx.expect(…)` (Vitest), `chai.expect(…)`. */
 const ASSERTION_PROPERTY = new Set(["expect", "assert"]);
+
+export default defineRule<[Options]>({
+  name: "test-asserts",
+  type: "problem",
+  description: "Every test asserts, so it passes or fails by itself.",
+  book: {
+    entry: "TST-05",
+    chapter: "15 Clean Tests § Self-Validating",
+    passage: "The tests should have a boolean output. Either they pass or they fail. You should not have to read through a log file to tell whether the tests pass.",
+  },
+  messages: {
+    noAssertion: {
+      problem: "This test makes no assertion, so it passes whatever the code does and someone has to read its output to know whether it worked.",
+      refactor:
+        "assert the result the test expects (`expect(…)`, `assert.equal(…)`, or a composed assertion such as `assertTaxFor(…)`); name a project's own assertion helpers in the `assertFunctionNames` option.",
+    },
+  },
+  schema: [
+    {
+      type: "object",
+      properties: {
+        assertFunctionNames: {
+          type: "array",
+          items: { type: "string" },
+          default: [],
+          description: "More functions that count as assertions. `*` matches within one name, `**` across names: `verify*`, `request.**.expect`.",
+        },
+      },
+      additionalProperties: false,
+    },
+  ],
+  defaultOptions: [{ assertFunctionNames: [] }],
+  create(context) {
+    const walk = startWalk(context);
+    return {
+      Program(node) {
+        walk.imported = assertionBindings(context.sourceCode, asTs<TSESTree.Program>(node));
+      },
+      CallExpression: (node: unknown) => enterCall(context.sourceCode, walk, asTs<TSESTree.CallExpression>(node)),
+      "CallExpression:exit": (node: unknown) => exitCall(context, walk, asTs<TSESTree.CallExpression>(node)),
+    } as Rule.RuleListener;
+  },
+});
+
+/** What the walk through a file knows: the project's assertion helpers, the assertions the file imports, and the tests it is in. */
+interface TestWalk {
+  /** The `assertFunctionNames` option, as patterns. */
+  extra: NamePattern[];
+  /** The variables, at the top of the file, that hold an assertion module or function. */
+  imported: Set<Scope.Variable>;
+  /** The tests being walked, innermost last, each with whether an assertion was found in it yet. */
+  open: Array<{ call: TSESTree.CallExpression; asserted: boolean }>;
+}
+
+function startWalk(context: Rule.RuleContext): TestWalk {
+  const options = (context.options[0] ?? {}) as Options;
+  return { extra: (options.assertFunctionNames ?? []).map(namePattern), imported: new Set(), open: [] };
+}
+
+/** Marks every test being walked as asserted when `call` is an assertion, and starts walking `call` when it is a test that runs. */
+function enterCall(sourceCode: SourceCode, walk: TestWalk, call: TSESTree.CallExpression): void {
+  if (walk.open.length > 0 && isAssertionCall(sourceCode, walk, call)) for (const test of walk.open) test.asserted = true;
+  if (isRunningTest(call)) walk.open.push({ call, asserted: false });
+}
+
+/** Whether `call` asserts: by the names in its callee, or through an assertion the file imports. */
+function isAssertionCall(sourceCode: SourceCode, walk: TestWalk, call: TSESTree.CallExpression): boolean {
+  const path = calleePath(call.callee);
+  if (path && isAssertion(path, walk.extra)) return true;
+  return isImportedAssertion(sourceCode, walk.imported, call);
+}
+
+/** Whether the callee's root is an assertion imported or required in this file, and not shadowed where it is called. */
+function isImportedAssertion(sourceCode: SourceCode, imported: Set<Scope.Variable>, call: TSESTree.CallExpression): boolean {
+  const root = calleeRoot(call.callee);
+  if (!root || imported.size === 0) return false;
+  const variable = resolve(sourceCode.getScope(root as never), root.name);
+  return variable !== null && imported.has(variable);
+}
+
+/** Whether `call` is a test (not a `describe`) whose callback runs: it has one, and it is neither a todo nor skipped. */
+function isRunningTest(call: TSESTree.CallExpression): boolean {
+  const test = readTestCall(call);
+  if (!test || test.kind === "describe" || !test.callback) return false;
+  return !isTodo(test) && !isSkipped(test);
+}
+
+/** Stops walking a test when its call ends, and reports it when nothing in it asserted. */
+function exitCall(context: Rule.RuleContext, walk: TestWalk, call: TSESTree.CallExpression): void {
+  const current = walk.open.at(-1);
+  if (current?.call !== call) return;
+  walk.open.pop();
+  if (!current.asserted) context.report({ node: current.call.callee as never, messageId: "noAssertion" });
+}
 
 /**
  * The callee as a list of names, through member accesses and calls: `assert.equal` is `["assert", "equal"]`,
@@ -134,72 +228,3 @@ function matches(pattern: NamePattern, path: string[]): boolean {
   if (first === "**") return matches(rest, path) || (path.length > 0 && matches(pattern, path.slice(1)));
   return path.length > 0 && first.test(path[0]) && matches(rest, path.slice(1));
 }
-
-export default defineRule<[Options]>({
-  name: "test-asserts",
-  type: "problem",
-  description: "Every test asserts, so it passes or fails by itself.",
-  book: {
-    entry: "TST-05",
-    chapter: "15 Clean Tests § Self-Validating",
-    passage: "The tests should have a boolean output. Either they pass or they fail. You should not have to read through a log file to tell whether the tests pass.",
-  },
-  messages: {
-    noAssertion: {
-      problem: "This test makes no assertion, so it passes whatever the code does and someone has to read its output to know whether it worked.",
-      refactor:
-        "assert the result the test expects (`expect(…)`, `assert.equal(…)`, or a composed assertion such as `assertTaxFor(…)`); name a project's own assertion helpers in the `assertFunctionNames` option.",
-    },
-  },
-  schema: [
-    {
-      type: "object",
-      properties: {
-        assertFunctionNames: {
-          type: "array",
-          items: { type: "string" },
-          default: [],
-          description: "More functions that count as assertions. `*` matches within one name, `**` across names: `verify*`, `request.**.expect`.",
-        },
-      },
-      additionalProperties: false,
-    },
-  ],
-  defaultOptions: [{ assertFunctionNames: [] }],
-  create(context) {
-    const options = (context.options[0] ?? {}) as Options;
-    const extra = (options.assertFunctionNames ?? []).map(namePattern);
-    /** The tests being walked, innermost last, each with whether an assertion was found in it yet. */
-    const sourceCode = context.sourceCode;
-    let imported = new Set<Scope.Variable>();
-
-    /** Whether the callee's root is an assertion imported or required in this file, and not shadowed where it is called. */
-    function isImportedAssertion(call: TSESTree.CallExpression): boolean {
-      const root = calleeRoot(call.callee);
-      if (!root || imported.size === 0) return false;
-      const variable = resolve(sourceCode.getScope(root as never), root.name);
-      return variable !== null && imported.has(variable);
-    }
-
-    const open: Array<{ call: TSESTree.CallExpression; asserted: boolean }> = [];
-    return {
-      Program(node) {
-        imported = assertionBindings(sourceCode, asTs<TSESTree.Program>(node));
-      },
-      CallExpression(node) {
-        const call = asTs<TSESTree.CallExpression>(node);
-        const path = calleePath(call.callee);
-        if (open.length > 0 && ((path && isAssertion(path, extra)) || isImportedAssertion(call))) for (const test of open) test.asserted = true;
-        const test = readTestCall(call);
-        if (!test || test.kind === "describe" || !test.callback || isTodo(test) || isSkipped(test)) return;
-        open.push({ call, asserted: false });
-      },
-      "CallExpression:exit"(node) {
-        const current = open.at(-1);
-        if (current?.call !== asTs(node)) return;
-        open.pop();
-        if (!current.asserted) context.report({ node: current.call.callee as never, messageId: "noAssertion" });
-      },
-    };
-  },
-});

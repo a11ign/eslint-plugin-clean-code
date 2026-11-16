@@ -186,14 +186,15 @@ export function languageMessage(message: MessageSpec, source: LanguageSource): s
 function buildRule<Options extends unknown[]>(spec: SpecBase<Options>, docs: CleanCodeDocs, write: (message: MessageSpec) => string): CleanCodeRule {
   const messages = Object.fromEntries(Object.entries(spec.messages).map(([id, message]) => [id, write(message)]));
   return {
-    meta: {
-      type: spec.type,
-      docs,
-      messages,
-      schema: spec.schema ?? [],
-      ...(spec.fixable ? { fixable: spec.fixable } : {}),
-      ...(spec.defaultOptions ? { defaultOptions: spec.defaultOptions } : {}),
-    },
+    meta: { type: spec.type, docs, messages, schema: spec.schema ?? [], ...optionalMeta(spec) },
     create: spec.create,
+  };
+}
+
+/** The `fixable` and `defaultOptions` of a rule's meta, each only when the spec gives it. */
+function optionalMeta<Options extends unknown[]>(spec: SpecBase<Options>): Pick<SpecBase<Options>, "fixable" | "defaultOptions"> {
+  return {
+    ...(spec.fixable ? { fixable: spec.fixable } : {}),
+    ...(spec.defaultOptions ? { defaultOptions: spec.defaultOptions } : {}),
   };
 }

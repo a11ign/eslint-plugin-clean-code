@@ -103,11 +103,14 @@ export function inheritsFrom(checker: ts.TypeChecker, symbol: ts.Symbol, ancesto
 export function directSupertypes(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Type[] {
   const declared = checker.getDeclaredTypeOfSymbol(symbol);
   const bases: ts.Type[] = declared.isClassOrInterface() ? [...checker.getBaseTypes(declared)] : [];
-  for (const declaration of symbol.getDeclarations() ?? []) {
-    const clauses = (declaration as { heritageClauses?: readonly ts.HeritageClause[] }).heritageClauses ?? [];
-    for (const clause of clauses) for (const heritage of clause.types) bases.push(checker.getTypeAtLocation(heritage));
-  }
+  for (const declaration of symbol.getDeclarations() ?? []) bases.push(...heritageTypes(checker, declaration));
   return bases;
+}
+
+/** The types a declaration's `extends` and `implements` clauses name, in source order. */
+function heritageTypes(checker: ts.TypeChecker, declaration: ts.Declaration): ts.Type[] {
+  const clauses = (declaration as { heritageClauses?: readonly ts.HeritageClause[] }).heritageClauses ?? [];
+  return clauses.flatMap((clause) => clause.types.map((heritage) => checker.getTypeAtLocation(heritage)));
 }
 
 /**

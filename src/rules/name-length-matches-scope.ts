@@ -1,3 +1,4 @@
+import type { Rule } from "eslint";
 import { defineRule } from "../lib/define-rule.ts";
 import { asTs } from "../lib/ast.ts";
 import { declaredVariables, isExportedDeclaration, isInImportOrExport, lineSpan, variableIdentifiers, type VariableT } from "../lib/naming.ts";
@@ -8,14 +9,28 @@ const DEFAULT_MAX_LINES = 3;
 
 type Options = [{ maxLines?: number }];
 
-function isExported(variable: VariableT): boolean {
-  return variable.defs.some((def) => isExportedDeclaration(asTs(def.name))) || variableIdentifiers(variable).some(isInImportOrExport);
+function isCheckedOneLetterBinding(variable: VariableT): boolean {
+  return ONE_LETTER.test(variable.name) && BINDING_DEFS.has(variable.defs[0].type) && !isAllowed(variable);
 }
 
 /** The book allows `e` for the error in a `catch`. */
 function isAllowed(variable: VariableT): boolean {
   const def = variable.defs[0];
   return def.type === "CatchClause" && variable.name === "e";
+}
+
+/** Reports a one-letter name that is exported, at the top level, or in a scope longer than `maxLines`. */
+function reportOneLetterName(context: Rule.RuleContext, variable: VariableT, maxLines: number): void {
+  const node = asTs(variable.defs[0].name) as never;
+  const data = { name: variable.name, max: String(maxLines) };
+  const scope = variable.scope;
+  if (isExported(variable)) context.report({ node, messageId: "exported", data });
+  else if (scope.type === "module" || scope.type === "global") context.report({ node, messageId: "topLevel", data });
+  else if (lineSpan(asTs(scope.block)) > maxLines) context.report({ node, messageId: "longScope", data: { ...data, lines: String(lineSpan(asTs(scope.block))) } });
+}
+
+function isExported(variable: VariableT): boolean {
+  return variable.defs.some((def) => isExportedDeclaration(asTs(def.name))) || variableIdentifiers(variable).some(isInImportOrExport);
 }
 
 export default defineRule<Options>({
@@ -53,15 +68,7 @@ export default defineRule<Options>({
     const maxLines = (context.options[0] as Options[0] | undefined)?.maxLines ?? DEFAULT_MAX_LINES;
     return {
       "Program:exit"() {
-        for (const variable of declaredVariables(context.sourceCode)) {
-          if (!ONE_LETTER.test(variable.name) || !BINDING_DEFS.has(variable.defs[0].type) || isAllowed(variable)) continue;
-          const node = asTs(variable.defs[0].name) as never;
-          const data = { name: variable.name, max: String(maxLines) };
-          const scope = variable.scope;
-          if (isExported(variable)) context.report({ node, messageId: "exported", data });
-          else if (scope.type === "module" || scope.type === "global") context.report({ node, messageId: "topLevel", data });
-          else if (lineSpan(asTs(scope.block)) > maxLines) context.report({ node, messageId: "longScope", data: { ...data, lines: String(lineSpan(asTs(scope.block))) } });
-        }
+        for (const variable of declaredVariables(context.sourceCode).filter(isCheckedOneLetterBinding)) reportOneLetterName(context, variable, maxLines);
       },
     };
   },

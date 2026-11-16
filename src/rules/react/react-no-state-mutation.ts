@@ -1,4 +1,4 @@
-import type { Scope } from "eslint";
+import type { Rule, Scope } from "eslint";
 import { defineReactRule } from "../../lib/define-rule.ts";
 import { asTs, type Node, type TSESTree } from "../../lib/ast.ts";
 import { hookCalled } from "./react-hooks.ts";
@@ -12,6 +12,15 @@ function stateBinding(declarator: TSESTree.VariableDeclarator): TSESTree.Identif
   if (declarator.id.type !== "ArrayPattern" || !hookCalled(declarator.init, STATE_HOOKS)) return null;
   const [state] = declarator.id.elements;
   return state?.type === "Identifier" ? state : null;
+}
+
+/** Reports each write through `state`, the state value `declarator` binds. */
+function reportMutations(context: Rule.RuleContext, declarator: Rule.Node, state: TSESTree.Identifier): void {
+  const variable = context.sourceCode.getDeclaredVariables(declarator).find((declared) => declared.name === state.name);
+  for (const reference of variable?.references ?? []) {
+    const written = writtenMember(reference);
+    if (written) context.report({ node: written.member as never, messageId: "mutated", data: { name: state.name, mutation: written.mutation } });
+  }
 }
 
 /** The member of the state a reference writes through, and how, or `null` when the reference only reads the state. */
@@ -28,8 +37,12 @@ function mutationOf(member: TSESTree.MemberExpression): string | null {
   if (parent.type === "UpdateExpression") return "assigns to a member of";
   if (parent.type === "UnaryExpression" && parent.operator === "delete") return "deletes a member of";
   const method = propertyName(member);
-  if (parent.type === "CallExpression" && parent.callee === member && method !== null && MUTATING_METHODS.has(method)) return `calls \`${method}()\` on`;
+  if (parent.type === "CallExpression" && parent.callee === member && isMutatingMethod(method)) return `calls \`${method}()\` on`;
   return null;
+}
+
+function isMutatingMethod(method: string | null): method is string {
+  return method !== null && MUTATING_METHODS.has(method);
 }
 
 function propertyName(member: TSESTree.MemberExpression): string | null {
@@ -68,12 +81,7 @@ export default defineReactRule({
     return {
       VariableDeclarator(node) {
         const state = stateBinding(asTs<TSESTree.VariableDeclarator>(node));
-        if (!state) return;
-        const variable = context.sourceCode.getDeclaredVariables(node).find((declared) => declared.name === state.name);
-        for (const reference of variable?.references ?? []) {
-          const written = writtenMember(reference);
-          if (written) context.report({ node: written.member as never, messageId: "mutated", data: { name: state.name, mutation: written.mutation } });
-        }
+        if (state) reportMutations(context, node, state);
       },
     };
   },

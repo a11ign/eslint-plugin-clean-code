@@ -17,14 +17,68 @@ type Named = { type: string; name?: string; value?: unknown };
 /** Declarations named by their `id`. */
 const NAMED_BY_ID = new Set(["FunctionDeclaration", "TSDeclareFunction", "ClassDeclaration", "TSInterfaceDeclaration", "TSTypeAliasDeclaration", "TSEnumDeclaration", "TSEnumMember"]);
 
+/** A doc comment being checked, its parts, and the words of the declaration it documents (`null` when it has no name to compare). */
+interface Documented {
+  comment: Comment;
+  parts: DocParts;
+  words: string[] | null;
+}
+
+/** Reports the doc comment of `node` once: as a whole when it only restates the name, else each `@param` tag that does. */
+function checkDocComment(context: Rule.RuleContext, seen: Set<Comment>, node: TSESTree.Node): void {
+  const sourceCode = context.sourceCode;
+  const comment = docCommentOf(sourceCode, node);
+  if (!comment || seen.has(comment)) return;
+  seen.add(comment);
+  const doc = { comment, parts: docParts(comment), words: declarationWords(node) };
+  if (onlyRestatesName(doc.parts, doc.words)) {
+    context.report({ loc: comment.loc!, messageId: "restatesName", data: { name: shownName(sourceCode, node) }, fix: (fixer) => removeComment(fixer, sourceCode, comment) });
+    return;
+  }
+  reportRedundantParams(context, doc);
+}
+
+/** The text a report names a declaration by: its key, its id, or the whole node. */
+function shownName(sourceCode: SourceCode, node: TSESTree.Node): string {
+  return sourceCode.getText(("key" in node && node.key ? node.key : "id" in node && node.id ? node.id : node) as never);
+}
+
+/** Whether a doc comment with no tags says nothing its declaration's name does not. */
+function onlyRestatesName(parts: DocParts, words: string[] | null): boolean {
+  return words !== null && !parts.hasTags && restatesName(parts.description, words);
+}
+
+/** Reports each redundant `@param` tag; the first report carries the fix that drops them all. */
+function reportRedundantParams(context: Rule.RuleContext, doc: Documented): void {
+  const start = doc.comment.loc!.start.line;
+  doc.parts.redundantParams.forEach((param, index) => {
+    const loc = { start: { line: start + param.lines[0], column: 0 }, end: doc.comment.loc!.end };
+    context.report({ loc, messageId: "restatesParam", data: { name: param.name }, ...(index === 0 ? { fix: paramsFix(context.sourceCode, doc) } : {}) });
+  });
+}
+
+function paramsFix(sourceCode: SourceCode, { comment, parts, words }: Documented) {
+  return (fixer: Rule.RuleFixer) => {
+    const drop = new Set(parts.redundantParams.flatMap((param) => param.lines));
+    const value = remainingText(comment, parts.lines, drop);
+    if (onlyRestatesName(docParts({ ...comment, value } as Comment), words)) return removeComment(fixer, sourceCode, comment);
+    return replaceCommentText(fixer, sourceCode, comment, value);
+  };
+}
+
 /** The words a declaration's doc comment may repeat: its name's, and for a constructor its class's name and "default constructor". */
 function declarationWords(node: TSESTree.Node): string[] | null {
-  if ((node.type === "MethodDefinition" || node.type === "TSAbstractMethodDefinition") && node.kind === "constructor") {
+  if (isConstructor(node)) {
     const owner = node.parent.parent as TSESTree.ClassDeclaration | TSESTree.ClassExpression;
     return ["default", "constructor", ...(owner.id ? nameWords(owner.id.name) : [])];
   }
   const name = declarationName(node);
   return name === null ? null : nameWords(name);
+}
+
+function isConstructor(node: TSESTree.Node): node is TSESTree.MethodDefinition | TSESTree.TSAbstractMethodDefinition {
+  const isMethod = node.type === "MethodDefinition" || node.type === "TSAbstractMethodDefinition";
+  return isMethod && node.kind === "constructor";
 }
 
 /** The name of a declaration, or `null` when it has none this rule can compare (a computed key, a destructuring). */
@@ -70,16 +124,6 @@ interface DocParts {
   redundantParams: { name: string; lines: number[] }[];
 }
 
-function paramsFix(sourceCode: SourceCode, comment: Comment, parts: DocParts, words: string[] | null) {
-  return (fixer: Rule.RuleFixer) => {
-    const drop = new Set(parts.redundantParams.flatMap((param) => param.lines));
-    const value = remainingText(comment, parts.lines, drop);
-    const left = docParts({ ...comment, value } as Comment);
-    if (words && !left.hasTags && restatesName(left.description, words)) return removeComment(fixer, sourceCode, comment);
-    return replaceCommentText(fixer, sourceCode, comment, value);
-  };
-}
-
 /** The text left after dropping `drop`, with the blank lines it would leave before the comment's end dropped too. */
 function remainingText(comment: Comment, lines: CommentLine[], drop: Set<number>): string {
   for (let index = lines.length - 2; index > 0 && (drop.has(index) || lines[index].content.trim() === ""); index -= 1) drop.add(index);
@@ -90,16 +134,19 @@ function docParts(comment: Comment): DocParts {
   const lines = commentLines(comment);
   const sections = tagSections(lines);
   const firstTag = sections[0]?.[0] ?? lines.length;
-  const redundantParams = sections.flatMap((section) => {
-    const match = PARAM_TAG.exec(lines[section[0]].content.trim());
-    if (!match) return [];
-    const description = [match[2], ...section.slice(1).map((index) => lines[index].content)].join(" ");
-    const words = contentWords(description);
-    const repeats = words.length === 0 || words.join(" ") === nameWords(match[1]).join(" ");
-    return repeats ? [{ name: match[1], lines: section }] : [];
-  });
+  const redundantParams = sections.flatMap((section) => redundantParam(lines, section));
   const description = lines.slice(0, firstTag).map((line) => line.content).join("\n");
   return { lines, description, hasTags: sections.length > 0 || description.includes("@"), redundantParams };
+}
+
+/** The `@param` tag on the lines `section`, as a one-item list when its description is empty or only its name split into words. */
+function redundantParam(lines: CommentLine[], section: number[]): DocParts["redundantParams"] {
+  const match = PARAM_TAG.exec(lines[section[0]].content.trim());
+  if (!match) return [];
+  const description = [match[2], ...section.slice(1).map((index) => lines[index].content)].join(" ");
+  const words = contentWords(description);
+  const repeats = words.length === 0 || words.join(" ") === nameWords(match[1]).join(" ");
+  return repeats ? [{ name: match[1], lines: section }] : [];
 }
 
 /** The tags of a doc comment, each as the indexes of its lines: the line it starts on and the lines continuing it. */
@@ -158,25 +205,8 @@ export default defineRule({
     },
   },
   create(context) {
-    const sourceCode = context.sourceCode;
     const seen = new Set<Comment>();
-    const check = (listenerNode: unknown) => {
-      const node = asTs(listenerNode);
-      const comment = docCommentOf(sourceCode, node);
-      if (!comment || seen.has(comment)) return;
-      seen.add(comment);
-      const words = declarationWords(node);
-      const parts = docParts(comment);
-      const name = sourceCode.getText(("key" in node && node.key ? node.key : "id" in node && node.id ? node.id : node) as never);
-      if (words && !parts.hasTags && restatesName(parts.description, words)) {
-        context.report({ loc: comment.loc!, messageId: "restatesName", data: { name }, fix: (fixer) => removeComment(fixer, sourceCode, comment) });
-        return;
-      }
-      parts.redundantParams.forEach((param, index) => {
-        const loc = { start: { line: comment.loc!.start.line + param.lines[0], column: 0 }, end: comment.loc!.end };
-        context.report({ loc, messageId: "restatesParam", data: { name: param.name }, ...(index === 0 ? { fix: paramsFix(sourceCode, comment, parts, words) } : {}) });
-      });
-    };
+    const check = (listenerNode: unknown) => checkDocComment(context, seen, asTs(listenerNode));
     return Object.fromEntries(DECLARATIONS.map((type) => [type, check]));
   },
 });
